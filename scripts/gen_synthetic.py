@@ -1,7 +1,8 @@
 """
 Generate rich synthetic WhatsApp tiffin order dataset in Hinglish, English, and Hindi.
 Expanded with realistic variations: cancellations, multi-person, modifications,
-payments, chitchat, pauses, typos, delivery timings, and lexical Hindi number words ("ek", "do", "teen", "chaar").
+payments, chitchat, pauses, typos, delivery timings, dual-meal orders, Devanagari script,
+and lexical Hindi number words ("ek", "do", "teen", "chaar").
 """
 
 import json
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 SEED = 42
-TARGET_COUNT = 1250
+TARGET_COUNT = 1350
 OUTPUT_DIR = Path("data/synthetic")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -76,7 +77,7 @@ QTY_WORDS = {
     4: ["4", "chaar", "four"],
 }
 
-# 1. Standard Orders
+# 1. Standard Orders & Dual-Meal Clauses
 TEMPLATES_NEW_ORDER = [
     ("kal lunch {qty}", "lunch", "{qty}", [], [], "new"),
     ("kal lunch {qty} plate", "lunch", "{qty}", ["thali"], [], "new"),
@@ -96,6 +97,11 @@ TEMPLATES_NEW_ORDER = [
     ("kal se daily lunch shuru kar do please {qty} plate", "lunch", "{qty}", ["thali"], [], "new"),
     ("pack {qty} meals for tomorrow lunch", "lunch", "{qty}", ["thali"], [], "new"),
     ("send regular tiffin tomorrow {qty}", "lunch", "{qty}", ["thali"], [], "new"),
+    ("kal lunch {qty}, dinner {qty}", "both", "{qty}", ["thali"], [], "new"),
+    ("kal lunch 1, dinner 1", "both", 1, ["thali"], [], "new"),
+    ("lunch 1 dinner 1 kal", "both", 1, ["thali"], [], "new"),
+    ("kal lunch aur dinner dono 1 plate", "both", 1, ["thali"], [], "new"),
+    ("lunch aur dinner dono ek ek thali", "both", 1, ["thali"], [], "new"),
 ]
 
 # 2. Dietary Modifications & Substitutions
@@ -139,7 +145,7 @@ TEMPLATES_MODS = [
     ("Aunty kal afternoon 2 meals, but 1 meal no rice only rotis please", "lunch", 2, ["thali"], ["one no rice only rotis"], "new"),
 ]
 
-# 3. Delivery Timings & Clock References (crucial for not confusing time with qty!)
+# 3. Delivery Timings & Clock References
 TEMPLATES_DELIVERY_TIMINGS = [
     ("Send dinner tonight by 8:30 pm sharp, 1 thali less spicy", "dinner", 1, ["thali"], ["less spicy"], "new"),
     ("1 plate lunch tomorrow, please deliver by 1:00 PM", "lunch", 1, ["thali"], [], "new"),
@@ -222,7 +228,7 @@ TEMPLATES_PAYMENTS = [
     ("paid dues 2400 on gpay", "unspecified", 0, [], [], "payment", 2400.0),
 ]
 
-# 9. Chit-Chat & Gratitude (action=none)
+# 9. Chit-Chat & Gratitude (action=none, meal=unspecified)
 TEMPLATES_CHITCHAT = [
     ("khana bahut tasty tha aunty! thank you!", "unspecified", 0, [], [], "none"),
     ("today's paneer was amazing aunty ji", "unspecified", 0, [], [], "none"),
@@ -259,6 +265,11 @@ TEMPLATES_DEVANAGARI = [
     ("खाना बहुत स्वादिष्ट था धन्यवाद", "unspecified", 0, [], [], "none"),
     ("कल दो थाली दोपहर को भेजना", "lunch", 2, ["thali"], [], "new"),
     ("कल रात का खाना कैंसिल", "dinner", 0, [], [], "cancel"),
+    ("कल रात का खाना कैंसिल कर दो", "dinner", 0, [], [], "cancel"),
+    ("रात का टिफिन नहीं चाहिए आंटी", "dinner", 0, [], [], "cancel"),
+    ("दोपहर का खाना 2 डब्बा", "lunch", 2, ["thali"], [], "new"),
+    ("दोपहर को एक थाली भेजना", "lunch", 1, ["thali"], [], "new"),
+    ("रात का खाना 1 प्लेट", "dinner", 1, ["thali"], [], "new"),
     ("कल दोपहर एक थाली, बिना मिर्ची की", "lunch", 1, ["thali"], ["bina mirchi"], "new"),
     ("आज रात १ डब्बा", "dinner", 1, ["thali"], [], "new"),
 ]
@@ -272,7 +283,7 @@ def generate_synthetic_dataset(
     idx = 1
 
     categories = [
-        ("standard", TEMPLATES_NEW_ORDER, 220),
+        ("standard", TEMPLATES_NEW_ORDER, 240),
         ("mods", TEMPLATES_MODS, 320),
         ("timings", TEMPLATES_DELIVERY_TIMINGS, 100),
         ("cancels", TEMPLATES_CANCELS, 140),
@@ -280,9 +291,9 @@ def generate_synthetic_dataset(
         ("pauses", TEMPLATES_PAUSES, 70),
         ("multi", TEMPLATES_MULTI_PERSON, 80),
         ("payments", TEMPLATES_PAYMENTS, 80),
-        ("chitchat", TEMPLATES_CHITCHAT, 60),
+        ("chitchat", TEMPLATES_CHITCHAT, 80),
         ("typos", TEMPLATES_TYPOS, 50),
-        ("devanagari", TEMPLATES_DEVANAGARI, 60),
+        ("devanagari", TEMPLATES_DEVANAGARI, 100),
     ]
 
     for _cat_name, templates, count in categories:
@@ -299,8 +310,14 @@ def generate_synthetic_dataset(
             action = tmpl[5]
             payment_amount = tmpl[6] if len(tmpl) > 6 else None
 
-            # Substitutions
-            actual_qty = qty if t_qty == "{qty}" else t_qty
+            # Enforce consistency for non-orders & payments
+            if action in ["none", "payment"]:
+                meal = "unspecified"
+                items = []
+                actual_qty = 0
+            else:
+                actual_qty = qty if t_qty == "{qty}" else t_qty
+
             if isinstance(actual_qty, int) and actual_qty in QTY_WORDS:
                 candidates = QTY_WORDS[actual_qty]
                 chosen_qty_str = random.choice(candidates) if random.random() < 0.65 else str(actual_qty)
@@ -338,7 +355,6 @@ def generate_synthetic_dataset(
             records.append(record)
             idx += 1
 
-    # Shuffle with seed
     random.shuffle(records)
     return records
 
@@ -352,7 +368,6 @@ def main():
         for r in records:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
-    # 80/20 train/test split
     split_point = int(len(records) * 0.8)
     train_set = records[:split_point]
     test_set = records[split_point:]
