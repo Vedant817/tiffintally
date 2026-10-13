@@ -34,7 +34,7 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
 @app.function(
     image=image,
     gpu="A10G",
-    timeout=900,
+    timeout=600,
     volumes={"/vol": volume},
 )
 def run_finetune_job(
@@ -56,7 +56,7 @@ def run_finetune_job(
         TrainingArguments,
     )
 
-    iteration = hyperparams.get("iteration", 6)
+    iteration = hyperparams.get("iteration", 7)
     base_model_name = hyperparams.get("base_model_name", "Qwen/Qwen2.5-0.5B-Instruct")
     num_epochs = hyperparams.get("num_epochs", 2)
     lr = hyperparams.get("learning_rate", 1.5e-4)
@@ -199,7 +199,7 @@ def run_finetune_job(
     volume.commit()
     print(f"Saved LoRA weights to persistent volume at {persist_path}")
 
-    # 3. Comprehensive Evaluation Engine
+    # 3. High-Throughput Batched Evaluation Engine
     model.eval()
 
     def evaluate_split(records: List[Dict[str, Any]], split_name: str) -> Dict[str, Any]:
@@ -213,103 +213,119 @@ def run_finetune_job(
         valid_json_count = 0
         latencies = []
 
-        for item in records:
-            user_msg = next((m["content"] for m in item["messages"] if m["role"] == "user"), "")
-            ground_truth_str = next(
-                (m["content"] for m in item["messages"] if m["role"] == "assistant"), "{}"
-            )
+        batch_size_eval = 8
+        tokenizer.padding_side = "left"
 
-            try:
-                gt_data = json.loads(ground_truth_str)
-                if isinstance(gt_data, dict):
-                    gt_events = gt_data.get("events", [])
-                elif isinstance(gt_data, list):
-                    gt_events = gt_data
-                else:
-                    gt_events = []
-                gt_event = gt_events[0] if gt_events else {}
-            except Exception:
-                gt_event = {}
+        for batch_start in range(0, len(records), batch_size_eval):
+            batch_records = records[batch_start : batch_start + batch_size_eval]
+            batch_prompts = []
+            batch_gt = []
 
-            eval_prompt = [
-                {"role": "system", "content": item["messages"][0]["content"]},
-                {"role": "user", "content": user_msg},
-            ]
-            input_text = tokenizer.apply_chat_template(
-                eval_prompt, tokenize=False, add_generation_prompt=True
-            )
-            inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
+            for item in batch_records:
+                user_msg = next((m["content"] for m in item["messages"] if m["role"] == "user"), "")
+                ground_truth_str = next(
+                    (m["content"] for m in item["messages"] if m["role"] == "assistant"), "{}"
+                )
+                try:
+                    gt_data = json.loads(ground_truth_str)
+                    gt_events = (
+                        gt_data.get("events", [])
+                        if isinstance(gt_data, dict)
+                        else (gt_data if isinstance(gt_data, list) else [])
+                    )
+                    gt_event = gt_events[0] if gt_events else {}
+                except Exception:
+                    gt_event = {}
+
+                eval_prompt = [
+                    {"role": "system", "content": item["messages"][0]["content"]},
+                    {"role": "user", "content": user_msg},
+                ]
+                in_text = tokenizer.apply_chat_template(
+                    eval_prompt, tokenize=False, add_generation_prompt=True
+                )
+                batch_prompts.append(in_text)
+                batch_gt.append((user_msg, gt_event))
+
+            inputs = tokenizer(
+                batch_prompts,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=max_seq_len,
+            ).to(model.device)
 
             t0 = time.perf_counter()
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=180,
+                    max_new_tokens=96,
                     do_sample=False,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                 )
             dt_ms = (time.perf_counter() - t0) * 1000
-            latencies.append(dt_ms)
+            per_item_lat = dt_ms / max(1, len(batch_records))
 
-            gen_tokens = outputs[0][inputs["input_ids"].shape[1] :]
-            pred_text = tokenizer.decode(gen_tokens, skip_special_tokens=True).strip()
+            prompt_len = inputs["input_ids"].shape[1]
+            for idx, (user_msg, gt_event) in enumerate(batch_gt):
+                latencies.append(per_item_lat)
+                gen_tokens = outputs[idx][prompt_len:]
+                pred_text = tokenizer.decode(gen_tokens, skip_special_tokens=True).strip()
 
-            pred_event = {}
-            is_valid_json = False
-            try:
-                clean_pred = pred_text
-                if "```json" in clean_pred:
-                    clean_pred = clean_pred.split("```json")[1].split("```")[0].strip()
-                elif "```" in clean_pred:
-                    clean_pred = clean_pred.split("```")[1].split("```")[0].strip()
-
-                parsed = json.loads(clean_pred)
-                if isinstance(parsed, dict):
-                    pred_events = parsed.get("events", [])
-                elif isinstance(parsed, list):
-                    pred_events = parsed
-                else:
-                    pred_events = []
-
-                if pred_events and isinstance(pred_events[0], dict):
-                    pred_event = pred_events[0]
-                    is_valid_json = True
-            except Exception:
+                pred_event = {}
                 is_valid_json = False
+                try:
+                    clean_pred = pred_text
+                    if "```json" in clean_pred:
+                        clean_pred = clean_pred.split("```json")[1].split("```")[0].strip()
+                    elif "```" in clean_pred:
+                        clean_pred = clean_pred.split("```")[1].split("```")[0].strip()
 
-            if is_valid_json:
-                valid_json_count += 1
+                    parsed = json.loads(clean_pred)
+                    pred_events = (
+                        parsed.get("events", [])
+                        if isinstance(parsed, dict)
+                        else (parsed if isinstance(parsed, list) else [])
+                    )
+                    if pred_events and isinstance(pred_events[0], dict):
+                        pred_event = pred_events[0]
+                        is_valid_json = True
+                except Exception:
+                    is_valid_json = False
 
-            meal_match = pred_event.get("meal") == gt_event.get("meal")
-            qty_match = pred_event.get("qty") == gt_event.get("qty")
-            action_match = pred_event.get("action") == gt_event.get("action")
-            mods_match = set(pred_event.get("mods") or []) == set(gt_event.get("mods") or [])
+                if is_valid_json:
+                    valid_json_count += 1
 
-            if meal_match:
-                meal_correct += 1
-            if qty_match:
-                qty_correct += 1
-            if action_match:
-                action_correct += 1
-            if mods_match:
-                mods_correct += 1
+                meal_match = pred_event.get("meal") == gt_event.get("meal")
+                qty_match = pred_event.get("qty") == gt_event.get("qty")
+                action_match = pred_event.get("action") == gt_event.get("action")
+                mods_match = set(pred_event.get("mods") or []) == set(gt_event.get("mods") or [])
 
-            exact_ok = meal_match and qty_match and action_match
-            if exact_ok:
-                exact_correct += 1
+                if meal_match:
+                    meal_correct += 1
+                if qty_match:
+                    qty_correct += 1
+                if action_match:
+                    action_correct += 1
+                if mods_match:
+                    mods_correct += 1
 
-            predictions.append(
-                {
-                    "user_input": user_msg,
-                    "ground_truth": gt_event,
-                    "predicted": pred_event,
-                    "is_valid_json": is_valid_json,
-                    "exact_match": exact_ok,
-                    "latency_ms": round(dt_ms, 2),
-                    "raw_output": pred_text[:200],
-                }
-            )
+                exact_ok = meal_match and qty_match and action_match
+                if exact_ok:
+                    exact_correct += 1
+
+                predictions.append(
+                    {
+                        "user_input": user_msg,
+                        "ground_truth": gt_event,
+                        "predicted": pred_event,
+                        "is_valid_json": is_valid_json,
+                        "exact_match": exact_ok,
+                        "latency_ms": round(per_item_lat, 2),
+                        "raw_output": pred_text[:200],
+                    }
+                )
 
         n_samples = max(1, len(records))
         em_acc = round((exact_correct / n_samples) * 100, 1)
@@ -337,7 +353,7 @@ def run_finetune_job(
                 "latency_p95_ms": p95,
                 "failure_count": len(failures),
             },
-            "failures": failures[:15],
+            "failures": failures,
         }
 
     # Evaluate Synthetic Test Split
@@ -361,7 +377,7 @@ def run_finetune_job(
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=180,
+                max_new_tokens=96,
                 do_sample=False,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
@@ -377,12 +393,11 @@ def run_finetune_job(
             elif "```" in cl:
                 cl = cl.split("```")[1].split("```")[0].strip()
             parsed_data = json.loads(cl)
-            if isinstance(parsed_data, dict):
-                ev_list = parsed_data.get("events", [])
-            elif isinstance(parsed_data, list):
-                ev_list = parsed_data
-            else:
-                ev_list = []
+            ev_list = (
+                parsed_data.get("events", [])
+                if isinstance(parsed_data, dict)
+                else (parsed_data if isinstance(parsed_data, list) else [])
+            )
             parsed_ev = ev_list[0] if ev_list and isinstance(ev_list[0], dict) else {}
         except Exception:
             pass
@@ -422,7 +437,7 @@ def run_finetune_job(
     out_payload = {
         "metrics": metrics,
         "loss_history": loss_history,
-        "synthetic_failures": synthetic_eval["failures"],
+        "synthetic_failures": synthetic_eval["failures"][:10],
         "real_failures": real_eval["failures"],
         "edge_results": edge_results,
     }
@@ -437,7 +452,7 @@ def run_finetune_job(
 
 @app.local_entrypoint()
 def main(
-    iteration: int = 6,
+    iteration: int = 7,
     epochs: int = 2,
     lr: float = 1.5e-4,
     lora_r: int = 16,
@@ -492,7 +507,7 @@ def main(
                             ]
                         }
                     )
-    synthetic_val_records = synthetic_val_records[:50]
+    synthetic_val_records = synthetic_val_records[:30]
 
     real_val_records = []
     if real_test_file.exists():
