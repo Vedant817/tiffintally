@@ -58,6 +58,13 @@ TEMPLATES_NEW_ORDER = [
     ("please pack {qty} thali for lunch", "lunch", "{qty}", ["thali"], [], "new"),
 ]
 
+QTY_WORDS = {
+    1: ["1", "ek", "one", "1"],
+    2: ["2", "do", "two", "2"],
+    3: ["3", "teen", "three", "3"],
+    4: ["4", "chaar", "four", "4"],
+}
+
 # 2. Modifications (Dietary / Dish tweaks)
 TEMPLATES_MODS = [
     (
@@ -76,7 +83,7 @@ TEMPLATES_MODS = [
         ["no onion", "no garlic"],
         "new",
     ),
-    ("kal lunch {qty}, kam teekha banana", "lunch", "{qty}", ["thali"], ["kam teekha"], "new"),
+    ("kal lunch {qty}, kam teekha banana", "lunch", "{qty}", ["thali"], ["less spicy"], "new"),
     ("lunch 1, extra rice please aunty", "lunch", 1, ["thali"], ["extra rice"], "new"),
     (
         "kal dinner {qty}, less oily please stomach upset hai",
@@ -87,7 +94,7 @@ TEMPLATES_MODS = [
         "new",
     ),
     ("kal lunch 1, dal zyada sabzi kam", "lunch", 1, ["thali"], ["dal zyada", "sabzi kam"], "new"),
-    ("kal lunch 2, ek bina pyaaz ka", "lunch", 2, ["thali"], ["one without onion"], "new"),
+    ("kal lunch 2, ek bina pyaaz ka", "lunch", 2, ["thali"], ["no onion"], "new"),
     (
         "1 thali lunch, replace curd with extra sabzi",
         "lunch",
@@ -96,6 +103,23 @@ TEMPLATES_MODS = [
         ["no curd", "extra sabzi"],
         "new",
     ),
+    ("bina pyaaz ke {qty} thali bhejo lunch me", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
+    ("bina pyaaz ke {qty} tiffin dinner me", "dinner", "{qty}", ["thali"], ["no onion"], "new"),
+    ("bina pyaaz {qty} lunch box please", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
+    ("pyaaz mat dalna kal ke {qty} dinner me", "dinner", "{qty}", ["thali"], ["no onion"], "new"),
+    ("bina pyaaz ke {qty} plate bhejo kal dopahar", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
+    ("aunty kal bina pyaaz ke {qty} dabba bhej dena", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
+    ("bina lehsun pyaaz {qty} thali kal lunch", "lunch", "{qty}", ["thali"], ["no onion", "no garlic"], "new"),
+    ("bina lehsun pyaaz ke {qty} thali dinner", "dinner", "{qty}", ["thali"], ["no onion", "no garlic"], "new"),
+    ("jain khana {qty} plate kal dinner", "dinner", "{qty}", ["thali"], ["jain"], "new"),
+    ("jain thali {qty} plate lunch tomorrow", "lunch", "{qty}", ["thali"], ["jain"], "new"),
+    ("kam teekha {qty} lunch bhej dena", "lunch", "{qty}", ["thali"], ["less spicy"], "new"),
+    ("kam mirchi {qty} thali lunch aunty", "lunch", "{qty}", ["thali"], ["less spicy"], "new"),
+    ("less spicy {qty} dinner box", "dinner", "{qty}", ["thali"], ["less spicy"], "new"),
+    ("bina mirchi ke {qty} dabba dinner", "dinner", "{qty}", ["thali"], ["no chili"], "new"),
+    ("bina mirchi wala {qty} dabba kal lunch", "lunch", "{qty}", ["thali"], ["no chili"], "new"),
+    ("roti nahi sirf rice dena {qty} plate lunch", "lunch", "{qty}", ["thali"], ["roti nahi rice"], "new"),
+    ("oil kam rakhna {qty} thali dinner me", "dinner", "{qty}", ["thali"], ["less oily"], "new"),
 ]
 
 # 3. Cancels
@@ -187,16 +211,16 @@ def generate_synthetic_dataset(
     idx = 1
 
     categories = [
-        ("standard", TEMPLATES_NEW_ORDER, 180),
-        ("mods", TEMPLATES_MODS, 100),
-        ("cancels", TEMPLATES_CANCELS, 110),
+        ("standard", TEMPLATES_NEW_ORDER, 160),
+        ("mods", TEMPLATES_MODS, 250),
+        ("cancels", TEMPLATES_CANCELS, 100),
         ("changes", TEMPLATES_CHANGES, 50),
         ("pauses", TEMPLATES_PAUSES, 40),
-        ("multi", TEMPLATES_MULTI_PERSON, 45),
+        ("multi", TEMPLATES_MULTI_PERSON, 50),
         ("payments", TEMPLATES_PAYMENTS, 45),
         ("chitchat", TEMPLATES_CHITCHAT, 35),
-        ("typos", TEMPLATES_TYPOS, 25),
-        ("devanagari", TEMPLATES_DEVANAGARI, 25),
+        ("typos", TEMPLATES_TYPOS, 30),
+        ("devanagari", TEMPLATES_DEVANAGARI, 40),
     ]
 
     for cat_name, templates, count in categories:
@@ -215,7 +239,11 @@ def generate_synthetic_dataset(
 
             # Substitutions
             actual_qty = qty if t_qty == "{qty}" else t_qty
-            text = text_pattern.replace("{qty}", str(qty))
+            qty_word_candidates = QTY_WORDS.get(actual_qty, [str(actual_qty)])
+            chosen_qty_str = (
+                random.choice(qty_word_candidates) if random.random() < 0.55 else str(actual_qty)
+            )
+            text = text_pattern.replace("{qty}", chosen_qty_str)
 
             sec_customer = None
             if "{friend}" in text:

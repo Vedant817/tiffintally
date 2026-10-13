@@ -31,7 +31,7 @@ def build_sft_dataset():
         gold_data = r["gold"]
 
         user_content = f"Sender: {sender}\nMessage: {text}"
-        assistant_content = json.dumps([gold_data], ensure_ascii=False)
+        assistant_content = json.dumps({"events": [gold_data]}, ensure_ascii=False)
 
         sft_entry = {
             "messages": [
