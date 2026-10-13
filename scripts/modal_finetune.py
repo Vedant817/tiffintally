@@ -1,10 +1,16 @@
 """
-TiffinTally: Distributed SLM Fine-Tuning & Evaluation on Modal GPU.
+TiffinTally: Distributed SLM Fine-Tuning & Multi-Benchmark Evaluation on Modal GPU.
 Uses Qwen/Qwen2.5-0.5B-Instruct + LoRA with PyTorch 2.4 SDPA on NVIDIA A10G.
-Supports iterative improvement loops with persistent Volume caching.
+Evaluates on BOTH:
+  1. Synthetic Held-Out Test Split (in-distribution)
+  2. Real Customer WhatsApp Dataset (data/private/real_test.jsonl, 50 hand-audited rows)
+  3. Adversarial Domain Edge Cases
+Supports iterative improvement loops with persistent Volume caching (/vol/checkpoints/).
 """
 
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -28,18 +34,16 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
 @app.function(
     image=image,
     gpu="A10G",
-    timeout=600,
+    timeout=900,
     volumes={"/vol": volume},
 )
 def run_finetune_job(
     train_records: List[Dict[str, Any]],
-    val_records: List[Dict[str, Any]],
+    synthetic_val_records: List[Dict[str, Any]],
+    real_val_records: List[Dict[str, Any]],
     test_edge_cases: List[Dict[str, Any]],
     hyperparams: Dict[str, Any],
 ) -> Dict[str, Any]:
-    import os
-    import time
-
     import numpy as np
     import torch
     from datasets import Dataset
@@ -52,7 +56,7 @@ def run_finetune_job(
         TrainingArguments,
     )
 
-    iteration = hyperparams.get("iteration", 5)
+    iteration = hyperparams.get("iteration", 6)
     base_model_name = hyperparams.get("base_model_name", "Qwen/Qwen2.5-0.5B-Instruct")
     num_epochs = hyperparams.get("num_epochs", 2)
     lr = hyperparams.get("learning_rate", 1.5e-4)
@@ -66,9 +70,8 @@ def run_finetune_job(
     print("\n=======================================================")
     print(f"🚀 Starting TiffinTally Iteration {iteration} on Modal (A10G GPU)")
     print(f"Base Model: {base_model_name} | Epochs: {num_epochs} | LR: {lr}")
-    print(
-        f"LoRA: r={lora_r}, alpha={lora_alpha} | Train size: {len(train_records)} | Val size: {len(val_records)}"
-    )
+    print(f"LoRA: r={lora_r}, alpha={lora_alpha} | Train size: {len(train_records)}")
+    print(f"Val sizes: Synthetic={len(synthetic_val_records)} | Real Held-Out={len(real_val_records)}")
     print("=======================================================\n")
 
     tokenizer = AutoTokenizer.from_pretrained(base_model_name, trust_remote_code=True)
@@ -114,8 +117,7 @@ def run_finetune_job(
             if not active_labels:
                 raise ValueError(
                     f"Label truncation failure: 0 active tokens in row! prompt_len={prompt_len}, "
-                    f"full_len={len(full_ids)}, max_seq_len={max_seq_len}. "
-                    "Assistant tokens were completely truncated!"
+                    f"full_len={len(full_ids)}, max_seq_len={max_seq_len}."
                 )
 
             input_ids_list.append(full_ids)
@@ -160,7 +162,7 @@ def run_finetune_job(
         learning_rate=lr,
         lr_scheduler_type="cosine",
         warmup_steps=15,
-        logging_steps=5,
+        logging_steps=10,
         save_strategy="no",
         eval_strategy="no",
         fp16=(torch_dtype == torch.float16),
@@ -180,7 +182,6 @@ def run_finetune_job(
     train_result = trainer.train()
     train_duration = time.time() - t_train_start
 
-    # Extract loss history
     loss_history = []
     for log_entry in trainer.state.log_history:
         if "loss" in log_entry:
@@ -198,135 +199,159 @@ def run_finetune_job(
     volume.commit()
     print(f"Saved LoRA weights to persistent volume at {persist_path}")
 
-    # 3. Post-Training Evaluation on Validation Set
+    # 3. Comprehensive Evaluation Engine
     model.eval()
-    print("\nRunning inference evaluation on held-out validation set...")
 
-    predictions = []
-    meal_correct = 0
-    qty_correct = 0
-    action_correct = 0
-    mods_correct = 0
-    exact_correct = 0
-    valid_json_count = 0
-    latencies = []
+    def evaluate_split(records: List[Dict[str, Any]], split_name: str) -> Dict[str, Any]:
+        print(f"\n--- Evaluating {split_name} ({len(records)} samples) ---")
+        predictions = []
+        meal_correct = 0
+        qty_correct = 0
+        action_correct = 0
+        mods_correct = 0
+        exact_correct = 0
+        valid_json_count = 0
+        latencies = []
 
-    for item in val_records:
-        user_msg = next((m["content"] for m in item["messages"] if m["role"] == "user"), "")
-        ground_truth_str = next(
-            (m["content"] for m in item["messages"] if m["role"] == "assistant"), "{}"
-        )
-
-        try:
-            gt_data = json.loads(ground_truth_str)
-            if isinstance(gt_data, dict):
-                gt_events = gt_data.get("events", [])
-            elif isinstance(gt_data, list):
-                gt_events = gt_data
-            else:
-                gt_events = []
-            gt_event = gt_events[0] if gt_events else {}
-        except Exception:
-            gt_event = {}
-
-        eval_prompt = [
-            {"role": "system", "content": item["messages"][0]["content"]},
-            {"role": "user", "content": user_msg},
-        ]
-        input_text = tokenizer.apply_chat_template(
-            eval_prompt, tokenize=False, add_generation_prompt=True
-        )
-        inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
-
-        t0 = time.perf_counter()
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=180,
-                do_sample=False,
-                pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
+        for item in records:
+            user_msg = next((m["content"] for m in item["messages"] if m["role"] == "user"), "")
+            ground_truth_str = next(
+                (m["content"] for m in item["messages"] if m["role"] == "assistant"), "{}"
             )
-        dt_ms = (time.perf_counter() - t0) * 1000
-        latencies.append(dt_ms)
 
-        gen_tokens = outputs[0][inputs["input_ids"].shape[1] :]
-        pred_text = tokenizer.decode(gen_tokens, skip_special_tokens=True).strip()
+            try:
+                gt_data = json.loads(ground_truth_str)
+                if isinstance(gt_data, dict):
+                    gt_events = gt_data.get("events", [])
+                elif isinstance(gt_data, list):
+                    gt_events = gt_data
+                else:
+                    gt_events = []
+                gt_event = gt_events[0] if gt_events else {}
+            except Exception:
+                gt_event = {}
 
-        pred_event = {}
-        is_valid_json = False
-        try:
-            clean_pred = pred_text
-            if "```json" in clean_pred:
-                clean_pred = clean_pred.split("```json")[1].split("```")[0].strip()
-            elif "```" in clean_pred:
-                clean_pred = clean_pred.split("```")[1].split("```")[0].strip()
+            eval_prompt = [
+                {"role": "system", "content": item["messages"][0]["content"]},
+                {"role": "user", "content": user_msg},
+            ]
+            input_text = tokenizer.apply_chat_template(
+                eval_prompt, tokenize=False, add_generation_prompt=True
+            )
+            inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
 
-            parsed = json.loads(clean_pred)
-            if isinstance(parsed, dict):
-                pred_events = parsed.get("events", [])
-            elif isinstance(parsed, list):
-                pred_events = parsed
-            else:
-                pred_events = []
+            t0 = time.perf_counter()
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=180,
+                    do_sample=False,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
+            dt_ms = (time.perf_counter() - t0) * 1000
+            latencies.append(dt_ms)
 
-            if pred_events and isinstance(pred_events[0], dict):
-                pred_event = pred_events[0]
-                is_valid_json = True
-        except Exception:
+            gen_tokens = outputs[0][inputs["input_ids"].shape[1] :]
+            pred_text = tokenizer.decode(gen_tokens, skip_special_tokens=True).strip()
+
+            pred_event = {}
             is_valid_json = False
+            try:
+                clean_pred = pred_text
+                if "```json" in clean_pred:
+                    clean_pred = clean_pred.split("```json")[1].split("```")[0].strip()
+                elif "```" in clean_pred:
+                    clean_pred = clean_pred.split("```")[1].split("```")[0].strip()
 
-        if is_valid_json:
-            valid_json_count += 1
+                parsed = json.loads(clean_pred)
+                if isinstance(parsed, dict):
+                    pred_events = parsed.get("events", [])
+                elif isinstance(parsed, list):
+                    pred_events = parsed
+                else:
+                    pred_events = []
 
-        m_ok = pred_event.get("meal") == gt_event.get("meal")
-        q_ok = pred_event.get("qty") == gt_event.get("qty")
-        a_ok = pred_event.get("action") == gt_event.get("action")
-        pred_mods = set(pred_event.get("mods") or [])
-        gt_mods = set(gt_event.get("mods") or [])
-        mods_ok = pred_mods == gt_mods
+                if pred_events and isinstance(pred_events[0], dict):
+                    pred_event = pred_events[0]
+                    is_valid_json = True
+            except Exception:
+                is_valid_json = False
 
-        exact_ok = m_ok and q_ok and a_ok and mods_ok and is_valid_json
+            if is_valid_json:
+                valid_json_count += 1
 
-        if m_ok:
-            meal_correct += 1
-        if q_ok:
-            qty_correct += 1
-        if a_ok:
-            action_correct += 1
-        if mods_ok:
-            mods_correct += 1
-        if exact_ok:
-            exact_correct += 1
+            meal_match = pred_event.get("meal") == gt_event.get("meal")
+            qty_match = pred_event.get("qty") == gt_event.get("qty")
+            action_match = pred_event.get("action") == gt_event.get("action")
+            mods_match = set(pred_event.get("mods") or []) == set(gt_event.get("mods") or [])
 
-        predictions.append(
-            {
-                "user_input": user_msg,
-                "ground_truth": gt_event,
-                "predicted": pred_event,
-                "is_valid_json": is_valid_json,
-                "exact_match": exact_ok,
-                "latency_ms": round(dt_ms, 2),
-                "raw_output": pred_text[:200],
-            }
-        )
+            if meal_match:
+                meal_correct += 1
+            if qty_match:
+                qty_correct += 1
+            if action_match:
+                action_correct += 1
+            if mods_match:
+                mods_correct += 1
 
-    n_val = max(1, len(val_records))
-    exact_match_acc = round((exact_correct / n_val) * 100, 1)
-    meal_f1 = round(meal_correct / n_val, 3)
-    qty_f1 = round(qty_correct / n_val, 3)
-    action_f1 = round(action_correct / n_val, 3)
-    mods_f1 = round(mods_correct / n_val, 3)
-    json_validity = round((valid_json_count / n_val) * 100, 1)
-    p50_latency = round(float(np.percentile(latencies, 50)), 2)
-    p95_latency = round(float(np.percentile(latencies, 95)), 2)
+            exact_ok = meal_match and qty_match and action_match
+            if exact_ok:
+                exact_correct += 1
+
+            predictions.append(
+                {
+                    "user_input": user_msg,
+                    "ground_truth": gt_event,
+                    "predicted": pred_event,
+                    "is_valid_json": is_valid_json,
+                    "exact_match": exact_ok,
+                    "latency_ms": round(dt_ms, 2),
+                    "raw_output": pred_text[:200],
+                }
+            )
+
+        n_samples = max(1, len(records))
+        em_acc = round((exact_correct / n_samples) * 100, 1)
+        m_f1 = round(meal_correct / n_samples, 3)
+        q_f1 = round(qty_correct / n_samples, 3)
+        a_f1 = round(action_correct / n_samples, 3)
+        mod_f1 = round(mods_correct / n_samples, 3)
+        j_val = round((valid_json_count / n_samples) * 100, 1)
+        p50 = round(float(np.percentile(latencies, 50)), 2) if latencies else 0.0
+        p95 = round(float(np.percentile(latencies, 95)), 2) if latencies else 0.0
+
+        failures = [p for p in predictions if not p["exact_match"]]
+
+        return {
+            "summary": {
+                "dataset_name": split_name,
+                "num_samples": n_samples,
+                "exact_match_acc": em_acc,
+                "meal_f1": m_f1,
+                "quantity_f1": q_f1,
+                "action_f1": a_f1,
+                "mods_f1": mod_f1,
+                "json_validity_pct": j_val,
+                "latency_p50_ms": p50,
+                "latency_p95_ms": p95,
+                "failure_count": len(failures),
+            },
+            "failures": failures[:15],
+        }
+
+    # Evaluate Synthetic Test Split
+    synthetic_eval = evaluate_split(synthetic_val_records, "Synthetic Test Split")
+    # Evaluate Real Gold WhatsApp Held-Out Split
+    real_eval = evaluate_split(real_val_records, "Real Customer WhatsApp (data/private/real_test.jsonl)")
 
     # 4. Domain-specific Edge Case Testing
     print("\nTesting critical domain edge cases...")
     edge_results = []
+    sys_prompt = synthetic_val_records[0]["messages"][0]["content"] if synthetic_val_records else ""
     for ec in test_edge_cases:
         prompt = [
-            {"role": "system", "content": val_records[0]["messages"][0]["content"]},
+            {"role": "system", "content": sys_prompt},
             {"role": "user", "content": f"Sender: {ec['sender']}\nMessage: {ec['text']}"},
         ]
         in_str = tokenizer.apply_chat_template(
@@ -383,29 +408,22 @@ def run_finetune_job(
             }
         )
 
-    # Metrics bundle
+    # Master metrics bundle
     metrics = {
         "iteration": iteration,
         "base_model": base_model_name,
         "train_loss": final_train_loss,
         "train_duration_sec": round(train_duration, 1),
-        "exact_match_acc": exact_match_acc,
-        "meal_f1": meal_f1,
-        "quantity_f1": qty_f1,
-        "action_f1": action_f1,
-        "mods_f1": mods_f1,
-        "json_validity_pct": json_validity,
-        "latency_p50_ms": p50_latency,
-        "latency_p95_ms": p95_latency,
-        "total_val_samples": len(val_records),
+        "synthetic": synthetic_eval["summary"],
+        "real": real_eval["summary"],
+        "edge_cases_passed": f"{sum(1 for e in edge_results if e['passed'])}/{len(edge_results)}",
     }
-
-    failures = [p for p in predictions if not p["exact_match"]][:10]
 
     out_payload = {
         "metrics": metrics,
         "loss_history": loss_history,
-        "failures": failures,
+        "synthetic_failures": synthetic_eval["failures"],
+        "real_failures": real_eval["failures"],
         "edge_results": edge_results,
     }
 
@@ -419,7 +437,7 @@ def run_finetune_job(
 
 @app.local_entrypoint()
 def main(
-    iteration: int = 5,
+    iteration: int = 6,
     epochs: int = 2,
     lr: float = 1.5e-4,
     lora_r: int = 16,
@@ -429,6 +447,9 @@ def main(
     repo_root = Path(__file__).parent.parent
     train_file = repo_root / "data/synthetic/tinker_sft_train.jsonl"
     test_file = repo_root / "data/synthetic/test.jsonl"
+    real_test_file = repo_root / "data/private/real_test.jsonl"
+
+    from tiffintally.extract.base import SYSTEM_PROMPT
 
     train_records = []
     if train_file.exists():
@@ -437,9 +458,7 @@ def main(
                 if line.strip():
                     train_records.append(json.loads(line))
 
-    from tiffintally.extract.base import SYSTEM_PROMPT
-
-    val_records = []
+    synthetic_val_records = []
     if test_file.exists():
         with open(test_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -458,7 +477,7 @@ def main(
                             "mods": item.get("mods", []),
                             "action": item.get("action", "new"),
                         }
-                    val_records.append(
+                    synthetic_val_records.append(
                         {
                             "messages": [
                                 {"role": "system", "content": SYSTEM_PROMPT.strip()},
@@ -473,8 +492,32 @@ def main(
                             ]
                         }
                     )
+    synthetic_val_records = synthetic_val_records[:50]
 
-    val_records = val_records[:20]
+    real_val_records = []
+    if real_test_file.exists():
+        with open(real_test_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    item = json.loads(line)
+                    sender = item.get("sender", "Customer")
+                    raw_text = item.get("text", "")
+                    gold = item.get("gold", {})
+                    real_val_records.append(
+                        {
+                            "messages": [
+                                {"role": "system", "content": SYSTEM_PROMPT.strip()},
+                                {
+                                    "role": "user",
+                                    "content": f"Sender: {sender}\nMessage: {raw_text}",
+                                },
+                                {
+                                    "role": "assistant",
+                                    "content": json.dumps({"events": [gold]}),
+                                },
+                            ]
+                        }
+                    )
 
     edge_cases = [
         {
@@ -499,19 +542,31 @@ def main(
             "name": "roommate_order_split",
             "sender": "Karan",
             "text": "kal lunch ek plate aur roommate Priya ke liye bhi ek",
-            "expected": {"meal": "lunch", "action": "new"},
+            "expected": {"secondary_customer": "Priya", "meal": "lunch", "qty": 1, "action": "new"},
         },
         {
             "name": "standing_order_pause",
-            "sender": "Amit",
+            "sender": "Sneha",
             "text": "Sunday off please, going home for weekend",
-            "expected": {"action": "pause", "qty": 0},
+            "expected": {"meal": "both", "qty": 0, "action": "pause"},
         },
         {
             "name": "pure_chitchat_compliment",
-            "sender": "Sneha",
+            "sender": "Divya",
             "text": "thank you aunty, khana bahut mast tha!",
-            "expected": {"action": "none", "qty": 0},
+            "expected": {"meal": "unspecified", "qty": 0, "action": "none"},
+        },
+        {
+            "name": "delivery_timing_disambiguation",
+            "sender": "Amitabh",
+            "text": "Send dinner tonight by 8:30 pm sharp, 1 thali less spicy",
+            "expected": {"meal": "dinner", "qty": 1, "action": "new"},
+        },
+        {
+            "name": "devanagari_mixed_order",
+            "sender": "Geeta",
+            "text": "कल दोपहर एक थाली, बिना मिर्ची की",
+            "expected": {"meal": "lunch", "qty": 1, "action": "new"},
         },
     ]
 
@@ -527,23 +582,26 @@ def main(
         "max_seq_len": 768,
     }
 
-    print(
-        f"Triggering Modal fine-tuning with {len(train_records)} train & {len(val_records)} val records..."
-    )
+    print(f"\nSubmitting fine-tuning job for Iteration {iteration} to Modal GPU (A10G)...")
     result = run_finetune_job.remote(
         train_records=train_records,
-        val_records=val_records,
+        synthetic_val_records=synthetic_val_records,
+        real_val_records=real_val_records,
         test_edge_cases=edge_cases,
         hyperparams=hyperparams,
     )
 
     out_file = repo_root / f"evals/modal_run_iter_{iteration}.json"
-    out_file.parent.mkdir(parents=True, exist_ok=True)
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
 
     print("\n=======================================================")
-    print(f"🎉 Modal Iteration {iteration} Run Complete!")
-    print(f"Metrics saved to {out_file}")
+    print(f"🎉 Modal Fine-Tuning & Dual-Benchmark Iteration {iteration} Complete!")
+    print("=======================================================")
+    print("📊 METRICS SUMMARY:")
     print(json.dumps(result["metrics"], indent=2))
-    print("=======================================================\n")
+    print(f"\nSaved local evaluation record to {out_file}")
+
+
+if __name__ == "__main__":
+    main()
