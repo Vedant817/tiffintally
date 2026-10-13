@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}TiffinTally | WhatsApp Order Parser & Kitchen Intelligence{% endblock %}
+
+{% block content %}
+<div class="card" style="border-left: 4px solid var(--primary);">
+  <h1 style="font-size: 1.5rem; margin-bottom: 8px;">Order Intake & Extraction</h1>
+  <p style="color: var(--text-muted); font-size: 0.95rem;">
+    Upload your exported WhatsApp chat (<code>.txt</code>) or paste the raw chat text below.
+    TiffinTally pseudonymizes customer identities before calling AI extractors, reconciles cancellations and changes deterministically, and prepares the kitchen's daily prep sheet.
+  </p>
+</div>
+
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+    <h2 style="font-size: 1.15rem;">Paste or Upload WhatsApp Chat</h2>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" class="btn btn-secondary" onclick="loadDemoSample()">
+        ⚡ Load Demo Batch (Realistic Chat)
+      </button>
+    </div>
+  </div>
+
+  <form action="/process" method="POST" enctype="multipart/form-data">
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem;">
+        Or select exported WhatsApp chat file:
+      </label>
+      <input type="file" name="chat_file" accept=".txt" style="font-size: 0.9rem;">
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem;">
+        Paste chat messages:
+      </label>
+      <textarea id="raw_text" name="raw_text" rows="10" placeholder="12/10/26, 10:14 pm - Ravi: kal lunch 2, dinner skip&#10;12/10/26, 10:15 pm - Priya: aaj roti nahi rice please less spicy&#10;12/10/26, 10:16 pm - Vikram: kal lunch cancel aunty" style="width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.9rem;"></textarea>
+    </div>
+
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+      <div>
+        <label style="font-size: 0.85rem; font-weight: 600; display: block;">Target Meal Date:</label>
+        <input type="text" name="target_date" value="tomorrow" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem;">
+      </div>
+
+      <div style="margin-top: 18px;">
+        <button type="submit" class="btn btn-primary" style="padding: 10px 24px;">
+          🍲 Process & Reconcile Orders
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="background: #fafafa;">
+  <h3 style="font-size: 1rem; margin-bottom: 8px;">🛡️ Privacy & Operational Guarantees</h3>
+  <ul style="font-size: 0.88rem; color: #555; padding-left: 20px; line-height: 1.6;">
+    <li><strong>Client-Side Pseudonymization:</strong> Real customer names & phone numbers are mapped to local sequential tokens (<code>C001..C999</code>) in SQLite before calling any cloud LLM.</li>
+    <li><strong>Deterministic Reconciler:</strong> Time-ordered cancel/update logic is pure Python — zero arithmetic hallucination from language models.</li>
+    <li><strong>No Auto-Sending:</strong> Payment reminders and notifications are generated as drafts for you to review and copy with one tap. The app has zero messaging API keys.</li>
+  </ul>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadDemoSample() {
+  const demoText = `12/10/26, 10:14 pm - Ravi: kal lunch 2, dinner skip
+12/10/26, 10:15 pm - Priya: kal lunch 1, aaj roti nahi extra rice dena please
+12/10/26, 10:18 pm - Sneha: kal lunch cancel aunty, team lunch hai
+12/10/26, 10:20 pm - Karan: Kal lunch 1 plate. Aur meri roommate Tanvi ke liye bhi ek lunch add kar dena
+12/10/26, 10:24 pm - Vikram: ₹1500 GPay kiya aunty check kar lo
+12/10/26, 10:30 pm - Ananya: earlier ordered 1, please change it to 3 thalis for dinner tomorrow
+12/10/26, 10:35 pm - Rohan: thank you aunty khana mast tha!
+12/10/26, 10:40 pm - Pooja: कल दो थाली दोपहर को भेजना, बिना प्याज के
+12/10/26, 10:55 pm - Amit: Sunday off please, going home
+12/10/26, 11:15 pm - Deepak: kal lunch 2 add karo please late message aunty`;
+
+  document.getElementById('raw_text').value = demoText;
+}
+</script>
+{% endblock %}

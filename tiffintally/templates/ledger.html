@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Customer Dues Ledger | TiffinTally{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+  <div>
+    <h1 style="font-size: 1.6rem;">Customer Dues Ledger</h1>
+    <p style="color: var(--text-muted); font-size: 0.9rem;">
+      Track orders, payments received, and pending balances.
+    </p>
+  </div>
+  <div>
+    <a href="/prep" class="btn btn-secondary">
+      🍲 Back to Prep Sheet
+    </a>
+  </div>
+</div>
+
+<div class="card" style="background: #e8f5e9; border-left: 4px solid #2e7d32;">
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <span style="font-size: 1.2rem;">🔒</span>
+    <div>
+      <strong>Strict Outbound Messaging Safety:</strong>
+      <p style="font-size: 0.85rem; color: #1b5e20; margin-top: 2px;">
+        TiffinTally <strong>never</strong> auto-sends messages. Click "Copy Draft" to copy a polite Hinglish reminder to your clipboard, review it, and paste it into your personal WhatsApp.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.92rem;">
+    <thead>
+      <tr style="border-bottom: 2px solid var(--border); text-align: left; background: #fafafa;">
+        <th style="padding: 10px 12px;">Customer</th>
+        <th style="padding: 10px 12px; text-align: right;">Orders</th>
+        <th style="padding: 10px 12px; text-align: right;">Total Billed</th>
+        <th style="padding: 10px 12px; text-align: right;">Paid</th>
+        <th style="padding: 10px 12px; text-align: right;">Balance Due</th>
+        <th style="padding: 10px 12px; text-align: center;">Hinglish Reminder Draft</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cust, entry in ledger.items() %}
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 12px; font-weight: 600;">{{ entry.customer }}</td>
+        <td style="padding: 12px; text-align: right;">{{ entry.total_orders }}</td>
+        <td style="padding: 12px; text-align: right;">₹{{ entry.total_billed|int }}</td>
+        <td style="padding: 12px; text-align: right; color: #2e7d32; font-weight: 600;">₹{{ entry.total_paid|int }}</td>
+        <td style="padding: 12px; text-align: right; font-weight: 700; color: {% if entry.balance_due > 0 %}#c62828{% else %}#2e7d32{% endif %};">
+          ₹{{ entry.balance_due|int }}
+        </td>
+        <td style="padding: 12px; text-align: center;">
+          {% if entry.balance_due > 0 %}
+            <button class="btn btn-primary" onclick="copyReminder('{{ entry.draft_reminder|replace("'", "\\'") }}', this)" style="padding: 4px 10px; font-size: 0.8rem;">
+              📋 Copy Draft
+            </button>
+          {% else %}
+            <span class="badge badge-success">Dues Clear</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyReminder(text, btnElement) {
+  navigator.clipboard.writeText(text).then(() => {
+    const originalText = btnElement.innerText;
+    btnElement.innerText = "✓ Copied!";
+    btnElement.style.background = "#2e7d32";
+    setTimeout(() => {
+      btnElement.innerText = originalText;
+      btnElement.style.background = "";
+    }, 2000);
+  }).catch(err => {
+    alert("Copy failed: " + err);
+  });
+}
+</script>
+{% endblock %}

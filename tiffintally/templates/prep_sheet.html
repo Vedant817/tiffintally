@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Prep Sheet | TiffinTally{% endblock %}
+
+{% block content %}
+<div class="no-print" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+  <div>
+    <h1 style="font-size: 1.6rem;">Kitchen Prep Sheet: {{ sheet.date }}</h1>
+    <p style="color: var(--text-muted); font-size: 0.9rem;">
+      Reconciled at {{ current_time }}
+    </p>
+  </div>
+  <div style="display: flex; gap: 10px;">
+    <button onclick="window.print()" class="btn btn-outline">
+      🖨️ Print Kitchen Sheet & Labels
+    </button>
+    <a href="/ledger" class="btn btn-secondary">
+      💰 View Customer Ledger
+    </a>
+  </div>
+</div>
+
+<!-- Voice Briefing Player (ElevenLabs) -->
+<div class="card no-print" style="background: linear-gradient(135deg, #fff8e1 0%, #fff 100%); border-left: 4px solid #ffb300;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+    <h3 style="font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+      🎙️ Morning Kitchen Audio Brief (ElevenLabs)
+      {% if voice_brief.used_tts_api %}
+        <span class="badge badge-success">Audio Ready</span>
+      {% else %}
+        <span class="badge badge-warning">Text Transcript</span>
+      {% endif %}
+    </h3>
+    <span style="font-size: 0.8rem; color: #777;">
+      {{ voice_brief.character_count }} characters
+    </span>
+  </div>
+
+  <p style="font-size: 0.92rem; margin-bottom: 12px; color: #444; font-style: italic;">
+    "{{ voice_brief.transcript }}"
+  </p>
+
+  {% if voice_brief.audio_path %}
+    <audio controls style="width: 100%; height: 38px;">
+      <source src="/api/audio/morning_brief" type="audio/mpeg">
+      Your browser does not support the audio element.
+    </audio>
+  {% else %}
+    <p style="font-size: 0.8rem; color: #888;">
+      💡 Set <code>ELEVENLABS_API_KEY</code> to enable realistic Hindi/Hinglish speech output.
+    </p>
+  {% endif %}
+</div>
+
+<!-- Forecast Widget -->
+{% if forecast %}
+<div class="card no-print" style="border-left: 4px solid #2e7d32; background: #f1f8e9;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+    <div>
+      <h3 style="font-size: 1rem; color: #1b5e20;">📈 TabPFN Kitchen Cook Forecast</h3>
+      <p style="font-size: 0.88rem; color: #2e7d32; margin-top: 2px;">
+        {{ forecast.explanation }}
+      </p>
+    </div>
+    <div style="text-align: right;">
+      <div style="font-size: 1.4rem; font-weight: 700; color: #1b5e20;">
+        {{ forecast.predicted_to_cook }} Thalis
+      </div>
+      <span style="font-size: 0.8rem; color: #558b2f;">
+        (Confirmed: {{ forecast.confirmed_orders }} + Buffer: +{{ forecast.recommended_buffer }})
+      </span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Key Numbers Summary -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+  <div class="card" style="margin-bottom: 0; text-align: center;">
+    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">TOTAL THALIS</div>
+    <div style="font-size: 2.2rem; font-weight: 800; color: var(--primary);">{{ sheet.total_thalis }}</div>
+  </div>
+  <div class="card" style="margin-bottom: 0; text-align: center;">
+    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">LUNCH PACKS</div>
+    <div style="font-size: 2.2rem; font-weight: 800; color: #2e7d32;">{{ sheet.total_lunch }}</div>
+  </div>
+  <div class="card" style="margin-bottom: 0; text-align: center;">
+    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">DINNER PACKS</div>
+    <div style="font-size: 2.2rem; font-weight: 800; color: #1565c0;">{{ sheet.total_dinner }}</div>
+  </div>
+  <div class="card" style="margin-bottom: 0; text-align: center;">
+    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">CANCELLATIONS</div>
+    <div style="font-size: 2.2rem; font-weight: 800; color: #c62828;">{{ sheet.cancellations|length }}</div>
+  </div>
+</div>
+
+<!-- Special Modifications Alert Box -->
+{% if sheet.special_mods %}
+<div class="card" style="border-left: 4px solid var(--warning); background: var(--warning-bg);">
+  <h3 style="font-size: 1.05rem; color: #b76e00; margin-bottom: 10px;">
+    ⚠️ Station Alert: Special Dietary Modifications ({{ sheet.special_mods|length }})
+  </h3>
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+    {% for mod in sheet.special_mods %}
+    <div style="background: #fff; padding: 8px 12px; border-radius: 6px; border: 1px solid #ffe082; font-size: 0.9rem;">
+      <strong>{{ mod.customer }}</strong> ({{ mod.meal }}):
+      <span style="color: #d84315; font-weight: 600;">{{ mod.mod_description }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Review Section (Low Confidence & Late Orders) -->
+{% if sheet.unresolved_reviews or sheet.late_orders %}
+<div class="card no-print" style="border: 2px dashed #ff9800; background: #fffde7;">
+  <h3 style="font-size: 1.05rem; color: #e65100; margin-bottom: 6px;">
+    🔍 Human Review & Corrections Needed ({{ sheet.unresolved_reviews|length + sheet.late_orders|length }})
+  </h3>
+  <p style="font-size: 0.85rem; color: #666; margin-bottom: 12px;">
+    Highlighted items are either low-confidence or received after kitchen cutoff. Fix them below; corrections are saved to <code>data/private/corrections.jsonl</code>.
+  </p>
+
+  {% for rev in sheet.unresolved_reviews + sheet.late_orders %}
+  <div id="correction-row-{{ loop.index }}" style="background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid #ffd54f;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+      <strong>{{ rev.customer }}</strong>
+      {% if rev.is_late %}
+        <span class="badge badge-warning">LATE (After Cutoff)</span>
+      {% else %}
+        <span class="badge badge-warning">Low Confidence ({{ (rev.confidence * 100)|round }}%)</span>
+      {% endif %}
+    </div>
+    <div style="font-size: 0.88rem; color: #555; margin-bottom: 8px; font-family: monospace;">
+      "{{ rev.raw_text }}"
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+      <select id="meal-{{ loop.index }}" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);">
+        <option value="lunch" {% if rev.meal == 'lunch' %}selected{% endif %}>Lunch</option>
+        <option value="dinner" {% if rev.meal == 'dinner' %}selected{% endif %}>Dinner</option>
+        <option value="both" {% if rev.meal == 'both' %}selected{% endif %}>Both</option>
+      </select>
+      <input type="number" id="qty-{{ loop.index }}" value="{{ rev.qty or 1 }}" min="0" max="10" style="width: 60px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);">
+      <select id="action-{{ loop.index }}" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);">
+        <option value="new" {% if rev.action == 'new' %}selected{% endif %}>New Order</option>
+        <option value="change" {% if rev.action == 'change' %}selected{% endif %}>Change</option>
+        <option value="cancel" {% if rev.action == 'cancel' %}selected{% endif %}>Cancel</option>
+      </select>
+      <button class="btn btn-primary" onclick="saveCorrection('{{ rev.customer }}', '{{ rev.raw_text|replace("'", "\\'") }}', {{ loop.index }})" style="padding: 4px 10px; font-size: 0.8rem;">
+        💾 Save Correction
+      </button>
+      <span id="saved-msg-{{ loop.index }}" style="font-size: 0.8rem; color: green; display: none;">Saved!</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Packing Labels Table (Printable) -->
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h2 style="font-size: 1.2rem;">Packing Labels ({{ sheet.packing_labels|length }})</h2>
+    <span class="no-print" style="font-size: 0.85rem; color: var(--text-muted);">
+      Ready for container stickers
+    </span>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.92rem;">
+    <thead>
+      <tr style="border-bottom: 2px solid var(--border); text-align: left; background: #fafafa;">
+        <th style="padding: 10px 12px;">Customer</th>
+        <th style="padding: 10px 12px;">Meal</th>
+        <th style="padding: 10px 12px; text-align: right;">Qty</th>
+        <th style="padding: 10px 12px;">Items</th>
+        <th style="padding: 10px 12px;">Special Instructions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for label in sheet.packing_labels %}
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 10px 12px; font-weight: 600;">{{ label.customer }}</td>
+        <td style="padding: 10px 12px;">
+          <span style="font-weight: 500; text-transform: capitalize; color: {% if label.meal == 'lunch' %}#2e7d32{% else %}#1565c0{% endif %};">
+            {{ label.meal }}
+          </span>
+        </td>
+        <td style="padding: 10px 12px; text-align: right; font-weight: 700; font-size: 1.05rem;">
+          {{ label.qty }}
+        </td>
+        <td style="padding: 10px 12px; color: #555;">
+          {{ label.items|join(", ") }}
+        </td>
+        <td style="padding: 10px 12px;">
+          {% if label.mods %}
+            <span style="color: #d84315; font-weight: 600; background: #fff3e0; padding: 2px 6px; border-radius: 4px;">
+              {{ label.mods|join("; ") }}
+            </span>
+          {% else %}
+            <span style="color: #bbb;">Standard</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveCorrection(customer, rawText, index) {
+  const meal = document.getElementById(`meal-${index}`).value;
+  const qty = parseInt(document.getElementById(`qty-${index}`).value, 10);
+  const action = document.getElementById(`action-${index}`).value;
+
+  try {
+    const resp = await fetch('/api/corrections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: customer,
+        raw_text: rawText,
+        corrected_meal: meal,
+        corrected_qty: qty,
+        corrected_action: action
+      })
+    });
+    if (resp.ok) {
+      document.getElementById(`saved-msg-${index}`).style.display = 'inline';
+      setTimeout(() => {
+        document.getElementById(`correction-row-${index}`).style.opacity = '0.5';
+      }, 500);
+    }
+  } catch (err) {
+    alert('Failed to save correction: ' + err);
+  }
+}
+</script>
+{% endblock %}
