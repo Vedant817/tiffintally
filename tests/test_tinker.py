@@ -31,7 +31,13 @@ def test_tinker_sft_dataset_structure():
     assert data["messages"][0]["role"] == "system"
     assert data["messages"][1]["role"] == "user"
     assert data["messages"][2]["role"] == "assistant"
-    # Assistant response must be valid JSON list
+    # Assistant response must be valid JSON object with events list or list
     parsed_assistant = json.loads(data["messages"][2]["content"])
-    assert isinstance(parsed_assistant, list)
-    assert "qty" in parsed_assistant[0]
+    events = (
+        parsed_assistant.get("events", [])
+        if isinstance(parsed_assistant, dict)
+        else parsed_assistant
+    )
+    assert isinstance(events, list)
+    assert len(events) >= 1
+    assert "qty" in events[0]

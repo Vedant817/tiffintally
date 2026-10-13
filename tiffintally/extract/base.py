@@ -16,36 +16,34 @@ from tiffintally.schema import OrderEvent
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are TiffinTally, a precise home-kitchen order extractor for Indian tiffin services.
-Extract structured order events from informal WhatsApp messages written in English, Hinglish, or Hindi.
-
-Given a message and sender name, output a JSON object with this schema:
+Extract structured order events from WhatsApp messages into JSON:
 {
   "events": [
     {
       "customer": "Customer Name",
-      "secondary_customer": "Roommate/friend name if ordered on behalf, else null",
-      "date": "today | tomorrow | YYYY-MM-DD | day of week",
+      "secondary_customer": "Roommate/friend or null",
+      "date": "today | tomorrow | YYYY-MM-DD | day",
       "meal": "lunch | dinner | both | unspecified",
       "qty": 1,
       "items": ["thali"],
-      "mods": ["no onion", "roti nahi rice", "less spicy", etc],
+      "mods": ["no onion", "less spicy"],
       "action": "new | cancel | change | pause | payment | none",
       "payment_amount": 500.0 or null,
-      "payment_note": "text note if payment",
+      "payment_note": "text note or null",
       "confidence": 0.95
     }
   ]
 }
 
 Rules:
-1. "kal lunch cancel" -> meal='lunch', action='cancel', qty=0
-2. "kal lunch 2, dinner skip" -> 2 events: lunch qty=2 action='new', dinner qty=0 action='cancel'
-3. "Meri roommate Priya ke liye bhi ek lunch add kar dena" -> secondary_customer='Priya', qty=1, meal='lunch'
-4. "Sunday off" -> meal='both', action='pause', qty=0, date='Sunday'
-5. Pure chit-chat ("khana bahut tasty tha aunty") -> action='none', qty=0
-6. Payments ("500 GPay kiya") -> action='payment', payment_amount=500.0, qty=0
-7. If unsure, assign confidence < 0.70.
-"""
+1. Cancel: "kal lunch cancel" -> meal='lunch', action='cancel', qty=0.
+2. Multi-event: "kal lunch 2, dinner skip" -> 2 events: lunch qty=2 action='new'; dinner qty=0 action='cancel'.
+3. Secondary: "roommate Priya ke liye ek lunch" -> secondary_customer='Priya', meal='lunch', qty=1.
+4. Pause: "Sunday off" -> meal='both', action='pause', qty=0.
+5. Chit-chat: "khana bahut tasty tha" -> action='none', qty=0.
+6. Payment: "500 GPay kiya" -> action='payment', payment_amount=500.0, qty=0.
+7. Unsure: confidence < 0.70.
+8. Dietary mods: "bina pyaaz" -> mods=['no onion']; "kam teekha"/"kam mirchi" -> mods=['less spicy']; "bina lehsun" -> mods=['no garlic']; "jain" -> mods=['jain']; "oil kam" -> mods=['less oily']; "roti nahi rice" -> mods=['roti nahi rice']. Always extract dietary constraints into 'mods'."""
 
 TELEMETRY_LOG = Path("evals/telemetry.jsonl")
 
