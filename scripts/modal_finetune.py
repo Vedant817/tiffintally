@@ -52,7 +52,7 @@ def run_finetune_job(
         TrainingArguments,
     )
 
-    iteration = hyperparams.get("iteration", 4)
+    iteration = hyperparams.get("iteration", 5)
     base_model_name = hyperparams.get("base_model_name", "Qwen/Qwen2.5-0.5B-Instruct")
     num_epochs = hyperparams.get("num_epochs", 2)
     lr = hyperparams.get("learning_rate", 1.5e-4)
@@ -419,7 +419,7 @@ def run_finetune_job(
 
 @app.local_entrypoint()
 def main(
-    iteration: int = 4,
+    iteration: int = 5,
     epochs: int = 2,
     lr: float = 1.5e-4,
     lora_r: int = 16,
@@ -488,6 +488,12 @@ def main(
             "sender": "Pooja",
             "text": "bina pyaaz ke do thali bhejo lunch me",
             "expected": {"meal": "lunch", "qty": 2, "mods": ["no onion"], "action": "new"},
+        },
+        {
+            "name": "lexical_three_with_mods",
+            "sender": "Shreya",
+            "text": "bina pyaaz ke teen thali bhejo lunch me",
+            "expected": {"meal": "lunch", "qty": 3, "mods": ["no onion"], "action": "new"},
         },
         {
             "name": "roommate_order_split",
