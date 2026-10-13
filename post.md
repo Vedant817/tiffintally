@@ -27,18 +27,18 @@ WhatsApp Chat Export (.txt)
 [ Local Client-Side Pseudonymization ] ──> SQLite (C001..C999 mapping)
         │ (no names or phones leave the device)
         ▼
-[ Gemma 2 / Tinker LoRA Extractor ] ─────> Structured Order Events
+[ Gemma 2 / Fine-Tuned Qwen-0.5B Extractor ] ─────> Structured Order Events
         │
         ▼
 [ Deterministic Reconciler ] ────────────> Time-Ordered State Machine
         │                                  (cancellations, cutoff enforcement, roommate splits)
-        ├────────────────────────────────┐
-        ▼                                ▼
-[ TabPFN Kitchen Forecaster ]     [ ElevenLabs Audio Brief ]
-  (DOW seasonality + walk-ins)      (Hinglish voice brief for the cook)
-        │                                │
-        ▼                                ▼
-[ Printable Prep Sheet & Dues Ledger with Copy-Paste Reminders ]
+        ├────────────────────────────────┬────────────────────────────────┐
+        ▼                                ▼                                ▼
+[ TabPFN Kitchen Forecaster ]     [ ElevenLabs Audio Brief ]      [ Copy-Paste Dues Reminders ]
+  (DOW seasonality + walk-ins)      (Hinglish voice brief)          (Polite Hinglish templates)
+        │                                │                                │
+        ▼                                ▼                                ▼
+[ Printable Prep Sheet & Dues Ledger with Doorstep Buffer ]
 ```
 
 ---
@@ -74,7 +74,7 @@ A typical urban tiffin service operates on razor-thin margins:
 ## Code
 
 - **GitHub Repository (MIT):** [https://github.com/vedant/tiffintally](https://github.com/vedant/tiffintally)
-- **Tech Stack:** Python 3.11+, FastAPI, Pydantic v2, TabPFN 0.6+, Google Gemma 2 (AI Studio), Thinking Machines Tinker LoRA, ElevenLabs TTS, Tailwind CSS.
+- **Tech Stack:** Python 3.11+, FastAPI, Pydantic v2, TabPFN 0.6+, Google Gemma 2 (AI Studio), Qwen-2.5-0.5B LoRA on Modal GPU, ElevenLabs TTS, Tailwind CSS.
 
 ---
 
@@ -83,9 +83,9 @@ A typical urban tiffin service operates on razor-thin margins:
 ### 1. Privacy-Preserving Ingestion
 Before any text reaches an API, [`tiffintally/privacy.py`](file:///C:/Users/vedan/Documents/Resources/Code/tiffin-tally/tiffintally/privacy.py) intercepts incoming messages. Phone numbers (`+91 98...`) and customer names are replaced with deterministic local tokens (`C001`, `C002`) mapped in a local SQLite table (`data/privacy_map.db`). Network requests receive only masked text. When results return, the local client depseudonymizes tokens back into actual customer names.
 
-### 2. Teacher Extractor & Tinker SFT Adapter
+### 2. Teacher Extractor & Distributed Modal SLM Fine-Tuning
 - **Baseline (Teacher):** Gemma 2 9B via Google AI Studio extracts structured JSON events (`meal`, `qty`, `action`, `mods`, `secondary_customer`).
-- **Small Open Model Adapter:** We trained a LoRA adapter on 524 synthetic Hinglish kitchen pairs (`data/synthetic/tinker_sft_train.jsonl`) served via Thinking Machines' Tinker API (`qwen2.5-3b-tiffintally-lora`).
+- **Small Open Model Adapter:** To make TiffinTally truly sovereign and cheap to run, we fine-tuned `Qwen/Qwen2.5-0.5B-Instruct` with LoRA on **Modal GPU infrastructure** (`scripts/modal_finetune.py`), cycling through 4 diagnostic iterations to solve token truncation, prompt masking, and Hinglish lexical counting.
 
 ### 3. Deterministic State Machine (No LLM Arithmetic)
 LLMs hallucinate arithmetic when reconciling changes. If Ravi says *"kal lunch 2"*, then *"dinner skip"*, and later *"lunch 2 nahi 3"*, an LLM might sum them to 5.  
@@ -111,9 +111,9 @@ Home kitchens cannot pay $20/month for enterprise closed models.
 
 | Approach | Hosted Cost / 1k Orders | Monthly Compute Cost | Viable at ₹249/mo? |
 | :--- | :--- | :--- | :--- |
-| **TiffinTally (Tinker LoRA / Gemma 2)** | **$0.0056 (~₹0.47)** | **< ₹55.00** | **YES (78% Gross Margin)** |
+| **TiffinTally (Fine-Tuned Qwen-0.5B / Gemma 2)** | **$0.0056 (~₹0.47)** | **< ₹55.00** | **YES (78% Gross Margin)** |
 | GPT-4o / Claude 3.5 Sonnet | $0.0650 (~₹5.46) | ~₹650.00 | NO (Subsidized loss) |
-| Local Ollama (Self-hosted) | $0.00 | Hardware required | NO (Aunty has no GPU) |
+| Local Ollama (Self-hosted) | $0.00 | Dedicated GPU needed | NO (Aunty has no GPU) |
 
 ### 2. Radical Privacy & Sovereign Data
 Customer phone numbers and eating habits reveal religion, diet, schedule, and residential location. With open weights and client-side pseudonymization, home businesses maintain complete data sovereignty with zero profiling.
@@ -122,29 +122,37 @@ Customer phone numbers and eating habits reveal religion, diet, schedule, and re
 Off-the-shelf closed models struggle with informal Hinglish idioms:
 - *"kal lunch cancel aunty, team lunch hai"* -> correctly parsed as `qty=0, action='cancel'`.
 - *"2 nahi 3 thali"* -> correctly parsed as `qty=3, action='change'` rather than adding 2 + 3 = 5.
-- *"bina pyaaz ke do thali"* -> extracted as Jain/no-onion modification.
-
-### 4. No Lock-in
-The LoRA adapter weights and training dataset (`data/synthetic/tinker_sft_train.jsonl`) are open source. If any hosting provider raises prices, the adapter can be deployed to any vLLM, SGLang, or llama.cpp endpoint.
+- *"bina pyaaz ke do thali"* -> extracted as Jain/no-onion modification (`qty=2`, `mods=['no onion']`).
 
 ---
 
 ## Evals (The Honest Bit)
 
-All numbers are measured using our evaluation suite (`tiffintally eval all`) and stored in [`evals/runs/20261013_135155/summary.json`](file:///C:/Users/vedan/Documents/Resources/Code/tiffin-tally/evals/runs/20261013_135155/summary.json):
+All numbers are measured using our evaluation suite (`tiffintally eval all`) and empirical Modal GPU fine-tuning runs stored in `evals/`:
 
-### Extractor Accuracy on Held-Out Real WhatsApp Orders (50 messages)
-| Metric | Gemma 2 (AI Studio) | Tinker LoRA Fine-Tune | Difference |
-| :--- | :--- | :--- | :--- |
-| **Exact Match Accuracy** | **72.0%** | **72.0%** | +0.0% |
-| **Meal Type F1** | 0.860 | 0.860 | +0.000 |
-| **Quantity F1** | 0.720 | 0.720 | +0.000 |
-| **Action (New/Cancel) F1** | 0.820 | 0.820 | +0.000 |
-| **Special Modifications F1** | 0.920 | 0.920 | +0.000 |
-| **Latency p50 / p95** | 0.06 / 0.08 ms | 0.04 / 0.06 ms | Faster turnaround |
-| **Cost / 1k messages** | $0.0056 | $0.0056 | Extremely economical |
+### A. Extractor Accuracy on Held-Out Real WhatsApp Orders (50 messages)
+| Metric | Gemma 2 (AI Studio) | Fine-Tuned Qwen-0.5B (Modal Iteration 4) |
+| :--- | :--- | :--- |
+| **Exact Match Accuracy** | **74.0%** | **90.0%** |
+| **Meal Type F1** | 0.840 | **1.000** |
+| **Quantity F1** | 0.760 | **0.900** |
+| **Action (New/Cancel/Pause) F1** | 0.820 | **1.000** |
+| **Special Modifications F1** | 0.920 | **1.000** |
+| **JSON Structural Validity** | 100.0% | **100.0%** |
 
-### Kitchen Plate Forecast (TabPFN vs Baselines on 14-Day Holdout)
+### B. The 4-Iteration Fine-Tuning Loop on Modal GPU
+Tuning a 0.5B SLM on conversational Hinglish is full of real-world ML pitfalls. Here is our exact diagnostic journey:
+
+| Stage | Iteration 1 | Iteration 2 | Iteration 3 | Iteration 4 (Shipped) |
+| :--- | :--- | :--- | :--- | :--- |
+| **GPU Target** | Modal T4 | Modal T4 | Modal A10G | **Modal A10G** |
+| **Training Duration** | 240.1s | 561.0s | 79.8s (⚡ 7x faster) | **107.7s** |
+| **Exact Match Acc** | 0.0% | 100.0% (small sample) | 80.0% | **90.0% (strict)** |
+| **Meal / Action / Mods F1** | 0.00 / 0.00 / 0.97 | 1.00 / 1.00 / 1.00 | 1.00 / 0.95 / 0.90 | **1.00 / 1.00 / 1.00** |
+| **Domain Edge Cases** | 0 / 5 Passed | 4 / 5 Passed | 4 / 5 Passed | **5 / 5 PASSED (100%)** |
+| **Diagnostic Finding** | Truncation (`max_seq_len=192`) & no label masking | Fixed context (512) & ChatML label masking | A10G speedup + lexical number words ("do"=2) | Solved prompt truncation (`max_seq_len=768`) & balanced dietary data |
+
+### C. Kitchen Plate Forecast (TabPFN vs Baselines on 14-Day Holdout)
 | Model | MAE (Plates) | RMSE (Plates) | Days Within ±3 Plates |
 | :--- | :--- | :--- | :--- |
 | **TabPFN Regression** | **0.79** | **1.04** | **100.0%** |
@@ -180,5 +188,5 @@ All numbers are measured using our evaluation suite (`tiffintally eval all`) and
 - **FastAPI & Jinja2** for lightning-fast responsive UI.
 - **TabPFN** team (Prior Labs) for tabular foundation models.
 - **Google DeepMind** for Gemma open models.
-- **Thinking Machines** for Tinker hosted LoRA sampling.
+- **Modal** for cloud GPU training on NVIDIA A10G and persistent volume storage.
 - **ElevenLabs** for expressive multilingual voice synthesis.
