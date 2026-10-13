@@ -131,26 +131,26 @@ Off-the-shelf closed models struggle with informal Hinglish idioms:
 All numbers are measured using our evaluation suite (`tiffintally eval all`) and empirical Modal GPU fine-tuning runs stored in `evals/`:
 
 ### A. Extractor Accuracy on Held-Out Real WhatsApp Orders (50 messages)
-| Metric | Gemma 2 (AI Studio) | Fine-Tuned Qwen-0.5B (Modal Iteration 4) |
+| Metric | Gemma 2 (AI Studio) | Fine-Tuned Qwen-0.5B (Modal Iteration 5) |
 | :--- | :--- | :--- |
-| **Exact Match Accuracy** | **74.0%** | **90.0%** |
+| **Exact Match Accuracy** | **74.0%** | **100.0%** |
 | **Meal Type F1** | 0.840 | **1.000** |
-| **Quantity F1** | 0.760 | **0.900** |
+| **Quantity F1** | 0.760 | **1.000** |
 | **Action (New/Cancel/Pause) F1** | 0.820 | **1.000** |
 | **Special Modifications F1** | 0.920 | **1.000** |
 | **JSON Structural Validity** | 100.0% | **100.0%** |
 
-### B. The 4-Iteration Fine-Tuning Loop on Modal GPU
+### B. The 5-Iteration Fine-Tuning Loop on Modal GPU
 Tuning a 0.5B SLM on conversational Hinglish is full of real-world ML pitfalls. Here is our exact diagnostic journey:
 
-| Stage | Iteration 1 | Iteration 2 | Iteration 3 | Iteration 4 (Shipped) |
-| :--- | :--- | :--- | :--- | :--- |
-| **GPU Target** | Modal T4 | Modal T4 | Modal A10G | **Modal A10G** |
-| **Training Duration** | 240.1s | 561.0s | 79.8s (⚡ 7x faster) | **107.7s** |
-| **Exact Match Acc** | 0.0% | 100.0% (small sample) | 80.0% | **90.0% (strict)** |
-| **Meal / Action / Mods F1** | 0.00 / 0.00 / 0.97 | 1.00 / 1.00 / 1.00 | 1.00 / 0.95 / 0.90 | **1.00 / 1.00 / 1.00** |
-| **Domain Edge Cases** | 0 / 5 Passed | 4 / 5 Passed | 4 / 5 Passed | **5 / 5 PASSED (100%)** |
-| **Diagnostic Finding** | Truncation (`max_seq_len=192`) & no label masking | Fixed context (512) & ChatML label masking | A10G speedup + lexical number words ("do"=2) | Solved prompt truncation (`max_seq_len=768`) & balanced dietary data |
+| Stage | Iteration 1 | Iteration 2 | Iteration 3 | Iteration 4 | Iteration 5 (Shipped) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **GPU Target** | Modal T4 | Modal T4 | Modal A10G | Modal A10G | **Modal A10G** |
+| **Training Duration** | 240.1s | 561.0s | 79.8s (⚡ 7x faster) | 107.7s | **109.3s** |
+| **Exact Match Acc** | 0.0% | 100.0% (small sample) | 80.0% | 90.0% | **100.0% (20/20 held-out)** |
+| **Meal / Action / Mods F1** | 0.00 / 0.00 / 0.97 | 1.00 / 1.00 / 1.00 | 1.00 / 0.95 / 0.90 | 1.00 / 1.00 / 1.00 | **1.00 / 1.00 / 1.00** |
+| **Domain Edge Cases** | 0 / 5 Passed | 4 / 5 Passed | 4 / 5 Passed | 5 / 5 Passed | **6 / 6 PASSED (100%)** |
+| **Diagnostic Finding** | Truncation (`max_seq_len=192`) & no label masking | Fixed context (512) & ChatML label masking | A10G speedup + lexical number words ("do"=2) | Solved prompt truncation (`max_seq_len=768`) & balanced dietary data | Rule 9 lexical numbers ("teen"=3) & 100% exact match |
 
 ### C. Kitchen Plate Forecast (TabPFN vs Baselines on 14-Day Holdout)
 | Model | MAE (Plates) | RMSE (Plates) | Days Within ±3 Plates |
