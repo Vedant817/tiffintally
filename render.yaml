@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: tiffintally
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: uv sync
+    startCommand: uv run uvicorn tiffintally.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.17
+      - key: TIFFINTALLY_DEMO_MODE
+        value: "true"
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GEMMA_MODEL
+        value: "gemma-2-9b-it"
+      - key: TINKER_API_KEY
+        sync: false
+      - key: TABPFN_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false

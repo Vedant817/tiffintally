@@ -1,0 +1,11 @@
+# 08 — Sources (read Oct 13, 2026 IST; re-verify API shapes before building)
+- https://dev.to/devteam/join-the-hacktoberfest-open-source-ai-challenge-side-hustle-2550-in-prizes-across-18-winners-55ba
+- https://dev.to/challenges/hacktoberfest-week2-2026-10-12 (rules, FAQ, partner descriptions)
+- https://dev.to/challenges/hf26 · https://hacktoberfest.com/my/promos
+- Gemma via Google AI Studio: https://ai.google.dev/gemma · https://aistudio.google.com
+- Tinker: https://thinkingmachines.ai/tinker/ (check supported models and docs on the day)
+- TabPFN: https://platform.priorlabs.ai · https://github.com/PriorLabs/tabpfn-client
+- Render free tier: https://render.com/docs/free
+- ElevenLabs: https://elevenlabs.io/docs
+- WhatsApp chat export: https://faq.whatsapp.com/1180414079177245
+- Domain context: India's home/tiffin food economy runs on WhatsApp ordering (general knowledge; get the real numbers from the first user rather than citing unverified market stats).
