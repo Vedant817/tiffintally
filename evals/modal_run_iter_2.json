@@ -1,0 +1,141 @@
+{
+  "metrics": {
+    "iteration": 2,
+    "base_model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "train_loss": 0.0912,
+    "train_duration_sec": 561.0,
+    "exact_match_acc": 100.0,
+    "meal_f1": 1.0,
+    "quantity_f1": 1.0,
+    "action_f1": 1.0,
+    "mods_f1": 1.0,
+    "json_validity_pct": 100.0,
+    "latency_p50_ms": 4520.75,
+    "latency_p95_ms": 5729.88,
+    "total_val_samples": 20
+  },
+  "failures": [],
+  "edge_results": [
+    {
+      "name": "cancellation_with_reason",
+      "input": "kal lunch cancel aunty, team lunch hai office me",
+      "expected": {
+        "meal": "lunch",
+        "action": "cancel",
+        "qty": 0
+      },
+      "predicted": {
+        "customer": "Ravi",
+        "date": "tomorrow",
+        "meal": "lunch",
+        "qty": 0,
+        "items": [],
+        "mods": [],
+        "action": "cancel",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Ravi\", \"date\": \"tomorrow\", \"meal\": \"lunch\", \"qty\": 0, \"items\": [], \"mods\": [], \"action\": \"cancel\", \"payment_note\": null, \"payment_amount\": null, \"secondar"
+    },
+    {
+      "name": "dietary_modification",
+      "input": "bina pyaaz ke do thali bhejo lunch me",
+      "expected": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new"
+      },
+      "predicted": {
+        "customer": "Pooja",
+        "date": "tomorrow",
+        "meal": "lunch",
+        "qty": 1,
+        "items": [
+          "thali"
+        ],
+        "mods": [],
+        "action": "new",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "passed": false,
+      "raw_output": "{\"events\": [{\"customer\": \"Pooja\", \"date\": \"tomorrow\", \"meal\": \"lunch\", \"qty\": 1, \"items\": [\"thali\"], \"mods\": [], \"action\": \"new\", \"payment_note\": null, \"payment_amount\": null, \"sec"
+    },
+    {
+      "name": "roommate_order_split",
+      "input": "kal lunch ek plate aur roommate Priya ke liye bhi ek",
+      "expected": {
+        "meal": "lunch",
+        "action": "new"
+      },
+      "predicted": {
+        "customer": "Karan",
+        "date": "tomorrow",
+        "meal": "lunch",
+        "qty": 1,
+        "items": [
+          "thali"
+        ],
+        "mods": [],
+        "action": "new",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": "Priya",
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Karan\", \"date\": \"tomorrow\", \"meal\": \"lunch\", \"qty\": 1, \"items\": [\"thali\"], \"mods\": [], \"action\": \"new\", \"payment_note\": null, \"payment_amount\": null, \"sec"
+    },
+    {
+      "name": "standing_order_pause",
+      "input": "Sunday off please, going home for weekend",
+      "expected": {
+        "action": "pause",
+        "qty": 0
+      },
+      "predicted": {
+        "customer": "Amit",
+        "date": "tomorrow",
+        "meal": "both",
+        "qty": 0,
+        "items": [],
+        "mods": [],
+        "action": "pause",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Amit\", \"date\": \"tomorrow\", \"meal\": \"both\", \"qty\": 0, \"items\": [], \"mods\": [], \"action\": \"pause\", \"payment_note\": null, \"payment_amount\": null, \"secondary_"
+    },
+    {
+      "name": "pure_chitchat_compliment",
+      "input": "thank you aunty, khana bahut mast tha!",
+      "expected": {
+        "action": "none",
+        "qty": 0
+      },
+      "predicted": {
+        "customer": "Sneha",
+        "date": "tomorrow",
+        "meal": "unspecified",
+        "qty": 0,
+        "items": [],
+        "mods": [],
+        "action": "none",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Sneha\", \"date\": \"tomorrow\", \"meal\": \"unspecified\", \"qty\": 0, \"items\": [], \"mods\": [], \"action\": \"none\", \"payment_note\": null, \"payment_amount\": null, \"sec"
+    }
+  ]
+}

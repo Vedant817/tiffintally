@@ -1,0 +1,295 @@
+{
+  "metrics": {
+    "iteration": 4,
+    "base_model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "train_loss": 0.0581,
+    "train_duration_sec": 107.7,
+    "exact_match_acc": 90.0,
+    "meal_f1": 1.0,
+    "quantity_f1": 0.9,
+    "action_f1": 1.0,
+    "mods_f1": 1.0,
+    "json_validity_pct": 100.0,
+    "latency_p50_ms": 3856.36,
+    "latency_p95_ms": 4101.73,
+    "total_val_samples": 20
+  },
+  "loss_history": [
+    {
+      "step": 5,
+      "loss": 0.5525
+    },
+    {
+      "step": 10,
+      "loss": 0.2027
+    },
+    {
+      "step": 15,
+      "loss": 0.0621
+    },
+    {
+      "step": 20,
+      "loss": 0.0358
+    },
+    {
+      "step": 25,
+      "loss": 0.0183
+    },
+    {
+      "step": 30,
+      "loss": 0.0169
+    },
+    {
+      "step": 35,
+      "loss": 0.0077
+    },
+    {
+      "step": 40,
+      "loss": 0.0108
+    },
+    {
+      "step": 45,
+      "loss": 0.0077
+    },
+    {
+      "step": 50,
+      "loss": 0.0047
+    },
+    {
+      "step": 55,
+      "loss": 0.0034
+    },
+    {
+      "step": 60,
+      "loss": 0.003
+    },
+    {
+      "step": 65,
+      "loss": 0.0011
+    },
+    {
+      "step": 70,
+      "loss": 0.001
+    },
+    {
+      "step": 75,
+      "loss": 0.0012
+    },
+    {
+      "step": 80,
+      "loss": 0.0006
+    }
+  ],
+  "failures": [
+    {
+      "user_input": "Sender: Shreya\nMessage: bina pyaaz ke teen thali bhejo lunch me",
+      "ground_truth": {
+        "customer": "Shreya",
+        "date": "tomorrow",
+        "meal": "lunch",
+        "qty": 3,
+        "items": [
+          "thali"
+        ],
+        "mods": [
+          "no onion"
+        ],
+        "action": "new",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "predicted": {
+        "customer": "Shreya",
+        "date": "tomorrow",
+        "meal": "lunch",
+        "qty": 2,
+        "items": [
+          "thali"
+        ],
+        "mods": [
+          "no onion"
+        ],
+        "action": "new",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "is_valid_json": true,
+      "exact_match": false,
+      "latency_ms": 3908.21,
+      "raw_output": "{\"events\": [{\"customer\": \"Shreya\", \"date\": \"tomorrow\", \"meal\": \"lunch\", \"qty\": 2, \"items\": [\"thali\"], \"mods\": [\"no onion\"], \"action\": \"new\", \"payment_note\": null, \"payment_amount\": null, \"secondary_cu"
+    },
+    {
+      "user_input": "Sender: Gaurav\nMessage: less spicy teen dinner box",
+      "ground_truth": {
+        "customer": "Gaurav",
+        "date": "tomorrow",
+        "meal": "dinner",
+        "qty": 3,
+        "items": [
+          "thali"
+        ],
+        "mods": [
+          "less spicy"
+        ],
+        "action": "new",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "predicted": {
+        "customer": "Gaurav",
+        "date": "tomorrow",
+        "meal": "dinner",
+        "qty": 2,
+        "items": [
+          "thali"
+        ],
+        "mods": [
+          "less spicy"
+        ],
+        "action": "new",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "is_valid_json": true,
+      "exact_match": false,
+      "latency_ms": 3911.67,
+      "raw_output": "{\"events\": [{\"customer\": \"Gaurav\", \"date\": \"tomorrow\", \"meal\": \"dinner\", \"qty\": 2, \"items\": [\"thali\"], \"mods\": [\"less spicy\"], \"action\": \"new\", \"payment_note\": null, \"payment_amount\": null, \"secondary"
+    }
+  ],
+  "edge_results": [
+    {
+      "name": "cancellation_with_reason",
+      "input": "kal lunch cancel aunty, team lunch hai office me",
+      "expected": {
+        "meal": "lunch",
+        "action": "cancel",
+        "qty": 0
+      },
+      "predicted": {
+        "customer": "Ravi",
+        "date": "tomorrow",
+        "meal": "lunch",
+        "qty": 0,
+        "items": [],
+        "mods": [],
+        "action": "cancel",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Ravi\", \"date\": \"tomorrow\", \"meal\": \"lunch\", \"qty\": 0, \"items\": [], \"mods\": [], \"action\": \"cancel\", \"payment_note\": null, \"payment_amount\": null, \"secondar"
+    },
+    {
+      "name": "dietary_modification",
+      "input": "bina pyaaz ke do thali bhejo lunch me",
+      "expected": {
+        "meal": "lunch",
+        "qty": 2,
+        "mods": [
+          "no onion"
+        ],
+        "action": "new"
+      },
+      "predicted": {
+        "customer": "Pooja",
+        "date": "tomorrow",
+        "meal": "lunch",
+        "qty": 2,
+        "items": [
+          "thali"
+        ],
+        "mods": [
+          "no onion"
+        ],
+        "action": "new",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Pooja\", \"date\": \"tomorrow\", \"meal\": \"lunch\", \"qty\": 2, \"items\": [\"thali\"], \"mods\": [\"no onion\"], \"action\": \"new\", \"payment_note\": null, \"payment_amount\": "
+    },
+    {
+      "name": "roommate_order_split",
+      "input": "kal lunch ek plate aur roommate Priya ke liye bhi ek",
+      "expected": {
+        "meal": "lunch",
+        "action": "new"
+      },
+      "predicted": {
+        "customer": "Karan",
+        "date": "tomorrow",
+        "meal": "lunch",
+        "qty": 1,
+        "items": [
+          "thali"
+        ],
+        "mods": [],
+        "action": "new",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": "Priya",
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Karan\", \"date\": \"tomorrow\", \"meal\": \"lunch\", \"qty\": 1, \"items\": [\"thali\"], \"mods\": [], \"action\": \"new\", \"payment_note\": null, \"payment_amount\": null, \"sec"
+    },
+    {
+      "name": "standing_order_pause",
+      "input": "Sunday off please, going home for weekend",
+      "expected": {
+        "action": "pause",
+        "qty": 0
+      },
+      "predicted": {
+        "customer": "Amit",
+        "date": "tomorrow",
+        "meal": "both",
+        "qty": 0,
+        "items": [],
+        "mods": [],
+        "action": "pause",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Amit\", \"date\": \"tomorrow\", \"meal\": \"both\", \"qty\": 0, \"items\": [], \"mods\": [], \"action\": \"pause\", \"payment_note\": null, \"payment_amount\": null, \"secondary_"
+    },
+    {
+      "name": "pure_chitchat_compliment",
+      "input": "thank you aunty, khana bahut mast tha!",
+      "expected": {
+        "action": "none",
+        "qty": 0
+      },
+      "predicted": {
+        "customer": "Sneha",
+        "date": "tomorrow",
+        "meal": "unspecified",
+        "qty": 0,
+        "items": [],
+        "mods": [],
+        "action": "none",
+        "payment_note": null,
+        "payment_amount": null,
+        "secondary_customer": null,
+        "confidence": 1.0
+      },
+      "passed": true,
+      "raw_output": "{\"events\": [{\"customer\": \"Sneha\", \"date\": \"tomorrow\", \"meal\": \"unspecified\", \"qty\": 0, \"items\": [], \"mods\": [], \"action\": \"none\", \"payment_note\": null, \"payment_amount\": null, \"sec"
+    }
+  ]
+}
