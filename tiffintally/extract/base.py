@@ -43,7 +43,8 @@ Rules:
 5. Chit-chat: "khana bahut tasty tha" -> action='none', qty=0.
 6. Payment: "500 GPay kiya" -> action='payment', payment_amount=500.0, qty=0.
 7. Unsure: confidence < 0.70.
-8. Dietary mods: "bina pyaaz" -> mods=['no onion']; "kam teekha"/"kam mirchi" -> mods=['less spicy']; "bina lehsun" -> mods=['no garlic']; "jain" -> mods=['jain']; "oil kam" -> mods=['less oily']; "roti nahi rice" -> mods=['roti nahi rice']. Always extract dietary constraints into 'mods'."""
+8. Dietary mods: "bina pyaaz" -> mods=['no onion']; "kam teekha"/"kam mirchi" -> mods=['less spicy']; "bina lehsun" -> mods=['no garlic']; "jain" -> mods=['jain']; "oil kam" -> mods=['less oily']; "roti nahi rice" -> mods=['roti nahi rice']. Always extract dietary constraints into 'mods'.
+9. Lexical numbers: "ek"=1, "do"=2, "teen"=3, "chaar"=4, "paanch"=5. ("teen thali" -> qty=3, "do dabba" -> qty=2, "chaar roti" -> qty=4)."""
 
 TELEMETRY_LOG = Path("evals/telemetry.jsonl")
 
@@ -228,7 +229,7 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
     digit_match = re.search(r"\b(\d{1,2})\b", lower)
     if digit_match:
         qty = int(digit_match.group(1))
-    elif "दो" in lower or "do thali" in lower or "two" in lower:
+    elif "दो" in lower or "do thali" in lower or "two" in lower or " do " in lower:
         qty = 2
     elif "teen" in lower or "तीन" in lower or "three" in lower:
         qty = 3

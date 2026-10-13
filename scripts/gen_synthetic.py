@@ -1,7 +1,7 @@
 """
-Synthetic Dataset Generator for Tiffin WhatsApp Orders.
-Generates >=600 diverse Hinglish, English, typo-ridden, and Devanagari messages with gold labels.
-Seeded and 100% reproducible.
+Generate rich synthetic WhatsApp tiffin order dataset in Hinglish, English, and Hindi.
+Expanded with realistic variations: cancellations, multi-person, modifications,
+payments, chitchat, pauses, and lexical Hindi number words ("ek", "do", "teen", "chaar").
 """
 
 import json
@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 SEED = 42
-TARGET_COUNT = 650
-
+TARGET_COUNT = 850
 OUTPUT_DIR = Path("data/synthetic")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -42,6 +41,13 @@ SENDERS = [
 
 FRIENDS = ["Priya", "Amit", "Rahul", "Sneha", "Rohan", "Neha", "Vikas", "Anjali"]
 
+QTY_WORDS = {
+    1: ["1", "ek", "one"],
+    2: ["2", "do", "two"],
+    3: ["3", "teen", "three"],
+    4: ["4", "chaar", "four"],
+}
+
 # 1. Standard Orders
 TEMPLATES_NEW_ORDER = [
     ("kal lunch {qty}", "lunch", "{qty}", [], [], "new"),
@@ -56,27 +62,32 @@ TEMPLATES_NEW_ORDER = [
     ("send {qty} lunch box tomorrow", "lunch", "{qty}", ["thali"], [], "new"),
     ("aunty kal {qty} dabba bhej dena", "lunch", "{qty}", ["thali"], [], "new"),
     ("please pack {qty} thali for lunch", "lunch", "{qty}", ["thali"], [], "new"),
+    ("kal lunch teen thali", "lunch", 3, ["thali"], [], "new"),
+    ("teen dinner box please", "dinner", 3, ["thali"], [], "new"),
+    ("do lunch aur ek dinner", "lunch", 2, ["thali"], [], "new"),
 ]
 
-QTY_WORDS = {
-    1: ["1", "ek", "one", "1"],
-    2: ["2", "do", "two", "2"],
-    3: ["3", "teen", "three", "3"],
-    4: ["4", "chaar", "four", "4"],
-}
-
-# 2. Modifications (Dietary / Dish tweaks)
+# 2. Dietary Modifications
 TEMPLATES_MODS = [
+    ("kal lunch {qty}, bina pyaaz ke", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
     (
-        "kal lunch {qty}, roti nahi rice dena",
-        "lunch",
+        "kal raat ka dinner {qty} jain thali",
+        "dinner",
         "{qty}",
+        ["thali"],
+        ["jain"],
+        "new",
+    ),
+    (
+        "kal lunch 1, roti nahi sirf rice dena",
+        "lunch",
+        1,
         ["thali"],
         ["roti nahi rice"],
         "new",
     ),
     (
-        "kal dinner 1, no onion no garlic please",
+        "dinner 1, no garlic no onion",
         "dinner",
         1,
         ["thali"],
@@ -120,6 +131,9 @@ TEMPLATES_MODS = [
     ("bina mirchi wala {qty} dabba kal lunch", "lunch", "{qty}", ["thali"], ["no chili"], "new"),
     ("roti nahi sirf rice dena {qty} plate lunch", "lunch", "{qty}", ["thali"], ["roti nahi rice"], "new"),
     ("oil kam rakhna {qty} thali dinner me", "dinner", "{qty}", ["thali"], ["less oily"], "new"),
+    ("bina pyaaz ke teen thali bhejo lunch me", "lunch", 3, ["thali"], ["no onion"], "new"),
+    ("less spicy teen dinner box", "dinner", 3, ["thali"], ["less spicy"], "new"),
+    ("kam teekha do thali lunch me", "lunch", 2, ["thali"], ["less spicy"], "new"),
 ]
 
 # 3. Cancels
@@ -132,64 +146,105 @@ TEMPLATES_CANCELS = [
     ("aaj raat ka dinner nahi hoga, cancel", "dinner", 0, [], [], "cancel"),
     ("please cancel lunch tomorrow", "lunch", 0, [], [], "cancel"),
     ("kal lunch mat bhejna aunty", "lunch", 0, [], [], "cancel"),
+    ("kal lunch cancel aunty, team lunch hai office me", "lunch", 0, [], [], "cancel"),
 ]
 
 # 4. Changes / Updates
 TEMPLATES_CHANGES = [
     ("kal lunch 1 nahi 2 kar dena", "lunch", 2, ["thali"], [], "change"),
     ("earlier ordered 1, make it 3 thalis for dinner", "dinner", 3, ["thali"], [], "change"),
-    ("change kal ka lunch to 2 plates", "lunch", 2, ["thali"], [], "change"),
-    ("aunty dinner 1 extra add kar do, total 2", "dinner", 2, ["thali"], [], "change"),
-    ("lunch quantity update to 3", "lunch", 3, ["thali"], [], "change"),
+    ("change dinner from 2 to 1 thali", "dinner", 1, ["thali"], [], "change"),
+    ("aunty dopahar ka dabba cancel, shaam ko 2 kar dena", "dinner", 2, ["thali"], [], "change"),
+    ("change lunch to dinner tomorrow", "dinner", 1, ["thali"], [], "change"),
 ]
 
-# 5. Pauses (Vacations / Going Home)
+# 5. Pauses / Vacations
 TEMPLATES_PAUSES = [
-    ("going home for weekend, Sunday off", "both", 0, [], [], "pause"),
-    ("next week pura tiffin pause kar do", "both", 0, [], [], "pause"),
-    ("aunty 3 din ke liye gaon ja raha hu, no tiffin till Monday", "both", 0, [], [], "pause"),
-    ("out of station till 20th, please stop tiffin", "both", 0, [], [], "pause"),
-    ("pause tiffin from tomorrow till next Tuesday", "both", 0, [], [], "pause"),
-    ("exam holiday next 4 days, tiffin band rakhna", "both", 0, [], [], "pause"),
+    ("Sunday off please, going home for weekend", "both", 0, [], [], "pause"),
+    ("pause my tiffin from tomorrow till Sunday", "both", 0, [], [], "pause"),
+    ("leaving for native place, 3 days pause", "both", 0, [], [], "pause"),
+    ("weekend off as usual aunty", "both", 0, [], [], "pause"),
+    ("stop tiffin for next 2 days", "both", 0, [], [], "pause"),
 ]
 
-# 6. Multi-Person Orders
+# 6. Multi-person / Roommate Orders
 TEMPLATES_MULTI_PERSON = [
-    ("{friend} ke liye bhi ek lunch add kar do", "lunch", 1, ["thali"], [], "new"),
-    ("merath aur {friend} ka kal dinner 2 plate bhejna", "dinner", 2, ["thali"], [], "new"),
-    ("add 1 more for my flatmate {friend}", "lunch", 1, ["thali"], [], "new"),
-    ("ek mere liye aur ek {friend} ke liye lunch", "lunch", 2, ["thali"], [], "new"),
+    (
+        "kal lunch ek plate aur roommate {friend} ke liye bhi ek",
+        "lunch",
+        1,
+        ["thali"],
+        [],
+        "new",
+    ),
+    (
+        "Meri roommate {friend} ke liye bhi ek lunch add kar dena",
+        "lunch",
+        1,
+        ["thali"],
+        [],
+        "new",
+    ),
+    (
+        "dono {friend} and me will take dinner tonight",
+        "dinner",
+        2,
+        ["thali"],
+        [],
+        "new",
+    ),
+    (
+        "{friend} ka bhi ek dinner pack kar do saath me",
+        "dinner",
+        1,
+        ["thali"],
+        [],
+        "new",
+    ),
+    (
+        "roommate {friend} ka lunch cancel, mera regular bhejna",
+        "lunch",
+        1,
+        ["thali"],
+        [],
+        "new",
+    ),
 ]
 
-# 7. Payments
+# 7. Payments & Dues
 TEMPLATES_PAYMENTS = [
-    ("₹1500 GPay kiya aunty check kar lo", "unspecified", 0, [], [], "payment", 1500.0),
-    ("Paid 2000 on PhonePe for this month", "unspecified", 0, [], [], "payment", 2000.0),
-    ("aunty sent 1200 via Paytm", "unspecified", 0, [], [], "payment", 1200.0),
-    ("GPay done Rs 1800, screenshot sent", "unspecified", 0, [], [], "payment", 1800.0),
-    ("Will pay the ₹2400 dues on Friday aunty pakka", "unspecified", 0, [], [], "payment", 2400.0),
-    ("paying 1600 today evening", "unspecified", 0, [], [], "payment", 1600.0),
+    ("500 GPay kiya aunty check kar lo", "unspecified", 0, [], [], "payment", 500.0),
+    (
+        "paid 1500 via PhonePe for this week",
+        "unspecified",
+        0,
+        [],
+        [],
+        "payment",
+        1500.0,
+    ),
+    ("1000 transfer kar diya Paytm pe", "unspecified", 0, [], [], "payment", 1000.0),
+    ("dues clear kar diye 2000 Google Pay se", "unspecified", 0, [], [], "payment", 2000.0),
+    ("Aunty 800 bhej diye account me", "unspecified", 0, [], [], "payment", 800.0),
 ]
 
-# 8. Chit-Chat / Non-Order Messages
+# 8. Chit-Chat & Gratitude (action=none)
 TEMPLATES_CHITCHAT = [
-    ("thank you aunty khana mast tha!", "unspecified", 0, [], [], "none"),
-    ("Aaj ki dal bahut tasty thi aunty", "unspecified", 0, [], [], "none"),
-    ("Good morning aunty ji", "unspecified", 0, [], [], "none"),
-    ("Have a great weekend aunty", "unspecified", 0, [], [], "none"),
-    ("Ok noted thank you", "unspecified", 0, [], [], "none"),
-    ("Sure no problem", "unspecified", 0, [], [], "none"),
-    ("Aunty menu kya hai kal ka?", "unspecified", 0, [], [], "none"),
+    ("khana bahut tasty tha aunty! thank you!", "unspecified", 0, [], [], "none"),
+    ("today's paneer was amazing aunty ji", "unspecified", 0, [], [], "none"),
+    ("gulab jamun bahut mast the", "unspecified", 0, [], [], "none"),
+    ("aunty menu kya hai kal ka?", "unspecified", 0, [], [], "none"),
+    ("happy diwali aunty to you and family!", "unspecified", 0, [], [], "none"),
+    ("thank you aunty, khana bahut mast tha!", "unspecified", 0, [], [], "none"),
 ]
 
-# 9. Typos & Slang
+# 9. Typos & Informal Slang
 TEMPLATES_TYPOS = [
-    ("kl lunc 1 plae bhej do", "lunch", 1, ["thali"], [], "new"),
-    ("dinnr cancl for tday", "dinner", 0, [], [], "cancel"),
-    ("tomrw lunh 2 thli pls", "lunch", 2, ["thali"], [], "new"),
-    ("kll dinner nhi chahiy", "dinner", 0, [], [], "cancel"),
-    ("lunch 1 plss kam spcy", "lunch", 1, ["thali"], ["kam spicy"], "new"),
-    ("ek thali bhejdo kl dopahar", "lunch", 1, ["thali"], [], "new"),
+    ("kl lnch 1 plzz", "lunch", 1, ["thali"], [], "new"),
+    ("tomrw dinr cncl", "dinner", 0, [], [], "cancel"),
+    ("aaj rat ko 2 dabbe", "dinner", 2, ["thali"], [], "new"),
+    ("lunc 2 dabba bina pyaz", "lunch", 2, ["thali"], ["no onion"], "new"),
+    ("dinr 1 no spic", "dinner", 1, ["thali"], ["less spicy"], "new"),
 ]
 
 # 10. Devanagari Hindi
@@ -223,7 +278,7 @@ def generate_synthetic_dataset(
         ("devanagari", TEMPLATES_DEVANAGARI, 40),
     ]
 
-    for cat_name, templates, count in categories:
+    for _cat_name, templates, count in categories:
         for _ in range(count):
             sender = random.choice(SENDERS)
             tmpl = random.choice(templates)
@@ -239,10 +294,12 @@ def generate_synthetic_dataset(
 
             # Substitutions
             actual_qty = qty if t_qty == "{qty}" else t_qty
-            qty_word_candidates = QTY_WORDS.get(actual_qty, [str(actual_qty)])
-            chosen_qty_str = (
-                random.choice(qty_word_candidates) if random.random() < 0.55 else str(actual_qty)
-            )
+            if isinstance(actual_qty, int) and actual_qty in QTY_WORDS:
+                candidates = QTY_WORDS[actual_qty]
+                chosen_qty_str = random.choice(candidates) if random.random() < 0.65 else str(actual_qty)
+            else:
+                chosen_qty_str = str(actual_qty)
+
             text = text_pattern.replace("{qty}", chosen_qty_str)
 
             sec_customer = None
@@ -251,19 +308,17 @@ def generate_synthetic_dataset(
                 text = text.replace("{friend}", sec_friend)
                 sec_customer = sec_friend
 
-            payment_note = text if action == "payment" else None
+            payment_note = f"GPay/UPI transfer of {payment_amount}" if payment_amount else None
 
             record = {
                 "id": f"syn_{idx:04d}",
                 "sender": sender,
-                "text": text,
-                "category": cat_name,
-                "is_synthetic": True,
+                "raw_text": text,
                 "gold": {
                     "customer": sender,
                     "date": "tomorrow",
                     "meal": meal,
-                    "qty": actual_qty,
+                    "qty": actual_qty if isinstance(actual_qty, int) else 1,
                     "items": items,
                     "mods": mods,
                     "action": action,

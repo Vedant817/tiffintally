@@ -1,6 +1,6 @@
 """
-Format synthetic and gold orders into standard Chat SFT format for Tinker LoRA training.
-Outputs data/synthetic/tinker_sft_train.jsonl.
+Prepare ChatML SFT dataset for Tinker fine-tuning (Qwen 2.5 format).
+Uses SYSTEM_PROMPT from tiffintally.extract.base with schema aligned to {"events": [...]}.
 """
 
 import json
@@ -14,9 +14,8 @@ OUTPUT_SFT = Path("data/synthetic/tinker_sft_train.jsonl")
 
 def build_sft_dataset():
     if not INPUT_TRAIN.exists():
-        from scripts.gen_synthetic import main as gen_main
-
-        gen_main()
+        print(f"Error: {INPUT_TRAIN} not found. Run scripts/gen_synthetic.py first.")
+        return
 
     records = []
     with open(INPUT_TRAIN, "r", encoding="utf-8") as f:
@@ -27,7 +26,7 @@ def build_sft_dataset():
     sft_rows = []
     for r in records:
         sender = r["sender"]
-        text = r["text"]
+        text = r.get("raw_text") or r.get("text", "")
         gold_data = r["gold"]
 
         user_content = f"Sender: {sender}\nMessage: {text}"
@@ -47,7 +46,7 @@ def build_sft_dataset():
         for row in sft_rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
-    print(f"Generated {len(sft_rows)} chat SFT examples at {OUTPUT_SFT}")
+    print(f"Successfully generated {len(sft_rows)} SFT ChatML records at {OUTPUT_SFT}")
 
 
 if __name__ == "__main__":
