@@ -72,12 +72,13 @@ def run_finetune_job(
     )
     lr_scheduler_type = hyperparams.get("lr_scheduler_type", "cosine")
     weight_decay = hyperparams.get("weight_decay", 0.0)
+    warmup_steps = hyperparams.get("warmup_steps", 15)
 
     print("\n=======================================================")
     print(f"🚀 Starting TiffinTally Iteration {iteration} on Modal (A10G GPU)")
     print(f"Base Model: {base_model_name} | Epochs: {num_epochs} | LR: {lr}")
     print(f"LoRA: r={lora_r}, alpha={lora_alpha}, dropout={lora_dropout} | Modules: {len(target_modules)}")
-    print(f"Schedule: {lr_scheduler_type} | Weight Decay: {weight_decay} | Train size: {len(train_records)}")
+    print(f"Schedule: {lr_scheduler_type} | Weight Decay: {weight_decay} | Warmup: {warmup_steps} | Train size: {len(train_records)}")
     print(f"Val sizes: Synthetic={len(synthetic_val_records)} | Real Held-Out={len(real_val_records)}")
     print("=======================================================\n")
 
@@ -169,7 +170,7 @@ def run_finetune_job(
         learning_rate=lr,
         lr_scheduler_type=lr_scheduler_type,
         weight_decay=weight_decay,
-        warmup_steps=15,
+        warmup_steps=warmup_steps,
         logging_steps=10,
         save_strategy="no",
         eval_strategy="no",
@@ -472,6 +473,7 @@ def main(
     target_modules: str = "all",
     lr_scheduler: str = "cosine",
     weight_decay: float = 0.0,
+    warmup_steps: int = 15,
 ):
     """Local runner that prepares datasets and dispatches fine-tuning to Modal GPU."""
     repo_root = Path(__file__).parent.parent
@@ -618,6 +620,7 @@ def main(
         "target_modules": tm_list,
         "lr_scheduler_type": lr_scheduler,
         "weight_decay": weight_decay,
+        "warmup_steps": warmup_steps,
         "max_seq_len": 768,
     }
 
