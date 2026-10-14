@@ -1,8 +1,11 @@
 """
-Gemma baseline and teacher extractor via Google AI Studio API.
-Includes client-side pseudonymization, production security guardrails, retry logic, token & latency logging, and fallback resilience.
+Google Gemma Extractor via Google AI Studio API.
+Uses gemma-2-9b-it / gemma-3-12b-it with structured JSON schema output,
+pseudonymized names, adversarial input guardrails, and deterministic fallbacks.
 """
 
+import json
+import logging
 import os
 import time
 from typing import Optional
@@ -17,6 +20,7 @@ from tiffintally.extract.base import (
     parse_and_validate_llm_json,
 )
 from tiffintally.privacy import Pseudonymizer
+from tiffintally.schema import OrderEvent
 from tiffintally.security import InputGuardrail, enforce_business_bounds
 
 DEFAULT_GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-2-9b-it")
@@ -58,7 +62,6 @@ class GemmaExtractor:
         if not self.is_available():
             t0 = time.perf_counter()
             events = heuristic_extract(sanitized_text, sender)
-            # Apply security flags and business bounds to fallback events
             for ev in events:
                 ev.audit_flags.extend(audit.flags)
                 if not audit.is_safe:
@@ -82,12 +85,11 @@ class GemmaExtractor:
             log_model_call(res)
             return res
 
-        # Step 3: Call Google AI Studio with up to 2 retries
+        # Step 3: Prompt Google AI Studio REST endpoint
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
             f"?key={self.api_key}"
         )
-
         user_content = f"Sender: {pseudo_sender}\nMessage: {pseudo_text}"
         payload = {
             "contents": [
@@ -187,3 +189,13 @@ class GemmaExtractor:
         )
         log_model_call(res)
         return res
+
+    def extract_batch(self, messages: list) -> list[OrderEvent]:
+        """Process a list of ParsedMessage objects into OrderEvents."""
+        all_events: list[OrderEvent] = []
+        for msg in messages:
+            res = self.extract_from_text(msg.text, sender=msg.sender)
+            for ev in res.events:
+                ev.timestamp = msg.timestamp
+                all_events.append(ev)
+        return all_events

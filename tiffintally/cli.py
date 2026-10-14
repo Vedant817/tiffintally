@@ -4,7 +4,10 @@ Commands:
 - tiffintally serve: Run the FastAPI web application
 - tiffintally parse <file>: Parse WhatsApp export and display prep sheet
 - tiffintally forecast: Run TabPFN kitchen forecast
-- tiffintally eval: Run honest empirical evaluations
+- tiffintally benchmark-edge: Run edge quantized hardware benchmark
+- tiffintally export-edge: Export deployment manifests and configs for Ollama / GGUF
+- tiffintally export-sft: Export human cook corrections into ChatML SFT training batch
+- tiffintally eval all: Run honest empirical evaluations
 """
 
 from pathlib import Path
@@ -99,6 +102,66 @@ def forecast(
     )
     console.print(f"Model: [blue]{res.model_used}[/blue]")
     console.print(f"[dim]{res.explanation}[/dim]")
+
+
+@app.command("benchmark-edge")
+def benchmark_edge(
+    tier: str = typer.Option("all", "--tier", "-t", help="Tier to benchmark: tier1_edge, tier2_midsize, tier3_cloud, or all"),
+    queries: int = typer.Option(10, "--queries", "-q", help="Number of benchmark queries"),
+):
+    """Benchmark local edge inference latency, RAM footprint, and throughput."""
+    from tiffintally.edge import EdgeBenchmarkRunner, TIER_CATALOG
+
+    runner = EdgeBenchmarkRunner()
+    tiers_to_run = list(TIER_CATALOG.keys()) if tier == "all" else [tier]
+
+    table = Table(title="Offline Edge Quantized Model Benchmarks")
+    table.add_column("Tier", style="cyan")
+    table.add_column("Target Hardware", style="magenta")
+    table.add_column("Adapter Size", justify="right", style="green")
+    table.add_column("P50 Latency", justify="right", style="yellow")
+    table.add_column("Est. RAM", justify="right", style="blue")
+    table.add_column("Real EM Acc", justify="right", style="bold green")
+
+    for t in tiers_to_run:
+        res = runner.run_benchmark(tier_key=t, num_queries=queries)
+        table.add_row(
+            res.tier,
+            res.hardware,
+            f"{res.adapter_size_mb} MB",
+            f"{res.p50_latency_ms} ms",
+            f"{res.estimated_ram_mb} MB",
+            f"{res.exact_match_accuracy_pct}%",
+        )
+
+    console.print(table)
+
+
+@app.command("export-edge")
+def export_edge(
+    tier: str = typer.Option("tier1_edge", "--tier", "-t", help="Tier to export"),
+    output_dir: Path = typer.Option(Path("models/edge_export"), "--output", "-o", help="Target export folder"),
+):
+    """Export Ollama/GGUF deployment manifests and adapter configurations."""
+    from tiffintally.edge import EdgeExporter
+
+    exporter = EdgeExporter(output_root=output_dir)
+    res = exporter.export_tier(tier)
+    console.print(f"[bold green]Exported {tier} bundle successfully![/bold green]")
+    console.print(f"Manifest: [cyan]{res['manifest_file']}[/cyan]")
+    console.print(f"Directory: [cyan]{res['directory']}[/cyan]")
+
+
+@app.command("export-sft")
+def export_sft(
+    output_path: Optional[Path] = typer.Option(None, "--output", "-o", help="Output JSONL path"),
+):
+    """Export recorded cook corrections into an SFT JSONL training batch."""
+    from tiffintally.feedback import ActiveLearningManager
+
+    mgr = ActiveLearningManager()
+    count = mgr.export_sft_dataset(output_path=output_path)
+    console.print(f"[bold green]Exported {count} active learning examples to SFT dataset![/bold green]")
 
 
 @eval_app.command("all")

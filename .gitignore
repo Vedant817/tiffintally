@@ -5,6 +5,10 @@
 
 # Private and user data
 data/private/
+data/uploads/
+data/sft/*.jsonl
+models/edge_export/
+logs/
 *.db
 *.sqlite*
 *.sqlite3
@@ -58,5 +62,5 @@ Thumbs.db
 
 # Audio files (cached TTS output)
 *.mp3
-static/audio/
-logs/
+*.ogg
+*.opus

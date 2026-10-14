@@ -1,7 +1,7 @@
 """
 FastAPI application for TiffinTally.
-Serves mobile-friendly kitchen UI, printable prep sheets, dues ledger, voice briefs,
-active learning corrections, and production kitchen economics & BOM calculator.
+Serves mobile-friendly kitchen UI, printable prep sheets, touch KDS station mode,
+dues ledger, voice briefs, active learning feedback flywheel, and recipe BOM economics.
 """
 
 import json
@@ -11,17 +11,19 @@ from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from tiffintally.economics import KitchenEconomics
 from tiffintally.extract.gemma import GemmaExtractor
+from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
 from tiffintally.forecast import KitchenForecaster
 from tiffintally.parser import parse_chat_export
 from tiffintally.reconcile import reconcile_ledger, reconcile_orders
 from tiffintally.schema import DailyPrepSheet, OrderEvent
+from tiffintally.transcribe import VoiceNoteTranscriber
 from tiffintally.voice import VoiceBriefResult, VoiceBriefService
 
 logger = logging.getLogger(__name__)
@@ -48,54 +50,44 @@ class CorrectionPayload(BaseModel):
     corrected_action: str
 
 
-def get_default_demo_events() -> list[OrderEvent]:
-    """Provide realistic initial demo batch so app is immediately usable on startup."""
-    from tiffintally.extract.base import heuristic_extract
-
-    demo_chat = """12/10/26, 10:14 pm - Ravi: kal lunch 2, dinner skip
-12/10/26, 10:15 pm - Priya: kal lunch 1, aaj roti nahi extra rice dena please
-12/10/26, 10:18 pm - Sneha: kal lunch cancel aunty, team lunch hai
-12/10/26, 10:20 pm - Karan: Kal lunch 1 plate. Aur meri roommate Tanvi ke liye bhi ek lunch add kar dena
-12/10/26, 10:24 pm - Vikram: ₹1500 GPay kiya aunty check kar lo
-12/10/26, 10:30 pm - Ananya: earlier ordered 1, please change it to 3 thalis for dinner tomorrow
-12/10/26, 10:35 pm - Rohan: thank you aunty khana mast tha!
-12/10/26, 10:40 pm - Pooja: कल दो थाली दोपहर को भेजना, बिना प्याज के
-12/10/26, 10:55 pm - Amit: Sunday off please, going home
-12/10/26, 11:15 pm - Deepak: kal lunch 2 add karo please late message aunty"""
-
-    messages = parse_chat_export(demo_chat)
-    events = []
-    for msg in messages:
-        if not msg.is_system and not msg.is_media and msg.text:
-            extracted = heuristic_extract(msg.text, sender=msg.sender)
-            for ev in extracted:
-                ev.timestamp = msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                events.append(ev)
-    return events
-
-
 def init_default_data():
-    global CURRENT_SHEET, CURRENT_EVENTS, CURRENT_VOICE_BRIEF, CURRENT_FORECAST
-    global CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
+    """Seed sample Pune customer chat for instant demo experience."""
+    global CURRENT_SHEET, CURRENT_EVENTS, CURRENT_VOICE_BRIEF, CURRENT_FORECAST, CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
+    demo_raw = """12/10/26, 9:30 pm - Priya: Kal lunch 1 thali, roti nahi rice please
+12/10/26, 9:45 pm - Rahul: Kal lunch cancel aunty, office me party hai
+12/10/26, 10:14 pm - Vikram: kal 2 nahi 3 thali dinner bhejo, roommate aa gaya
+12/10/26, 10:30 pm - Amit: Kal lunch me bina pyaaz lahsun ke 1 thali
+12/10/26, 10:45 pm - Sneha: Kal lunch and dinner dono 1-1 thali
+12/10/26, 11:15 pm - Rohan: Kal lunch 2 thali extra spicy
+"""
+    parsed_msgs = parse_chat_export(demo_raw)
+    extractor = GemmaExtractor()
+    CURRENT_EVENTS = extractor.extract_batch(parsed_msgs)
 
-    CURRENT_EVENTS = get_default_demo_events()
+    # Reconcile into prep sheet
     CURRENT_SHEET = reconcile_orders(
-        CURRENT_EVENTS, target_date="Tomorrow", cutoff_time=time(23, 0)
+        events=CURRENT_EVENTS,
+        target_date="tomorrow",
+        cutoff_time=time(22, 0),
+        standing_orders={"priya": 1, "rahul": 1, "vikram": 2, "amit": 1, "sneha": 1},
     )
 
+    # Generate audio brief
     voice_service = VoiceBriefService()
     CURRENT_VOICE_BRIEF = voice_service.generate_morning_brief(CURRENT_SHEET)
 
+    # Kitchen forecast
     forecaster = KitchenForecaster()
     CURRENT_FORECAST = forecaster.how_many_to_cook(
-        target_date="tomorrow", confirmed_count=CURRENT_SHEET.total_thalis
+        target_date=(datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
+        confirmed_count=CURRENT_SHEET.total_thalis,
     )
 
+    # Kitchen Economics and Grocery BOM
     econ = KitchenEconomics()
-    cook_count = CURRENT_FORECAST.predicted_to_cook if CURRENT_FORECAST else CURRENT_SHEET.total_thalis
-    CURRENT_BOM = econ.compute_bom(cook_count)
-    CURRENT_ECONOMICS = econ.compute_ai_unit_economics(daily_messages=max(20, len(CURRENT_EVENTS)))
-    CURRENT_WASTE_ROI = econ.compute_waste_reduction_roi(daily_confirmed_plates=CURRENT_SHEET.total_thalis)
+    CURRENT_BOM = econ.compute_bom(CURRENT_SHEET.total_thalis)
+    CURRENT_ECONOMICS = econ.compute_ai_unit_economics(CURRENT_SHEET.total_thalis)
+    CURRENT_WASTE_ROI = econ.compute_waste_reduction_roi(CURRENT_SHEET.total_thalis)
 
 
 @asynccontextmanager
@@ -104,69 +96,87 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="TiffinTally", version="0.2.0", lifespan=lifespan)
+app = FastAPI(
+    title="TiffinTally",
+    description="Your WhatsApp orders, sorted before the pressure cooker's first whistle.",
+    version="0.2.0",
+    lifespan=lifespan,
+)
+
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok", "app": "tiffintally", "version": "0.2.0", "guardrails": "active"}
+def health_check():
+    return {
+        "status": "ok",
+        "app": "tiffintally",
+        "version": "0.2.0",
+        "guardrails": "active",
+        "kds_station": "available",
+        "active_learning": "ready",
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html", context={})
+def index_view(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"default_cutoff": "22:00"},
+    )
 
 
 @app.post("/process", response_class=HTMLResponse)
 async def process(
     request: Request,
-    raw_text: Optional[str] = Form(None),
     chat_file: Optional[UploadFile] = None,
+    raw_text: Optional[str] = Form(None),
     target_date: str = Form("tomorrow"),
+    cutoff: str = Form("22:00"),
 ):
-    global CURRENT_SHEET, CURRENT_EVENTS, CURRENT_VOICE_BRIEF, CURRENT_FORECAST
-    global CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
+    global CURRENT_SHEET, CURRENT_EVENTS, CURRENT_VOICE_BRIEF, CURRENT_FORECAST, CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
 
     content = ""
     if chat_file and chat_file.filename:
         file_bytes = await chat_file.read()
-        content = file_bytes.decode("utf-8", errors="ignore")
-    elif raw_text and raw_text.strip():
+        content = file_bytes.decode("utf-8", errors="replace")
+    elif raw_text:
         content = raw_text
+    else:
+        content = "12/10/26, 10:14 pm - Ravi: kal lunch 2, dinner skip"
 
-    if not content.strip():
-        content = "Ravi: kal lunch 1"
-
-    messages = parse_chat_export(content)
+    parsed_msgs = parse_chat_export(content)
     extractor = GemmaExtractor()
-    extracted_events: list[OrderEvent] = []
+    CURRENT_EVENTS = extractor.extract_batch(parsed_msgs)
 
-    for msg in messages:
-        if not msg.is_system and not msg.is_media and msg.text:
-            res = extractor.extract_from_text(msg.text, sender=msg.sender)
-            for ev in res.events:
-                ev.timestamp = msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                extracted_events.append(ev)
+    # Parse cutoff time
+    try:
+        parts = cutoff.split(":")
+        cutoff_t = time(int(parts[0]), int(parts[1]))
+    except Exception:
+        cutoff_t = time(22, 0)
 
-    CURRENT_EVENTS = extracted_events
     CURRENT_SHEET = reconcile_orders(
-        CURRENT_EVENTS, target_date=target_date, cutoff_time=time(23, 0)
+        events=CURRENT_EVENTS,
+        target_date=target_date,
+        cutoff_time=cutoff_t,
+        standing_orders={"priya": 1, "rahul": 1, "vikram": 2, "amit": 1, "sneha": 1},
     )
 
     voice_service = VoiceBriefService()
-    CURRENT_VOICE_BRIEF = voice_service.generate_morning_brief(CURRENT_SHEET, force_refresh=True)
+    CURRENT_VOICE_BRIEF = voice_service.generate_morning_brief(CURRENT_SHEET)
 
     forecaster = KitchenForecaster()
     CURRENT_FORECAST = forecaster.how_many_to_cook(
-        target_date=target_date, confirmed_count=CURRENT_SHEET.total_thalis
+        target_date=(datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
+        confirmed_count=CURRENT_SHEET.total_thalis,
     )
 
     econ = KitchenEconomics()
-    cook_count = CURRENT_FORECAST.predicted_to_cook if CURRENT_FORECAST else CURRENT_SHEET.total_thalis
-    CURRENT_BOM = econ.compute_bom(cook_count)
-    CURRENT_ECONOMICS = econ.compute_ai_unit_economics(daily_messages=max(20, len(CURRENT_EVENTS)))
-    CURRENT_WASTE_ROI = econ.compute_waste_reduction_roi(daily_confirmed_plates=CURRENT_SHEET.total_thalis)
+    CURRENT_BOM = econ.compute_bom(CURRENT_SHEET.total_thalis)
+    CURRENT_ECONOMICS = econ.compute_ai_unit_economics(CURRENT_SHEET.total_thalis)
+    CURRENT_WASTE_ROI = econ.compute_waste_reduction_roi(CURRENT_SHEET.total_thalis)
 
     return templates.TemplateResponse(
         request=request,
@@ -185,8 +195,7 @@ async def process(
 
 @app.get("/prep", response_class=HTMLResponse)
 def view_prep_sheet(request: Request):
-    global CURRENT_SHEET, CURRENT_VOICE_BRIEF, CURRENT_FORECAST
-    global CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
+    global CURRENT_SHEET, CURRENT_VOICE_BRIEF, CURRENT_FORECAST, CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
     if not CURRENT_SHEET:
         init_default_data()
 
@@ -200,6 +209,23 @@ def view_prep_sheet(request: Request):
             "bom": CURRENT_BOM,
             "economics": CURRENT_ECONOMICS,
             "waste_roi": CURRENT_WASTE_ROI,
+            "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
+        },
+    )
+
+
+@app.get("/station", response_class=HTMLResponse)
+def view_kds_station(request: Request):
+    """Touch-friendly Kitchen Display Station (KDS) for packing and container ticking."""
+    global CURRENT_SHEET
+    if not CURRENT_SHEET:
+        init_default_data()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="station.html",
+        context={
+            "sheet": CURRENT_SHEET,
             "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
         },
     )
@@ -263,21 +289,61 @@ def get_morning_brief_audio():
 
 @app.post("/api/corrections")
 def save_correction(payload: CorrectionPayload):
-    CORRECTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    record = {
-        "timestamp": datetime.now().isoformat(),
-        "customer": payload.customer,
-        "raw_text": payload.raw_text,
-        "corrected_meal": payload.corrected_meal,
-        "corrected_qty": payload.corrected_qty,
-        "corrected_action": payload.corrected_action,
-        "corrected": {
-            "meal": payload.corrected_meal,
-            "qty": payload.corrected_qty,
-            "action": payload.corrected_action,
-        },
-    }
-    with open(CORRECTIONS_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
+    mgr = ActiveLearningManager(storage_path=CORRECTIONS_FILE)
+    entry = CorrectionEntry(
+        customer=payload.customer,
+        raw_text=payload.raw_text,
+        corrected_meal=payload.corrected_meal,
+        corrected_qty=payload.corrected_qty,
+        corrected_action=payload.corrected_action,
+    )
+    record = mgr.record_correction(entry)
     return {"status": "saved", "record": record}
+
+
+@app.post("/api/active-learning/export")
+def export_active_learning():
+    """Exports all recorded cook corrections into an SFT JSONL training batch."""
+    mgr = ActiveLearningManager(storage_path=CORRECTIONS_FILE)
+    count = mgr.export_sft_dataset()
+    return {
+        "status": "exported",
+        "examples_count": count,
+        "export_path": "data/sft/active_learning_batch.jsonl",
+    }
+
+
+@app.post("/api/voice-note")
+async def transcribe_voice_note(
+    audio_file: Optional[UploadFile] = None,
+    customer_name: str = Form("VoiceCustomer"),
+):
+    """
+    Ingest a WhatsApp voice note (.ogg, .opus, .m4a, .mp3),
+    transcribe it into Hinglish text, and return formatted WhatsApp chat entry.
+    """
+    transcriber = VoiceNoteTranscriber()
+
+    # Save audio temporarily
+    upload_dir = Path("data/uploads/audio")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    if audio_file and audio_file.filename:
+        filename = audio_file.filename
+        dest_path = upload_dir / filename
+        bytes_data = await audio_file.read()
+        dest_path.write_bytes(bytes_data)
+    else:
+        # Create a mock voice note for testing
+        dest_path = upload_dir / "sample_voice_cancel.ogg"
+        dest_path.write_bytes(b"MOCK_OGG_HEADER")
+
+    result = transcriber.transcribe(dest_path, customer_name=customer_name)
+    return {
+        "status": "transcribed",
+        "customer": result.customer,
+        "text": result.transcribed_text,
+        "chat_line": result.formatted_chat_line,
+        "backend": result.backend_used,
+        "confidence": result.confidence,
+    }
