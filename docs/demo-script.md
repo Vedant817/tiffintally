@@ -63,6 +63,6 @@ Demo notes. Say "rules fallback" unless a Gemma key is set. Do not open tiffinta
 
 ### [1:20 - 1:30] Closing: Open-Source AI for Real Lives
 - **Visual:**
-  - Quick flash of GitHub repo: MIT License, 44 passing tests, zero live secrets, under $0.05/month operating cost.
+  - Quick flash of GitHub repo: MIT License. Say the test count pytest just printed. Do not quote a monthly price.
 - **Voiceover:**
-  > "TiffinTally is open source, private, runs on free tiers, and costs under ₹249 a month. Real AI solving real side-hustle headaches."
+  > "TiffinTally is open source. The sheet is the rules parser unless a model key is set. The 3B run is 84 percent on synthetic text, and it is not what this page serves."

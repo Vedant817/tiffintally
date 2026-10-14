@@ -21,7 +21,7 @@ PAGE = """<!DOCTYPE html>
 <body>
   <p class="note"><strong>Retracted.</strong> This page used to chart a 100% exact match, a Grand Champion tier, and an edge latency. Those figures were not a measurement on messages the model had not memorised, and the edge numbers were constants. They are not shown here.</p>
   <h1>No score is published from this file</h1>
-  <p>The Modal runs that exist in <code>evals/modal_run_iter_*.json</code> were Qwen2.5-0.5B jobs. Their exact-match fields are not a real-WhatsApp result. <code>RESULTS.md</code> is the status that counts. The app does not serve those weights.</p>
+  <p>Runs 1–30 in <code>evals/modal_run_iter_*.json</code> were Qwen2.5-0.5B jobs and are retracted. Run 31 is Qwen2.5-3B, 84.0% exact match on 50 synthetic rows, and it is not a real-WhatsApp result. <code>RESULTS.md</code> is the status that counts. The app does not serve those weights.</p>
   <p>A new number belongs on this page only after an evaluation script writes it. Do not type one in.</p>
 </body>
 </html>

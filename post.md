@@ -18,7 +18,7 @@ A regex labels the meal, the quantity, and the day. "Aaj", "today", and "tonight
 
 Standing orders used to add Priya, Rahul, Vikram, Amit, and Sneha to every upload. Four real thalis became ten. Those names are gone unless a cook configures them. Each browser gets its own cookie. Another visitor does not see the last cook's customers. That is process memory, not a proper multi-tenant store. I would not put a real export on a public URL yet.
 
-If `GOOGLE_API_KEY` is set, extraction calls Gemma and sends the key in a header, not the query string. If it is not set, the page says "rules fallback". The fine-tune that ran on Modal is a 0.5B Qwen LoRA. It is not wired into this app. I am not going to pretend the sheet is using it.
+If `GOOGLE_API_KEY` is set, extraction calls Gemma and sends the key in a header, not the query string. If it is not set, the page says "rules fallback". The fine-tunes that ran on Modal were a 0.5B Qwen LoRA, plus one later 3B LoRA scored at 84.0% on 50 synthetic held-out rows. Neither adapter is wired into this app. I am not going to pretend the sheet is using it.
 
 Voice notes without a speech key return a stub that says the file was not transcribed. They used to invent a sentence from the filename. A file named `cancel.ogg` is not a cancel.
 
@@ -28,7 +28,7 @@ I published a 100% exact match on "50 real WhatsApp messages". The file lived in
 
 The labels were wrong in a second way. Messages that said "aaj", "today", or "tonight" were marked `tomorrow`, and the test file was all `tomorrow`. A perfect score had learned the bug.
 
-The Tinker write-up described a 3B LoRA on Thinking Machines' platform. The runs were Qwen2.5-0.5B on Modal. The Tinker client posted to a host that does not exist and, with no key, returned the regex under a model name. Those early "Gemma" and "Tinker" eval files have the same scores and a latency under a millisecond. That is the regex. I deleted the claim. `benchmark-edge` slept and printed catalog numbers, including a 100% and a Raspberry Pi latency. It now exits with an error.
+The Tinker write-up described a 3B LoRA on Thinking Machines' platform. Runs 1–30 were Qwen2.5-0.5B on Modal. Run 31 was Qwen2.5-3B on the same platform, 84.0% exact match on synthetic held-out text, with no real cook set. The Tinker client posted to a host that does not exist and, with no key, returned the regex under a model name. Those early "Gemma" and "Tinker" eval files have the same scores and a latency under a millisecond. That is the regex. I deleted the claim. `benchmark-edge` slept and printed catalog numbers, including a 100% and a Raspberry Pi latency. It now exits with an error.
 
 The forecast number 0.79 was scikit-learn's HistGradientBoosting on 90 days of invented history. I turned that into ₹4,218 a month and an 18x return. Those are assumptions, and the post did not say that TabPFN's client licence is non-commercial. There is no saved TabPFN call. `tiffintally.tech` does not serve this app. There is no Dockerfile in the tree, so "containerized on Render" was a plan, not a deploy.
 
