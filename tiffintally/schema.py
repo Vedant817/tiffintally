@@ -46,6 +46,12 @@ class OrderEvent(BaseModel):
     is_late: bool = Field(
         default=False, description="Flag indicating whether message was received after cutoff"
     )
+    audit_flags: List[str] = Field(
+        default_factory=list, description="Security and guardrail audit flags"
+    )
+    needs_review: bool = Field(
+        default=False, description="Flag indicating manual review required"
+    )
 
 
 class ParsedMessage(BaseModel):

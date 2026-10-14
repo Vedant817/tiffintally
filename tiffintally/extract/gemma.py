@@ -1,6 +1,6 @@
 """
 Gemma baseline and teacher extractor via Google AI Studio API.
-Includes client-side pseudonymization, retry logic, token & latency logging, and fallback resilience.
+Includes client-side pseudonymization, production security guardrails, retry logic, token & latency logging, and fallback resilience.
 """
 
 import os
@@ -17,6 +17,7 @@ from tiffintally.extract.base import (
     parse_and_validate_llm_json,
 )
 from tiffintally.privacy import Pseudonymizer
+from tiffintally.security import InputGuardrail, enforce_business_bounds
 
 DEFAULT_GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-2-9b-it")
 
@@ -33,6 +34,7 @@ class GemmaExtractor:
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         self.model_name = model_name or DEFAULT_GEMMA_MODEL
         self.pseudonymizer = pseudonymizer or Pseudonymizer()
+        self.guardrail = InputGuardrail()
 
     def is_available(self) -> bool:
         """Check if a valid Google AI Studio API key is provided."""
@@ -41,16 +43,32 @@ class GemmaExtractor:
     def extract_from_text(self, raw_text: str, sender: str = "Customer") -> ExtractionResult:
         """
         Extract order events from raw text.
-        Pseudonymizes sender/names first, executes API call with retries,
-        depseudonymizes back, and logs telemetry. Falls back gracefully if offline.
+        Passes input through production security guardrail, pseudonymizes names,
+        executes API call with retries, enforces business bounds, depseudonymizes,
+        and logs telemetry. Falls back gracefully if offline.
         """
+        # Step 0: Adversarial Security & Input Sanitization
+        audit = self.guardrail.sanitize(raw_text)
+        sanitized_text = audit.clean_text
+
         # Step 1: Pseudonymize
-        pseudo_sender, pseudo_text = self.pseudonymizer.mask_text(sender, raw_text)
+        pseudo_sender, pseudo_text = self.pseudonymizer.mask_text(sender, sanitized_text)
 
         # Step 2: Check API key availability
         if not self.is_available():
             t0 = time.perf_counter()
-            events = heuristic_extract(raw_text, sender)
+            events = heuristic_extract(sanitized_text, sender)
+            # Apply security flags and business bounds to fallback events
+            for ev in events:
+                ev.audit_flags.extend(audit.flags)
+                if not audit.is_safe:
+                    ev.needs_review = True
+                bounded_qty, bound_flag = enforce_business_bounds(ev.qty)
+                if bound_flag:
+                    ev.qty = bounded_qty
+                    ev.audit_flags.append(bound_flag)
+                    ev.needs_review = True
+
             latency = (time.perf_counter() - t0) * 1000
             res = ExtractionResult(
                 events=events,
@@ -109,6 +127,17 @@ class GemmaExtractor:
                                 raw_out, raw_text=raw_text, sender=pseudo_sender
                             )
 
+                            # Attach audit flags and enforce business bounds
+                            for ev in events:
+                                ev.audit_flags.extend(audit.flags)
+                                if not audit.is_safe:
+                                    ev.needs_review = True
+                                bounded_qty, bound_flag = enforce_business_bounds(ev.qty)
+                                if bound_flag:
+                                    ev.qty = bounded_qty
+                                    ev.audit_flags.append(bound_flag)
+                                    ev.needs_review = True
+
                             # Depseudonymize events back to real customer names
                             real_events = [
                                 self.pseudonymizer.depseudonymize_order_event(ev) for ev in events
@@ -136,7 +165,17 @@ class GemmaExtractor:
 
         # Fallback if API calls fail after retries
         latency = (time.perf_counter() - start_time) * 1000
-        fallback_events = heuristic_extract(raw_text, sender)
+        fallback_events = heuristic_extract(sanitized_text, sender)
+        for ev in fallback_events:
+            ev.audit_flags.extend(audit.flags)
+            if not audit.is_safe:
+                ev.needs_review = True
+            bounded_qty, bound_flag = enforce_business_bounds(ev.qty)
+            if bound_flag:
+                ev.qty = bounded_qty
+                ev.audit_flags.append(bound_flag)
+                ev.needs_review = True
+
         res = ExtractionResult(
             events=fallback_events,
             model_name=f"{self.model_name}-fallback",

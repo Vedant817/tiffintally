@@ -1,7 +1,7 @@
 """
 Tinker LoRA Fine-Tuned Model Extractor for small open-weight models (e.g. Qwen2.5-3B / Llama-3.2-3B).
-Provides hosted sampling via Thinking Machines Tinker API with client pseudonymization
-and robust offline evaluation fallback.
+Provides hosted sampling via Thinking Machines Tinker API with client pseudonymization,
+production security guardrails, and robust offline evaluation fallback.
 """
 
 import logging
@@ -19,6 +19,7 @@ from tiffintally.extract.base import (
     parse_and_validate_llm_json,
 )
 from tiffintally.privacy import Pseudonymizer
+from tiffintally.security import InputGuardrail, enforce_business_bounds
 
 logger = logging.getLogger(__name__)
 
@@ -38,18 +39,33 @@ class TinkerExtractor:
         self.api_key = api_key or os.getenv("TINKER_API_KEY")
         self.model_id = model_id or DEFAULT_TINKER_MODEL
         self.pseudonymizer = pseudonymizer or Pseudonymizer()
+        self.guardrail = InputGuardrail()
 
     def is_available(self) -> bool:
         return bool(self.api_key and len(self.api_key.strip()) > 5)
 
     def extract_from_text(self, raw_text: str, sender: str = "Customer") -> ExtractionResult:
+        # Step 0: Security & Sanitization
+        audit = self.guardrail.sanitize(raw_text)
+        sanitized_text = audit.clean_text
+
         # Step 1: Pseudonymize
-        pseudo_sender, pseudo_text = self.pseudonymizer.mask_text(sender, raw_text)
+        pseudo_sender, pseudo_text = self.pseudonymizer.mask_text(sender, sanitized_text)
 
         # Step 2: Check API Key availability
         if not self.is_available():
             t0 = time.perf_counter()
-            events = heuristic_extract(raw_text, sender)
+            events = heuristic_extract(sanitized_text, sender)
+            for ev in events:
+                ev.audit_flags.extend(audit.flags)
+                if not audit.is_safe:
+                    ev.needs_review = True
+                bounded_qty, bound_flag = enforce_business_bounds(ev.qty)
+                if bound_flag:
+                    ev.qty = bounded_qty
+                    ev.audit_flags.append(bound_flag)
+                    ev.needs_review = True
+
             latency = (time.perf_counter() - t0) * 1000
             res = ExtractionResult(
                 events=events,
@@ -95,6 +111,17 @@ class TinkerExtractor:
                     events, err = parse_and_validate_llm_json(
                         raw_content, raw_text=raw_text, sender=pseudo_sender
                     )
+
+                    for ev in events:
+                        ev.audit_flags.extend(audit.flags)
+                        if not audit.is_safe:
+                            ev.needs_review = True
+                        bounded_qty, bound_flag = enforce_business_bounds(ev.qty)
+                        if bound_flag:
+                            ev.qty = bounded_qty
+                            ev.audit_flags.append(bound_flag)
+                            ev.needs_review = True
+
                     real_events = [
                         self.pseudonymizer.depseudonymize_order_event(ev) for ev in events
                     ]
@@ -117,7 +144,17 @@ class TinkerExtractor:
 
         # Fallback
         latency = (time.perf_counter() - start_time) * 1000
-        fallback_events = heuristic_extract(raw_text, sender)
+        fallback_events = heuristic_extract(sanitized_text, sender)
+        for ev in fallback_events:
+            ev.audit_flags.extend(audit.flags)
+            if not audit.is_safe:
+                ev.needs_review = True
+            bounded_qty, bound_flag = enforce_business_bounds(ev.qty)
+            if bound_flag:
+                ev.qty = bounded_qty
+                ev.audit_flags.append(bound_flag)
+                ev.needs_review = True
+
         res = ExtractionResult(
             events=fallback_events,
             model_name=f"{self.model_id}-surrogate",

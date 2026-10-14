@@ -7,6 +7,7 @@ Handles:
 - Duplicate message deduplication
 - Splitting multi-person requests ("Priya ke liye bhi ek")
 - Generating customer ledger and polite Hinglish reminder drafts
+- Production security review routing for prompt-injections, excessive quantities, and low confidence
 """
 
 import logging
@@ -119,9 +120,19 @@ def reconcile_orders(
             ):
                 continue
 
-        # Check low confidence
-        if ev.confidence < 0.70 or ev.action == "none" and ev.raw_text and len(ev.raw_text) > 40:
-            prep_sheet.unresolved_reviews.append(ev)
+        # Check security audit flags, business bounds, or low confidence
+        is_risky = (
+            ev.needs_review
+            or ev.confidence < 0.70
+            or bool(ev.audit_flags)
+            or (ev.action == "none" and ev.raw_text and len(ev.raw_text) > 40)
+        )
+        if is_risky:
+            if ev not in prep_sheet.unresolved_reviews:
+                prep_sheet.unresolved_reviews.append(ev)
+            # If critical prompt injection, excessive quantity (>20), or explicit review flag, don't auto-apply
+            if ev.needs_review or any("prompt_injection" in f or "excessive_quantity" in f for f in ev.audit_flags):
+                continue
 
         # Skip pure chit-chat
         if ev.action == "none":
