@@ -155,6 +155,28 @@ def _meal_qty(text: str, meal: str) -> int:
     return 1
 
 
+_PAY_WORD = r"(?:gpay|phonepe|paytm|paid|payment|sent|transfer|kiya)"
+
+
+def _payment_amount(text: str) -> Optional[float]:
+    """Rupees when the line is a payment. None when it is not a payment."""
+    if not re.search(rf"\b{_PAY_WORD}\b", text):
+        return None
+    before = re.search(
+        rf"(?:rs\.?|inr|₹)?\s*(\d{{2,5}})\b(?:\s+[a-z]+){{0,4}}\s*\b{_PAY_WORD}\b",
+        text,
+    )
+    after = re.search(
+        rf"\b{_PAY_WORD}\b(?:\s+[a-z]+){{0,4}}\s*(?:rs\.?|inr|₹)?\s*(\d{{2,5}})\b",
+        text,
+    )
+    if before:
+        return float(before.group(1))
+    if after:
+        return float(after.group(1))
+    return 0.0
+
+
 def _cancelled_meals(text: str) -> set[str]:
     """Bind a cancel word to the meal just before it, else the meal just after it."""
     meals = [(match.start(), match.group(1)) for match in re.finditer(r"\b(lunch|dinner)\b", text)]
@@ -251,12 +273,10 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
             )
         ]
 
-    # 2. Payment confirmations
-    pay_matches = re.findall(
-        r"(?:rs\.?|inr|₹)?\s*(\d{2,5})\s*(?:gpay|phonepe|paytm|sent|kiya|transfer)", lower
-    )
-    if pay_matches or "gpay kiya" in lower or "phonepe" in lower:
-        amt = float(pay_matches[0]) if pay_matches else 0.0
+    # 2. Payment confirmations. The amount may sit before or after the app name.
+    paid = _payment_amount(lower)
+    if paid is not None:
+        amt = paid
         return [
             OrderEvent(
                 customer=sender,

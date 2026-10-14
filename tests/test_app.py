@@ -70,6 +70,24 @@ def test_prep_forecast_uses_the_sheet_weekday():
     assert "1 confirmed orders" in resp.text
 
 
+def test_phonepe_via_credits_the_ledger_and_an_undated_thali_does_not():
+    raw = (
+        "15/10/26, 8:10 pm - Guest: 2 thali\n"
+        "15/10/26, 8:20 pm - Ravi: paid 1500 via PhonePe for this week"
+    )
+    cook = TestClient(app)
+    page = cook.post("/process", data={"raw_text": raw, "target_date": "tomorrow"})
+    assert "Cook 0 from the chat" in page.text
+    ledger = cook.get("/ledger")
+    assert "₹1500" in ledger.text
+    assert "Guest" not in ledger.text
+
+    bare = TestClient(app)
+    bare.post("/process", data={"raw_text": "500 gpay kiya", "target_date": "tomorrow"})
+    bare_ledger = bare.get("/ledger")
+    assert "₹500" in bare_ledger.text
+
+
 def test_unresolved_message_is_not_a_bill():
     raw = "Ravi: kal lunch 2"
     resp = client.post("/process", data={"raw_text": raw, "target_date": "tomorrow"})

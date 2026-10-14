@@ -120,6 +120,20 @@ def test_nahi_chahiye_cancels_instead_of_changing():
     assert events[0].qty == 0
 
 
+def test_payment_amount_survives_via_and_done():
+    via = heuristic_extract("paid 1500 via PhonePe for this week", "Ravi")
+    assert via[0].action == "payment"
+    assert via[0].payment_amount == 1500.0
+    assert via[0].qty == 0
+    done = heuristic_extract("GPay done 1500", "Ravi")
+    assert done[0].action == "payment"
+    assert done[0].payment_amount == 1500.0
+    classic = heuristic_extract("500 gpay kiya", "Ravi")
+    assert classic[0].payment_amount == 500.0
+    order = heuristic_extract("2 thali lunch", "Guest")
+    assert order[0].action == "new"
+
+
 def test_bhi_ek_keeps_the_sender_plate():
     events = heuristic_extract(
         "Kal lunch 1 plate. Aur meri roommate Tanvi ke liye bhi ek lunch add kar dena",

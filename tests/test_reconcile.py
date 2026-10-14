@@ -77,6 +77,25 @@ def test_reconcile_ledger_reminders_formatting():
     assert "₹360" in entry.draft_reminder
 
 
+def test_payment_in_review_still_reduces_the_balance():
+    events = [
+        OrderEvent(
+            customer="Ravi",
+            date="today",
+            meal="unspecified",
+            qty=0,
+            action="payment",
+            payment_amount=500.0,
+            needs_review=True,
+            audit_flags=["unparsed_timestamp"],
+            raw_text="500 gpay kiya",
+        )
+    ]
+    ledger = reconcile_ledger(events, price_per_thali=80.0, previous_balances={"ravi": 800.0})
+    assert ledger["ravi"].total_paid == 500.0
+    assert ledger["ravi"].balance_due == 300.0
+
+
 def test_review_row_is_not_billed():
     events = [
         OrderEvent(
