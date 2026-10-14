@@ -16,6 +16,17 @@
       {% endif %}
       Standing orders added: none.
     </p>
+    {% if sheet.other_days %}
+    <p style="font-size: 0.85rem; margin-top: 8px; color: #9a3412;">
+      {{ sheet.other_days|length }} message(s) in this paste are for a different day than {{ sheet.date }}.
+      "kal" and "tomrw" use the day after the message clock, not the day after you open this page.
+    </p>
+    <ul style="font-size: 0.85rem; color: #9a3412;">
+      {% for ev in sheet.other_days %}
+      <li>{{ ev.customer }}: {{ ev.date }} {{ ev.meal }} {{ ev.action }} — {{ ev.raw_text }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
   </div>
   <div style="display: flex; gap: 10px;">
     <button onclick="window.print()" class="btn btn-outline">

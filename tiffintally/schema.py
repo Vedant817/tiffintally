@@ -98,6 +98,7 @@ class DailyPrepSheet(BaseModel):
     late_orders: List[OrderEvent] = Field(default_factory=list)
     cancellations: List[OrderEvent] = Field(default_factory=list)
     unresolved_reviews: List[OrderEvent] = Field(default_factory=list)
+    other_days: List[OrderEvent] = Field(default_factory=list)
 
 
 class CustomerLedger(BaseModel):

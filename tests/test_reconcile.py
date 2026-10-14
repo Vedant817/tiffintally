@@ -1,6 +1,9 @@
 """Additional tests for deterministic reconciliation engine and dues ledger."""
 
-from tiffintally.reconcile import reconcile_ledger, reconcile_orders
+from datetime import datetime
+
+from tiffintally.extract.base import heuristic_extract
+from tiffintally.reconcile import calendar_day, reconcile_ledger, reconcile_orders
 from tiffintally.schema import OrderEvent
 
 
@@ -21,6 +24,7 @@ def test_reconcile_multiple_dates_filtering():
     assert sheet_15.total_thalis == 1
     assert len(sheet_15.packing_labels) == 1
     assert sheet_15.packing_labels[0].customer == "A"
+    assert [ev.customer for ev in sheet_15.other_days] == ["B"]
 
     sheet_16 = reconcile_orders(events, target_date="2026-10-16")
     assert sheet_16.total_thalis == 2
@@ -71,3 +75,28 @@ def test_reconcile_ledger_reminders_formatting():
     assert entry.balance_due == 360.0
     assert "Namaste Sunil ji!" in entry.draft_reminder
     assert "₹360" in entry.draft_reminder
+
+
+def test_target_box_accepts_tomorrow_typos():
+    clock = datetime(2026, 10, 15, 8, 0)
+    assert calendar_day("tomrw", clock).isoformat() == "2026-10-16"
+    assert calendar_day("tmrw", clock).isoformat() == "2026-10-16"
+    assert calendar_day("sunday", clock).isoformat() == "2026-10-18"
+
+
+def test_range_pause_drops_standing_orders_only_inside_the_window():
+    events = heuristic_extract(
+        "going home for Diwali, Sunday se next Thursday tak band rakhna",
+        "Ananya",
+    )
+    events[0].timestamp = "2026-10-14 20:14:00"
+    standing = {"Ananya": 1, "Amit": 1}
+    as_of = datetime(2026, 10, 14, 21, 0)
+    sunday = reconcile_orders(
+        events, target_date="2026-10-18", standing_orders=standing, as_of=as_of
+    )
+    assert [label.customer for label in sunday.packing_labels] == ["Amit"]
+    friday = reconcile_orders(
+        events, target_date="2026-10-23", standing_orders=standing, as_of=as_of
+    )
+    assert {label.customer for label in friday.packing_labels} == {"Ananya", "Amit"}

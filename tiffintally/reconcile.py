@@ -11,10 +11,10 @@ Handles:
 """
 
 import logging
-import re
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 from typing import Dict, List, Optional, Set, Tuple
 
+from tiffintally.dates import resolve_day_label
 from tiffintally.schema import (
     CustomerLedger,
     DailyPrepSheet,
@@ -56,15 +56,21 @@ def parse_timestamp(ts: Optional[str]) -> Optional[datetime]:
 
 
 def calendar_day(label: str, reference: datetime):
-    """Resolve today/tomorrow/YYYY-MM-DD against a reference clock. Other words stay unresolved."""
-    raw = (label or "").strip().lower()
-    if raw in {"today", "aaj", "tonight"}:
-        return reference.date()
-    if raw in {"tomorrow", "kal"}:
-        return (reference + timedelta(days=1)).date()
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
-        return datetime.strptime(raw, "%Y-%m-%d").date()
-    return None
+    """Resolve a day word against a reference clock. Unknown words stay unresolved."""
+    return resolve_day_label(label, reference)
+
+
+def pause_covers_target(ev: OrderEvent, target_date: str, as_of: datetime) -> bool:
+    """True when a dated pause window includes the cook's target day."""
+    reference = parse_timestamp(ev.timestamp) or as_of
+    start = calendar_day(ev.date, reference)
+    if start is None or not ev.pause_until:
+        return False
+    end = calendar_day(ev.pause_until, datetime.combine(start, time.min))
+    target = calendar_day(target_date, as_of)
+    if end is None or target is None:
+        return False
+    return start <= target <= end
 
 
 def event_matches_target(ev: OrderEvent, target_date: str, as_of: datetime) -> bool:
@@ -161,7 +167,25 @@ def reconcile_orders(
         )
         if is_risky and ev not in prep_sheet.unresolved_reviews:
             prep_sheet.unresolved_reviews.append(ev)
+        if ev.action == "pause" and "date_range" in ev.audit_flags:
+            if pause_covers_target(ev, target_date, as_of):
+                cust = ev.customer.strip().lower()
+                for meal in ("lunch", "dinner"):
+                    standing = state_map.get((cust, meal))
+                    if standing is not None:
+                        standing.qty = 0
+                        standing.is_paused = True
+                        standing.items = []
+                        standing.mods = []
+                if ev not in prep_sheet.cancellations:
+                    prep_sheet.cancellations.append(ev)
+            continue
         if not event_matches_target(ev, target_date, as_of):
+            if label not in {"", "unspecified", "ambiguous"} and ev.action not in {
+                "none",
+                "payment",
+            }:
+                prep_sheet.other_days.append(ev)
             continue
 
         if is_risky:

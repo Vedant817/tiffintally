@@ -102,7 +102,7 @@ def test_bold_4_standing_order_paused():
             raw_text="going home for weekend, Sunday off",
         )
     ]
-    sheet = reconcile_orders(events, target_date="Sunday", standing_orders=standing)
+    sheet = reconcile_orders(events, target_date="Sunday", standing_orders=standing, as_of=AS_OF)
     # Ravi paused -> 0; Amit remains -> 1
     assert sheet.total_lunch == 1
     labels = {lbl.customer: lbl.qty for lbl in sheet.packing_labels}
