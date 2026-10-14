@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
@@ -50,6 +50,7 @@ class KitchenSession:
     waste_roi: object = None
     extractor_label: str = "no chat loaded"
     used_fallback: bool = True
+    cutoff: time = field(default_factory=lambda: time(22, 0))
 
 
 SESSIONS: dict[str, KitchenSession] = {}
@@ -91,6 +92,7 @@ def fill_session(
     session.events = events
     session.extractor_label = extractor_label
     session.used_fallback = used_fallback
+    session.cutoff = cutoff_t
     session.sheet = reconcile_orders(
         events=events,
         target_date=target_date,
@@ -307,8 +309,52 @@ def get_morning_brief_audio(request: Request):
     raise HTTPException(status_code=404, detail="Audio brief not generated or cached")
 
 
+_CORRECTION_MEALS = {"lunch", "dinner", "both"}
+_CORRECTION_ACTIONS = {"new", "change", "cancel"}
+_CLEARED_FLAGS = {"date_unresolved", "date_range", "unparsed_timestamp"}
+
+
+def apply_correction(session: KitchenSession, payload: CorrectionPayload) -> int:
+    """Put the cook's correction on this sheet. Returns how many rows changed."""
+    if session.sheet is None or payload.corrected_meal not in _CORRECTION_MEALS:
+        return 0
+    if payload.corrected_action not in _CORRECTION_ACTIONS:
+        return 0
+    qty = 0 if payload.corrected_action == "cancel" else max(0, min(payload.corrected_qty, 20))
+    applied = 0
+    for ev in session.events:
+        if ev.customer.strip().lower() != payload.customer.strip().lower():
+            continue
+        if ev.raw_text != payload.raw_text:
+            continue
+        ev.meal = payload.corrected_meal
+        ev.action = payload.corrected_action
+        ev.qty = qty
+        ev.date = session.sheet.date
+        ev.needs_review = False
+        ev.confidence = 1.0
+        ev.is_late = False
+        ev.timestamp = None
+        ev.audit_flags = [flag for flag in ev.audit_flags if flag not in _CLEARED_FLAGS]
+        if qty > 0 and not ev.items:
+            ev.items = ["thali"]
+        if qty == 0:
+            ev.items = []
+        applied += 1
+    if applied:
+        fill_session(
+            session,
+            events=session.events,
+            target_date=session.sheet.date,
+            cutoff_t=session.cutoff,
+            extractor_label=session.extractor_label,
+            used_fallback=session.used_fallback,
+        )
+    return applied
+
+
 @app.post("/api/corrections")
-def save_correction(payload: CorrectionPayload):
+def save_correction(request: Request, payload: CorrectionPayload):
     mgr = ActiveLearningManager(storage_path=CORRECTIONS_FILE)
     entry = CorrectionEntry(
         customer=payload.customer,
@@ -318,7 +364,10 @@ def save_correction(payload: CorrectionPayload):
         corrected_action=payload.corrected_action,
     )
     record = mgr.record_correction(entry)
-    return {"status": "saved", "record": record}
+    session, is_new = open_session(request)
+    applied = apply_correction(session, payload)
+    response = JSONResponse({"status": "saved", "applied": applied, "record": record})
+    return remember_cookie(response, session, is_new)
 
 
 @app.post("/api/active-learning/export")

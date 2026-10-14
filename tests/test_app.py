@@ -109,6 +109,50 @@ def test_process_chat_post():
     assert "Ravi" in resp.text
 
 
+def test_saved_correction_lands_on_the_sheet(tmp_path, monkeypatch):
+    test_corr_path = tmp_path / "test_corrections.jsonl"
+    import tiffintally.app as app_module
+
+    monkeypatch.setattr(app_module, "CORRECTIONS_FILE", test_corr_path)
+    cook = TestClient(app)
+    raw = "14/10/26, 8:15 pm - Meera: shaak rotli 2 dabba please lunch"
+    page = cook.post("/process", data={"raw_text": raw, "target_date": "2026-10-15"})
+    assert "Cook 0 from the chat" in page.text
+
+    saved = cook.post(
+        "/api/corrections",
+        json={
+            "customer": "Meera",
+            "raw_text": "shaak rotli 2 dabba please lunch",
+            "corrected_meal": "lunch",
+            "corrected_qty": 2,
+            "corrected_action": "new",
+        },
+    )
+    body = saved.json()
+    assert body["status"] == "saved"
+    assert body["applied"] == 1
+    prep = cook.get("/prep")
+    assert "Cook 2 from the chat" in prep.text
+    assert "Meera" in prep.text
+    ledger = cook.get("/ledger")
+    assert "₹160" in ledger.text
+    stranger = TestClient(app)
+    assert "Meera" not in stranger.get("/prep").text
+
+    cook.post(
+        "/api/corrections",
+        json={
+            "customer": "Meera",
+            "raw_text": "shaak rotli 2 dabba please lunch",
+            "corrected_meal": "lunch",
+            "corrected_qty": 0,
+            "corrected_action": "cancel",
+        },
+    )
+    assert "Cook 0 from the chat" in cook.get("/prep").text
+
+
 def test_save_correction_api(tmp_path, monkeypatch):
     test_corr_path = tmp_path / "test_corrections.jsonl"
     import tiffintally.app as app_module

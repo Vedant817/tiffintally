@@ -136,7 +136,7 @@
     🔍 Human Review & Corrections Needed ({{ sheet.unresolved_reviews|length + sheet.late_orders|length }})
   </h3>
   <p style="font-size: 0.85rem; color: #666; margin-bottom: 12px;">
-    Highlighted items are either low-confidence, received after kitchen cutoff, or flagged by security guardrails. Fix them below; corrections are saved to <code>data/private/corrections.jsonl</code>.
+    Highlighted items are either low-confidence, received after kitchen cutoff, or flagged by security guardrails. Save Correction puts your meal, quantity, and action on this sheet. A copy is also written to <code>data/private/corrections.jsonl</code>.
   </p>
 
   {% for rev in sheet.unresolved_reviews + sheet.late_orders %}
@@ -299,9 +299,7 @@ async function saveCorrectionFromBtn(btn) {
     });
     if (resp.ok) {
       document.getElementById(`saved-msg-${index}`).style.display = 'inline';
-      setTimeout(() => {
-        document.getElementById(`correction-row-${index}`).style.opacity = '0.5';
-      }, 500);
+      window.location.assign('/prep');
     }
   } catch (err) {
     alert('Failed to save correction: ' + err);
