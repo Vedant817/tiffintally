@@ -56,21 +56,28 @@ def run_finetune_job(
         TrainingArguments,
     )
 
-    iteration = hyperparams.get("iteration", 7)
+    iteration = hyperparams.get("iteration", 12)
     base_model_name = hyperparams.get("base_model_name", "Qwen/Qwen2.5-0.5B-Instruct")
     num_epochs = hyperparams.get("num_epochs", 2)
     lr = hyperparams.get("learning_rate", 1.5e-4)
-    lora_r = hyperparams.get("lora_r", 16)
-    lora_alpha = hyperparams.get("lora_alpha", 32)
+    lora_r = hyperparams.get("lora_r", 32)
+    lora_alpha = hyperparams.get("lora_alpha", 64)
     lora_dropout = hyperparams.get("lora_dropout", 0.05)
     batch_size = hyperparams.get("batch_size", 4)
     grad_accum = hyperparams.get("grad_accum", 4)
     max_seq_len = hyperparams.get("max_seq_len", 768)
+    target_modules = hyperparams.get(
+        "target_modules",
+        ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    )
+    lr_scheduler_type = hyperparams.get("lr_scheduler_type", "cosine")
+    weight_decay = hyperparams.get("weight_decay", 0.0)
 
     print("\n=======================================================")
     print(f"🚀 Starting TiffinTally Iteration {iteration} on Modal (A10G GPU)")
     print(f"Base Model: {base_model_name} | Epochs: {num_epochs} | LR: {lr}")
-    print(f"LoRA: r={lora_r}, alpha={lora_alpha} | Train size: {len(train_records)}")
+    print(f"LoRA: r={lora_r}, alpha={lora_alpha}, dropout={lora_dropout} | Modules: {len(target_modules)}")
+    print(f"Schedule: {lr_scheduler_type} | Weight Decay: {weight_decay} | Train size: {len(train_records)}")
     print(f"Val sizes: Synthetic={len(synthetic_val_records)} | Real Held-Out={len(real_val_records)}")
     print("=======================================================\n")
 
@@ -147,7 +154,7 @@ def run_finetune_job(
         r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        target_modules=target_modules,
         bias="none",
     )
     model = get_peft_model(base_model, peft_config)
@@ -160,7 +167,8 @@ def run_finetune_job(
         per_device_train_batch_size=batch_size,
         gradient_accumulation_steps=grad_accum,
         learning_rate=lr,
-        lr_scheduler_type="cosine",
+        lr_scheduler_type=lr_scheduler_type,
+        weight_decay=weight_decay,
         warmup_steps=15,
         logging_steps=10,
         save_strategy="no",
@@ -194,6 +202,7 @@ def run_finetune_job(
 
     # Save adapter to persistent volume
     persist_path = f"/vol/checkpoints/iteration_{iteration}"
+    os.makedirs(persist_path, exist_ok=True)
     model.save_pretrained(persist_path)
     tokenizer.save_pretrained(persist_path)
     volume.commit()
@@ -452,11 +461,17 @@ def run_finetune_job(
 
 @app.local_entrypoint()
 def main(
-    iteration: int = 7,
+    iteration: int = 12,
     epochs: int = 2,
     lr: float = 1.5e-4,
-    lora_r: int = 16,
+    lora_r: int = 32,
+    lora_alpha: int = 64,
+    lora_dropout: float = 0.05,
     batch_size: int = 4,
+    grad_accum: int = 4,
+    target_modules: str = "all",
+    lr_scheduler: str = "cosine",
+    weight_decay: float = 0.0,
 ):
     """Local runner that prepares datasets and dispatches fine-tuning to Modal GPU."""
     repo_root = Path(__file__).parent.parent
@@ -585,15 +600,24 @@ def main(
         },
     ]
 
+    if target_modules == "attn_only":
+        tm_list = ["q_proj", "v_proj"]
+    else:
+        tm_list = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
     hyperparams = {
         "iteration": iteration,
         "base_model_name": "Qwen/Qwen2.5-0.5B-Instruct",
         "num_epochs": epochs,
         "learning_rate": lr,
         "lora_r": lora_r,
-        "lora_alpha": lora_r * 2,
+        "lora_alpha": lora_alpha,
+        "lora_dropout": lora_dropout,
         "batch_size": batch_size,
-        "grad_accum": 4,
+        "grad_accum": grad_accum,
+        "target_modules": tm_list,
+        "lr_scheduler_type": lr_scheduler,
+        "weight_decay": weight_decay,
         "max_seq_len": 768,
     }
 
