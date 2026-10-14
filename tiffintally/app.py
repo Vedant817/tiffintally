@@ -1,7 +1,7 @@
 """
 FastAPI application for TiffinTally.
 Serves mobile-friendly kitchen UI, printable prep sheets, dues ledger, voice briefs,
-and active learning corrections.
+active learning corrections, and production kitchen economics & BOM calculator.
 """
 
 import json
@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from tiffintally.economics import KitchenEconomics
 from tiffintally.extract.gemma import GemmaExtractor
 from tiffintally.forecast import KitchenForecaster
 from tiffintally.parser import parse_chat_export
@@ -34,6 +35,9 @@ CURRENT_SHEET: Optional[DailyPrepSheet] = None
 CURRENT_EVENTS: list[OrderEvent] = []
 CURRENT_VOICE_BRIEF: Optional[VoiceBriefResult] = None
 CURRENT_FORECAST = None
+CURRENT_BOM = None
+CURRENT_ECONOMICS = None
+CURRENT_WASTE_ROI = None
 
 
 class CorrectionPayload(BaseModel):
@@ -72,6 +76,8 @@ def get_default_demo_events() -> list[OrderEvent]:
 
 def init_default_data():
     global CURRENT_SHEET, CURRENT_EVENTS, CURRENT_VOICE_BRIEF, CURRENT_FORECAST
+    global CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
+
     CURRENT_EVENTS = get_default_demo_events()
     CURRENT_SHEET = reconcile_orders(
         CURRENT_EVENTS, target_date="Tomorrow", cutoff_time=time(23, 0)
@@ -85,6 +91,12 @@ def init_default_data():
         target_date="tomorrow", confirmed_count=CURRENT_SHEET.total_thalis
     )
 
+    econ = KitchenEconomics()
+    cook_count = CURRENT_FORECAST.predicted_to_cook if CURRENT_FORECAST else CURRENT_SHEET.total_thalis
+    CURRENT_BOM = econ.compute_bom(cook_count)
+    CURRENT_ECONOMICS = econ.compute_ai_unit_economics(daily_messages=max(20, len(CURRENT_EVENTS)))
+    CURRENT_WASTE_ROI = econ.compute_waste_reduction_roi(daily_confirmed_plates=CURRENT_SHEET.total_thalis)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -92,13 +104,13 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="TiffinTally", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="TiffinTally", version="0.2.0", lifespan=lifespan)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "app": "tiffintally", "version": "0.1.0"}
+    return {"status": "ok", "app": "tiffintally", "version": "0.2.0", "guardrails": "active"}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -114,6 +126,7 @@ async def process(
     target_date: str = Form("tomorrow"),
 ):
     global CURRENT_SHEET, CURRENT_EVENTS, CURRENT_VOICE_BRIEF, CURRENT_FORECAST
+    global CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
 
     content = ""
     if chat_file and chat_file.filename:
@@ -149,6 +162,12 @@ async def process(
         target_date=target_date, confirmed_count=CURRENT_SHEET.total_thalis
     )
 
+    econ = KitchenEconomics()
+    cook_count = CURRENT_FORECAST.predicted_to_cook if CURRENT_FORECAST else CURRENT_SHEET.total_thalis
+    CURRENT_BOM = econ.compute_bom(cook_count)
+    CURRENT_ECONOMICS = econ.compute_ai_unit_economics(daily_messages=max(20, len(CURRENT_EVENTS)))
+    CURRENT_WASTE_ROI = econ.compute_waste_reduction_roi(daily_confirmed_plates=CURRENT_SHEET.total_thalis)
+
     return templates.TemplateResponse(
         request=request,
         name="prep_sheet.html",
@@ -156,6 +175,9 @@ async def process(
             "sheet": CURRENT_SHEET,
             "voice_brief": CURRENT_VOICE_BRIEF,
             "forecast": CURRENT_FORECAST,
+            "bom": CURRENT_BOM,
+            "economics": CURRENT_ECONOMICS,
+            "waste_roi": CURRENT_WASTE_ROI,
             "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
         },
     )
@@ -164,6 +186,7 @@ async def process(
 @app.get("/prep", response_class=HTMLResponse)
 def view_prep_sheet(request: Request):
     global CURRENT_SHEET, CURRENT_VOICE_BRIEF, CURRENT_FORECAST
+    global CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
     if not CURRENT_SHEET:
         init_default_data()
 
@@ -174,6 +197,9 @@ def view_prep_sheet(request: Request):
             "sheet": CURRENT_SHEET,
             "voice_brief": CURRENT_VOICE_BRIEF,
             "forecast": CURRENT_FORECAST,
+            "bom": CURRENT_BOM,
+            "economics": CURRENT_ECONOMICS,
+            "waste_roi": CURRENT_WASTE_ROI,
             "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
         },
     )
@@ -208,6 +234,10 @@ def forecast_view(
     forecaster = KitchenForecaster()
     result = forecaster.how_many_to_cook(target_date=target_dt, confirmed_count=confirmed)
 
+    econ = KitchenEconomics()
+    bom = econ.compute_bom(result.predicted_to_cook)
+    roi = econ.compute_waste_reduction_roi(daily_confirmed_plates=confirmed)
+
     return templates.TemplateResponse(
         request=request,
         name="forecast.html",
@@ -215,6 +245,8 @@ def forecast_view(
             "target_date": target_dt,
             "confirmed": confirmed,
             "result": result,
+            "bom": bom,
+            "roi": roi,
         },
     )
 

@@ -111,25 +111,29 @@
 </div>
 {% endif %}
 
-<!-- Review Section (Low Confidence & Late Orders) -->
+<!-- Review Section (Low Confidence & Late Orders & Guardrail Alerts) -->
 {% if sheet.unresolved_reviews or sheet.late_orders %}
 <div class="card no-print" style="border: 2px dashed #ff9800; background: #fffde7;">
   <h3 style="font-size: 1.05rem; color: #e65100; margin-bottom: 6px;">
     🔍 Human Review & Corrections Needed ({{ sheet.unresolved_reviews|length + sheet.late_orders|length }})
   </h3>
   <p style="font-size: 0.85rem; color: #666; margin-bottom: 12px;">
-    Highlighted items are either low-confidence or received after kitchen cutoff. Fix them below; corrections are saved to <code>data/private/corrections.jsonl</code>.
+    Highlighted items are either low-confidence, received after kitchen cutoff, or flagged by security guardrails. Fix them below; corrections are saved to <code>data/private/corrections.jsonl</code>.
   </p>
 
   {% for rev in sheet.unresolved_reviews + sheet.late_orders %}
   <div id="correction-row-{{ loop.index }}" style="background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid #ffd54f;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
       <strong>{{ rev.customer }}</strong>
-      {% if rev.is_late %}
-        <span class="badge badge-warning">LATE (After Cutoff)</span>
-      {% else %}
-        <span class="badge badge-warning">Low Confidence ({{ (rev.confidence * 100)|round }}%)</span>
-      {% endif %}
+      <div>
+        {% if rev.is_late %}
+          <span class="badge badge-warning">LATE (After Cutoff)</span>
+        {% elif rev.audit_flags %}
+          <span class="badge badge-warning">Guardrail Alert ({{ rev.audit_flags[0] }})</span>
+        {% else %}
+          <span class="badge badge-warning">Low Confidence ({{ (rev.confidence * 100)|round }}%)</span>
+        {% endif %}
+      </div>
     </div>
     <div style="font-size: 0.88rem; color: #555; margin-bottom: 8px; font-family: monospace;">
       "{{ rev.raw_text }}"
@@ -146,13 +150,76 @@
         <option value="change" {% if rev.action == 'change' %}selected{% endif %}>Change</option>
         <option value="cancel" {% if rev.action == 'cancel' %}selected{% endif %}>Cancel</option>
       </select>
-      <button class="btn btn-primary" onclick="saveCorrection('{{ rev.customer }}', '{{ rev.raw_text|replace("'", "\\'") }}', {{ loop.index }})" style="padding: 4px 10px; font-size: 0.8rem;">
+      <button class="btn btn-primary"
+              data-customer="{{ rev.customer }}"
+              data-raw="{{ rev.raw_text }}"
+              data-index="{{ loop.index }}"
+              onclick="saveCorrectionFromBtn(this)"
+              style="padding: 4px 10px; font-size: 0.8rem;">
         💾 Save Correction
       </button>
       <span id="saved-msg-{{ loop.index }}" style="font-size: 0.8rem; color: green; display: none;">Saved!</span>
     </div>
   </div>
   {% endfor %}
+</div>
+{% endif %}
+
+<!-- Grocery Bill of Materials (BOM) & Kitchen Economics -->
+{% if bom %}
+<div class="card" style="border-top: 4px solid #4338ca;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+    <div>
+      <h2 style="font-size: 1.2rem; color: #312e81; margin: 0;">🛒 Kitchen Grocery Requisition (Bill of Materials)</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin: 2px 0 0 0;">
+        Automated ingredient scaling for {{ bom.total_thalis }} thalis @ ₹{{ bom.cost_per_plate }}/plate raw cost
+      </p>
+    </div>
+    <div style="text-align: right;">
+      <span style="font-size: 1.1rem; font-weight: 700; color: #4338ca;">₹{{ bom.total_raw_material_cost }}</span>
+      <span style="font-size: 0.8rem; color: #6b7280; display: block;">Est. Grocery Spend</span>
+    </div>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-bottom: 14px;">
+    <thead>
+      <tr style="border-bottom: 2px solid var(--border); text-align: left; background: #f8fafc;">
+        <th style="padding: 8px 10px;">Item Name</th>
+        <th style="padding: 8px 10px; text-align: right;">Required Qty</th>
+        <th style="padding: 8px 10px; text-align: right;">Est. Cost (INR)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in bom.groceries %}
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 8px 10px; font-weight: 500;">{{ item.name }}</td>
+        <td style="padding: 8px 10px; text-align: right; font-weight: 600;">{{ item.quantity }} {{ item.unit }}</td>
+        <td style="padding: 8px 10px; text-align: right; color: #4b5563;">₹{{ item.est_cost_inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Unit Economics ROI Highlights -->
+  {% if waste_roi and economics %}
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; background: #eef2ff; padding: 12px; border-radius: 8px;">
+    <div>
+      <div style="font-size: 0.78rem; text-transform: uppercase; color: #4338ca; font-weight: 700;">Food Waste Saved (TabPFN)</div>
+      <div style="font-size: 1.25rem; font-weight: 800; color: #1e1b4b;">₹{{ waste_roi.monthly_waste_cost_saved_inr|round|int }} / month</div>
+      <div style="font-size: 0.78rem; color: #475569;">{{ waste_roi.daily_waste_plates_saved|round(1) }} plates saved per day</div>
+    </div>
+    <div>
+      <div style="font-size: 0.78rem; text-transform: uppercase; color: #4338ca; font-weight: 700;">AI Marginal API Cost</div>
+      <div style="font-size: 1.25rem; font-weight: 800; color: #10b981;">₹0.00 / query</div>
+      <div style="font-size: 0.78rem; color: #475569;">Fine-Tuned Open SLM on local CPU/device</div>
+    </div>
+    <div>
+      <div style="font-size: 0.78rem; text-transform: uppercase; color: #4338ca; font-weight: 700;">Customer Privacy Flywheel</div>
+      <div style="font-size: 1.25rem; font-weight: 800; color: #1e1b4b;">100% Local Guard</div>
+      <div style="font-size: 0.78rem; color: #475569;">Zero phone numbers leaked to cloud APIs</div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -208,7 +275,11 @@
 
 {% block scripts %}
 <script>
-async function saveCorrection(customer, rawText, index) {
+async function saveCorrectionFromBtn(btn) {
+  const customer = btn.getAttribute('data-customer');
+  const rawText = btn.getAttribute('data-raw');
+  const index = btn.getAttribute('data-index');
+
   const meal = document.getElementById(`meal-${index}`).value;
   const qty = parseInt(document.getElementById(`qty-${index}`).value, 10);
   const action = document.getElementById(`action-${index}`).value;
