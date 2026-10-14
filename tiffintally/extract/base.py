@@ -374,6 +374,23 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
             )
         return events
 
+    # No meal and no plate: do not invent a lunch. Voice stubs land here.
+    has_plate = any(
+        word in lower for word in ("thali", "plate", "dabba", "tiffin", "roti", "rotli")
+    )
+    if not has_lunch and not has_dinner and not has_plate and not has_cancel:
+        return [
+            OrderEvent(
+                customer=sender,
+                date=spoken_date,
+                meal="unspecified",
+                qty=0,
+                action="none",
+                raw_text=raw_text,
+                confidence=0.99,
+            )
+        ]
+
     # Single meal or simple order
     meal_type = "dinner" if (has_dinner and not has_lunch) else "lunch"
     action = "cancel" if has_cancel else "new"

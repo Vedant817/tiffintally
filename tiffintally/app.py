@@ -100,7 +100,7 @@ def fill_session(
     session.voice_brief = VoiceBriefService().generate_morning_brief(session.sheet)
     forecaster = KitchenForecaster()
     session.forecast = forecaster.how_many_to_cook(
-        target_date=(datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
+        target_date=session.sheet.date,
         confirmed_count=session.sheet.total_thalis,
     )
     econ = KitchenEconomics()
@@ -273,7 +273,7 @@ def view_ledger(request: Request):
 def forecast_view(
     request: Request,
     date: Optional[str] = None,
-    confirmed: int = 40,
+    confirmed: int = 0,
 ):
     target_dt = date or (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
     forecaster = KitchenForecaster()

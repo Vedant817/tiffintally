@@ -179,7 +179,7 @@ class KitchenForecaster:
     def how_many_to_cook(
         self,
         target_date: Optional[str] = None,
-        confirmed_count: int = 40,
+        confirmed_count: int = 0,
         history_csv: Optional[Path] = None,
     ) -> ForecastResult:
         """

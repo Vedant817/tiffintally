@@ -87,7 +87,9 @@ def parse(
 @app.command()
 def forecast(
     date: Optional[str] = typer.Option(None, "--date", "-d", help="Target date (YYYY-MM-DD)"),
-    confirmed: int = typer.Option(40, "--confirmed", "-c", help="Confirmed orders count"),
+    confirmed: int = typer.Option(
+        0, "--confirmed", "-c", help="Confirmed orders from the chat. Defaults to 0."
+    ),
 ):
     """Suggest plates from synthetic history. TabPFN only if its key is set."""
     from tiffintally.forecast import KitchenForecaster

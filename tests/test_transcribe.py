@@ -18,6 +18,11 @@ def test_transcribe_offline_fallback(tmp_path):
     assert result.backend_used == "demo-stub"
     assert "not transcribed" in result.transcribed_text.lower()
     assert "aunty kal lunch cancel" not in result.transcribed_text.lower()
+    assert "voice_cancel_note" not in result.transcribed_text.lower()
+    from tiffintally.extract.base import heuristic_extract
+
+    events = heuristic_extract(result.transcribed_text, "Rohan")
+    assert [(event.action, event.qty) for event in events] == [("none", 0)]
     assert result.confidence == 0.0
 
 

@@ -77,6 +77,21 @@ def test_reconcile_ledger_reminders_formatting():
     assert "₹360" in entry.draft_reminder
 
 
+def test_review_row_is_not_billed():
+    events = [
+        OrderEvent(
+            customer="Guest",
+            date="unspecified",
+            meal="lunch",
+            qty=2,
+            action="new",
+            needs_review=True,
+            audit_flags=["date_unresolved"],
+        )
+    ]
+    assert reconcile_ledger(events, price_per_thali=80.0) == {}
+
+
 def test_target_box_accepts_tomorrow_typos():
     clock = datetime(2026, 10, 15, 8, 0)
     assert calendar_day("tomrw", clock).isoformat() == "2026-10-16"

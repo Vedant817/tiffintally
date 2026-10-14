@@ -110,9 +110,9 @@ class VoiceNoteTranscriber:
         data = resp.json()
         return data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
-    def _offline_transcript(self, filename: str) -> str:
+    def _offline_transcript(self, _filename: str) -> str:
         """Demo stub. The filename is not a transcript and must not become an order."""
         return (
             "Demo stub: no speech recogniser is configured, so this file was not transcribed. "
-            f"Filename was {filename!r}. Paste the customer's words as text."
+            "Paste the customer's words as text."
         )

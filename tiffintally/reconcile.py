@@ -327,6 +327,15 @@ def reconcile_ledger(
     prev_bals = previous_balances or {}
 
     for ev in events:
+        # A row the sheet refused (no date, needs a human) is not a bill.
+        if ev.needs_review or "date_unresolved" in ev.audit_flags:
+            continue
+        if ev.action in {"new", "change"} and (ev.date or "").strip().lower() in {
+            "",
+            "unspecified",
+            "ambiguous",
+        }:
+            continue
         cust = ev.customer.strip()
         cust_key = cust.lower()
 

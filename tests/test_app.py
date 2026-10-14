@@ -55,6 +55,30 @@ def test_forecast_view():
     assert "Not a cook instruction" in resp.text
 
 
+def test_forecast_page_starts_from_zero_confirmed():
+    resp = client.get("/forecast")
+    assert resp.status_code == 200
+    assert 'value="0"' in resp.text
+    assert ">40<" not in resp.text
+
+
+def test_prep_forecast_uses_the_sheet_weekday():
+    raw = "15/10/26, 8:14 pm - Neha: aaj raat 1 dinner"
+    resp = client.post("/process", data={"raw_text": raw, "target_date": "2026-10-15"})
+    assert "Kitchen Prep Sheet: 2026-10-15" in resp.text
+    assert "Based on Thursday history" in resp.text
+    assert "1 confirmed orders" in resp.text
+
+
+def test_unresolved_message_is_not_a_bill():
+    raw = "Ravi: kal lunch 2"
+    resp = client.post("/process", data={"raw_text": raw, "target_date": "tomorrow"})
+    assert "TOTAL THALIS" in resp.text
+    ledger = client.get("/ledger")
+    assert "₹160" not in ledger.text
+    assert "Guest" not in ledger.text
+
+
 def test_process_chat_post():
     from datetime import datetime
 
