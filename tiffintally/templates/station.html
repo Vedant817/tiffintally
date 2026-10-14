@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Kitchen Station KDS | TiffinTally{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+  <div>
+    <h1 style="font-size: 1.6rem; display: flex; align-items: center; gap: 8px;">
+      🍳 Kitchen Display Station (KDS)
+      <span class="badge badge-success" style="font-size: 0.8rem;">Live Prep Mode</span>
+    </h1>
+    <p style="color: var(--text-muted); font-size: 0.9rem;">
+      Touch-optimized packing list for {{ sheet.date }}
+    </p>
+  </div>
+  <div style="display: flex; gap: 10px;">
+    <button onclick="resetPackingState()" class="btn btn-outline" style="font-size: 0.85rem;">
+      🔄 Reset Packed Status
+    </button>
+    <a href="/prep" class="btn btn-secondary" style="font-size: 0.85rem;">
+      📄 Standard Sheet
+    </a>
+  </div>
+</div>
+
+<!-- Packing Progress Bar -->
+<div class="card" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #fff; padding: 18px;">
+  <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+    <div>
+      <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #a5b4fc; font-weight: 700;">PACKING COMPLETION</span>
+      <div style="font-size: 1.8rem; font-weight: 800;" id="progress-text">0 / {{ sheet.packing_labels|length }} Containers Packed</div>
+    </div>
+    <div style="text-align: right;">
+      <span style="font-size: 1.4rem; font-weight: 700; color: #4ade80;" id="progress-pct">0%</span>
+      <span style="display: block; font-size: 0.8rem; color: #c7d2fe;">Total Thalis: {{ sheet.total_thalis }}</span>
+    </div>
+  </div>
+  <div style="width: 100%; height: 12px; background: rgba(255,255,255,0.15); border-radius: 999px; overflow: hidden;">
+    <div id="progress-bar" style="width: 0%; height: 100%; background: #4ade80; border-radius: 999px; transition: width 0.3s ease;"></div>
+  </div>
+</div>
+
+<!-- Quick Station Filter Tabs -->
+<div style="display: flex; gap: 8px; margin-bottom: 16px; overflow-x: auto; padding-bottom: 4px;">
+  <button class="btn btn-primary filter-tab active" onclick="filterStation('all', this)">
+    All Orders ({{ sheet.packing_labels|length }})
+  </button>
+  <button class="btn btn-secondary filter-tab" onclick="filterStation('lunch', this)">
+    🥗 Lunch Only ({{ sheet.total_lunch }})
+  </button>
+  <button class="btn btn-secondary filter-tab" onclick="filterStation('dinner', this)">
+    🌙 Dinner Only ({{ sheet.total_dinner }})
+  </button>
+  <button class="btn btn-secondary filter-tab" onclick="filterStation('mod', this)">
+    ⚠️ Special Modifications ({{ sheet.special_mods|length }})
+  </button>
+</div>
+
+<!-- Touch-Friendly Packing Cards Grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;" id="packing-grid">
+  {% for label in sheet.packing_labels %}
+  <div class="card packing-card"
+       id="pack-card-{{ loop.index }}"
+       data-meal="{{ label.meal }}"
+       data-has-mod="{% if label.mods %}true{% else %}false{% endif %}"
+       style="margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; border-left: 6px solid {% if label.meal == 'lunch' %}#2e7d32{% else %}#1565c0{% endif %}; transition: all 0.2s;">
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+        <h3 style="font-size: 1.15rem; font-weight: 700; margin: 0;">{{ label.customer }}</h3>
+        <span class="badge" style="background: {% if label.meal == 'lunch' %}#e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9;{% else %}#e3f2fd; color: #1565c0; border: 1px solid #bbdefb;{% endif %} text-transform: uppercase;">
+          {{ label.meal }}
+        </span>
+      </div>
+
+      <div style="font-size: 0.85rem; color: #555; margin-bottom: 10px;">
+        {{ label.items|join(", ") }}
+      </div>
+
+      {% if label.mods %}
+      <div style="background: #fff3e0; border: 1px solid #ffe082; padding: 6px 10px; border-radius: 6px; font-size: 0.85rem; color: #d84315; font-weight: 700; margin-bottom: 10px;">
+        ⚠️ {{ label.mods|join("; ") }}
+      </div>
+      {% endif %}
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; padding-top: 10px; margin-top: 6px;">
+      <div style="font-size: 1.25rem; font-weight: 800; color: #1a1a1a;">
+        {{ label.qty }} <span style="font-size: 0.8rem; color: #777; font-weight: 500;">thali{% if label.qty > 1 %}s{% endif %}</span>
+      </div>
+      <button class="btn btn-outline pack-toggle-btn"
+              onclick="togglePacked({{ loop.index }})"
+              id="btn-pack-{{ loop.index }}"
+              style="min-width: 110px; font-size: 0.85rem;">
+        ⚪ Pack
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TOTAL_CONTAINERS = {{ sheet.packing_labels|length }};
+let packedSet = new Set();
+
+function togglePacked(index) {
+  const card = document.getElementById(`pack-card-${index}`);
+  const btn = document.getElementById(`btn-pack-${index}`);
+
+  if (packedSet.has(index)) {
+    packedSet.delete(index);
+    card.style.opacity = "1";
+    card.style.background = "#fff";
+    btn.className = "btn btn-outline pack-toggle-btn";
+    btn.innerHTML = "⚪ Pack";
+  } else {
+    packedSet.add(index);
+    card.style.opacity = "0.5";
+    card.style.background = "#f0fdf4";
+    btn.className = "btn btn-primary pack-toggle-btn";
+    btn.style.background = "#22c55e";
+    btn.innerHTML = "✅ Packed";
+  }
+
+  updateProgress();
+}
+
+function updateProgress() {
+  const count = packedSet.size;
+  const pct = TOTAL_CONTAINERS > 0 ? Math.round((count / TOTAL_CONTAINERS) * 100) : 0;
+
+  document.getElementById("progress-text").innerText = `${count} / ${TOTAL_CONTAINERS} Containers Packed`;
+  document.getElementById("progress-pct").innerText = `${pct}%`;
+  document.getElementById("progress-bar").style.width = `${pct}%`;
+}
+
+function resetPackingState() {
+  packedSet.clear();
+  document.querySelectorAll(".packing-card").forEach((card, idx) => {
+    card.style.opacity = "1";
+    card.style.background = "#fff";
+  });
+  document.querySelectorAll(".pack-toggle-btn").forEach(btn => {
+    btn.className = "btn btn-outline pack-toggle-btn";
+    btn.style.background = "";
+    btn.innerHTML = "⚪ Pack";
+  });
+  updateProgress();
+}
+
+function filterStation(type, btn) {
+  document.querySelectorAll(".filter-tab").forEach(b => {
+    b.className = "btn btn-secondary filter-tab";
+  });
+  btn.className = "btn btn-primary filter-tab active";
+
+  document.querySelectorAll(".packing-card").forEach(card => {
+    const meal = card.getAttribute("data-meal");
+    const hasMod = card.getAttribute("data-has-mod") === "true";
+
+    if (type === "all") {
+      card.style.display = "flex";
+    } else if (type === "lunch" && meal === "lunch") {
+      card.style.display = "flex";
+    } else if (type === "dinner" && meal === "dinner") {
+      card.style.display = "flex";
+    } else if (type === "mod" && hasMod) {
+      card.style.display = "flex";
+    } else {
+      card.style.display = "none";
+    }
+  });
+}
+</script>
+{% endblock %}
