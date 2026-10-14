@@ -2,7 +2,8 @@
 Generate rich synthetic WhatsApp tiffin order dataset in Hinglish, English, and Hindi.
 Expanded with realistic variations: cancellations, multi-person, modifications,
 payments, chitchat, pauses, typos, delivery timings, dual-meal orders, Devanagari script,
-and lexical Hindi number words ("ek", "do", "teen", "chaar").
+lexical Hindi number words ("ek", "do", "teen", "chaar"), regional code-switching
+(Marathi, Gujarati), delivery notes, and speech-to-text / ASR phonetic artifacts.
 """
 
 import json
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 SEED = 42
-TARGET_COUNT = 1350
+TARGET_COUNT = 1600
 OUTPUT_DIR = Path("data/synthetic")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -274,6 +275,51 @@ TEMPLATES_DEVANAGARI = [
     ("आज रात १ डब्बा", "dinner", 1, ["thali"], [], "new"),
 ]
 
+# 12. Regional Dialects & Code-Switching (Marathi / Gujarati / Bambaiya)
+TEMPLATES_REGIONAL = [
+    ("aunty aaj cha dabba pathva 1 plate lunch", "lunch", 1, ["thali"], [], "new"),
+    ("kal donhi vela dabba pahije 1 1", "both", 1, ["thali"], [], "new"),
+    ("aaj cha dinner cancel kara please aunty", "dinner", 0, [], [], "cancel"),
+    ("ek thali lunch ani 2 extra chapati", "lunch", 1, ["thali"], ["extra chapati"], "new"),
+    ("aaj dopaharcha tiffin nahi pahije", "lunch", 0, [], [], "cancel"),
+    ("kal bapore 1 thaali moklo please", "lunch", 1, ["thali"], [], "new"),
+    ("bina kaanda lasan 2 plate lunch", "lunch", 2, ["thali"], ["no onion", "no garlic"], "new"),
+    ("raat nu tiffin cancel karjo aunty", "dinner", 0, [], [], "cancel"),
+    ("shaak rotli 2 dabba please lunch", "lunch", 2, ["thali"], [], "new"),
+    ("rotli vadhare aapjo ek thali sathe", "lunch", 1, ["thali"], ["extra roti"], "new"),
+    ("aunty ekdum kadak roti bhejna 1 thali dinner", "dinner", 1, ["thali"], ["kadak roti"], "new"),
+    ("dono time dabba chalne do regular", "both", 1, ["thali"], [], "new"),
+]
+
+# 13. Delivery Instructions & Building Notes
+TEMPLATES_DELIVERY_NOTES = [
+    ("1 lunch dabba, security cabin me rakh dena please", "lunch", 1, ["thali"], [], "new"),
+    ("dinner 2 thali, doorbell mat bajana baby so raha hai", "dinner", 2, ["thali"], [], "new"),
+    ("lunch 1 plate, deliver at gate number 3", "lunch", 1, ["thali"], [], "new"),
+    ("aaj raat 1 dabba 8 baje tak bhej do lift ke paas", "dinner", 1, ["thali"], [], "new"),
+    ("please deliver lunch 2 plates to 4th floor", "lunch", 2, ["thali"], [], "new"),
+    ("tiffin gate pe guard ko de dena aunty, 1 lunch", "lunch", 1, ["thali"], [], "new"),
+]
+
+# 14. Speech-to-Text / Whisper ASR Phonetic Errors
+TEMPLATES_WHISPER_ASR = [
+    ("to plate lunch please", "lunch", 2, ["thali"], [], "new"),
+    ("for thali dinner tonight", "dinner", 4, ["thali"], [], "new"),
+    ("one tifin for tomorrow lunch", "lunch", 1, ["thali"], [], "new"),
+    ("daba cancel kar do aaj raat ka", "dinner", 0, [], [], "cancel"),
+    ("tree thali lunch tomorrow", "lunch", 3, ["thali"], [], "new"),
+    ("send to lunch box aunty", "lunch", 2, ["thali"], [], "new"),
+]
+
+# 15. Explicit Multi-Day Date Ranges
+TEMPLATES_DATE_RANGES = [
+    ("Monday se Wednesday tak tiffin band rakhna", "both", 0, [], [], "pause"),
+    ("going out of town from tomorrow till Friday, pause please", "both", 0, [], [], "pause"),
+    ("Diwali vacation tak tiffin off please", "both", 0, [], [], "pause"),
+    ("pause till next Monday please aunty", "both", 0, [], [], "pause"),
+    ("out of station for 4 days, stop tiffin", "both", 0, [], [], "pause"),
+]
+
 
 def generate_synthetic_dataset(
     target_count: int = TARGET_COUNT, seed: int = SEED
@@ -294,6 +340,10 @@ def generate_synthetic_dataset(
         ("chitchat", TEMPLATES_CHITCHAT, 80),
         ("typos", TEMPLATES_TYPOS, 50),
         ("devanagari", TEMPLATES_DEVANAGARI, 100),
+        ("regional", TEMPLATES_REGIONAL, 100),
+        ("delivery_notes", TEMPLATES_DELIVERY_NOTES, 60),
+        ("whisper_asr", TEMPLATES_WHISPER_ASR, 50),
+        ("date_ranges", TEMPLATES_DATE_RANGES, 40),
     ]
 
     for _cat_name, templates, count in categories:
