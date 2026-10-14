@@ -28,6 +28,13 @@ dev = [
     "ruff>=0.6.8",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.6.8",
+]
+
 [project.scripts]
 tiffintally = "tiffintally.cli:app"
 
