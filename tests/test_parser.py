@@ -102,3 +102,29 @@ def test_system_notification_detection():
     assert is_system_notification("Messages and calls are end-to-end encrypted.") is True
     assert is_system_notification("Ravi left the group") is True
     assert is_system_notification("Kal lunch bhejo") is False
+    assert is_system_notification("kal 1 lunch, mera roommate left for home") is False
+
+
+def test_dot_and_iso_headers_are_separate_messages():
+    content = (
+        "13.10.26, 22:17 - Neha: kal 1 lunch, mera roommate left for home\n"
+        "2026-10-13 22:18 - Amit: aaj raat 1 dinner\n"
+    )
+    messages = parse_chat_export(content)
+    assert len(messages) == 2
+    assert messages[0].sender == "Neha"
+    assert messages[0].is_system is False
+    assert "roommate left" in messages[0].text
+    assert messages[0].timestamp.day == 13
+    assert messages[0].timestamp_unparsed is False
+    assert messages[1].sender == "Amit"
+    assert "aaj raat" in messages[1].text
+    assert messages[1].timestamp.hour == 22
+
+
+def test_unparsed_header_is_flagged():
+    content = "32/13/26, 22:17 - Neha: kal lunch 1\n"
+    messages = parse_chat_export(content)
+    assert len(messages) == 1
+    assert messages[0].timestamp_unparsed is True
+    assert messages[0].sender == "Neha"

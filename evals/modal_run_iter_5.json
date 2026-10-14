@@ -239,5 +239,7 @@
       "passed": true,
       "raw_output": "{\"events\": [{\"customer\": \"Sneha\", \"date\": \"tomorrow\", \"meal\": \"unspecified\", \"qty\": 0, \"items\": [], \"mods\": [], \"action\": \"none\", \"payment_note\": null, \"payment_amount\": null, \"sec"
     }
-  ]
+  ],
+  "retracted": true,
+  "retraction_reason": "Train/test text overlap and wrong today/tomorrow labels. Exact-match figures are not valid. Model was Qwen2.5-0.5B on Modal, not Tinker."
 }

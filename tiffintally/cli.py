@@ -3,8 +3,8 @@ TiffinTally CLI application.
 Commands:
 - tiffintally serve: Run the FastAPI web application
 - tiffintally parse <file>: Parse WhatsApp export and display prep sheet
-- tiffintally forecast: Run TabPFN kitchen forecast
-- tiffintally benchmark-edge: Run edge quantized hardware benchmark
+- tiffintally forecast: Fit a plate suggestion on synthetic history
+- tiffintally benchmark-edge: Refuse. No on-device measurement exists
 - tiffintally export-edge: Export deployment manifests and configs for Ollama / GGUF
 - tiffintally export-sft: Export human cook corrections into ChatML SFT training batch
 - tiffintally eval all: Run honest empirical evaluations
@@ -89,7 +89,7 @@ def forecast(
     date: Optional[str] = typer.Option(None, "--date", "-d", help="Target date (YYYY-MM-DD)"),
     confirmed: int = typer.Option(40, "--confirmed", "-c", help="Confirmed orders count"),
 ):
-    """Predict plates to cook using TabPFN regression."""
+    """Suggest plates from synthetic history. TabPFN only if its key is set."""
     from tiffintally.forecast import KitchenForecaster
 
     forecaster = KitchenForecaster()
@@ -114,32 +114,16 @@ def benchmark_edge(
     ),
     queries: int = typer.Option(10, "--queries", "-q", help="Number of benchmark queries"),
 ):
-    """Benchmark local edge inference latency, RAM footprint, and throughput."""
-    from tiffintally.edge import TIER_CATALOG, EdgeBenchmarkRunner
+    """Refuse to print edge latency or accuracy. No on-device run exists."""
+    from tiffintally.edge import EdgeNotMeasured
 
-    runner = EdgeBenchmarkRunner()
-    tiers_to_run = list(TIER_CATALOG.keys()) if tier == "all" else [tier]
-
-    table = Table(title="Offline Edge Quantized Model Benchmarks")
-    table.add_column("Tier", style="cyan")
-    table.add_column("Target Hardware", style="magenta")
-    table.add_column("Adapter Size", justify="right", style="green")
-    table.add_column("P50 Latency", justify="right", style="yellow")
-    table.add_column("Est. RAM", justify="right", style="blue")
-    table.add_column("Real EM Acc", justify="right", style="bold green")
-
-    for t in tiers_to_run:
-        res = runner.run_benchmark(tier_key=t, num_queries=queries)
-        table.add_row(
-            res.tier,
-            res.hardware,
-            f"{res.adapter_size_mb} MB",
-            f"{res.p50_latency_ms} ms",
-            f"{res.estimated_ram_mb} MB",
-            f"{res.exact_match_accuracy_pct}%",
-        )
-
-    console.print(table)
+    del tier, queries
+    console.print(f"[red]{EdgeNotMeasured.__doc__}[/red]")
+    console.print(
+        "[red]benchmark-edge will not print latency, RAM, or accuracy. "
+        "Those figures were catalog constants.[/red]"
+    )
+    raise typer.Exit(2)
 
 
 @app.command("export-edge")
@@ -154,7 +138,7 @@ def export_edge(
 
     exporter = EdgeExporter(output_root=output_dir)
     res = exporter.export_tier(tier)
-    console.print(f"[bold green]Exported {tier} bundle successfully![/bold green]")
+    console.print(f"[yellow]Edge export status: {res['status']}. No weights were written.[/yellow]")
     console.print(f"Manifest: [cyan]{res['manifest_file']}[/cyan]")
     console.print(f"Directory: [cyan]{res['directory']}[/cyan]")
 
@@ -175,7 +159,7 @@ def export_sft(
 
 @eval_app.command("all")
 def eval_all():
-    """Run all benchmarks: Gemma, Tinker, Held-out Real data, and TabPFN."""
+    """Run the eval suite. Fallback scores are labelled. There is no real-message set in git."""
     from tiffintally.eval import run_full_evaluation_suite
 
     console.print("[bold yellow]Running comprehensive TiffinTally evaluations...[/bold yellow]")

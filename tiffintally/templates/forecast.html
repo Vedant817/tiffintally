@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}TabPFN Kitchen Forecast | TiffinTally{% endblock %}
+{% block title %}Kitchen Cook Forecast | TiffinTally{% endblock %}
 
 {% block content %}
 <div class="card" style="border-left: 4px solid #2e7d32;">
-  <h1 style="font-size: 1.5rem; margin-bottom: 8px;">📈 Prior Labs TabPFN Kitchen Cook Forecast</h1>
+  <h1 style="font-size: 1.5rem; margin-bottom: 8px;">📈 Kitchen Cook Forecast</h1>
   <p style="color: var(--text-muted); font-size: 0.95rem;">
-    Predict tomorrow's total plates to cook by combining confirmed WhatsApp orders with historical day-of-week seasonality, Indian holidays, and late doorstep walk-in patterns.
+    Suggests a plate count from confirmed orders plus a model fit on synthetic history.
+    Without a TabPFN key this is scikit-learn HistGradientBoosting, not TabPFN.
+    {% if result %}Model used: {{ result.model_used }}.{% endif %}
   </p>
 </div>
 
@@ -33,7 +35,8 @@
     <div style="font-size: 2.2rem; font-weight: 800; color: #555;">{{ result.confirmed_orders }}</div>
   </div>
   <div class="card" style="text-align: center; border-top: 4px solid #e65100;">
-    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">PREDICTED TO COOK</div>
+    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">SYNTHETIC-HISTORY SUGGESTION</div>
+    <div style="font-size: 0.75rem; color: #9a3412; margin-bottom: 4px;">Not a cook instruction</div>
     <div style="font-size: 2.2rem; font-weight: 800; color: #e65100;">{{ result.predicted_to_cook }}</div>
   </div>
   <div class="card" style="text-align: center; border-top: 4px solid #1976d2;">

@@ -1,14 +1,13 @@
 """
-Edge Quantized Export & Benchmarking Suite for TiffinTally.
-Validates local offline inference for Edge Champion (8.6 MB, 295ms),
-Mid-Size VPS (35.2 MB, 459ms), and Cloud Champion (70.4 MB, 466ms).
-Enables zero-cloud-cost, privacy-first deployment on Raspberry Pi 5 or local kitchen PC.
+Edge catalog and export hooks.
+
+No Raspberry Pi, GGUF, or quantized-model run is stored in this repo.
+benchmark-edge refuses instead of printing constants.
 """
 
 import json
 import logging
-import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -26,12 +25,12 @@ class EdgeModelSpec:
     lora_alpha: int
     target_modules: list[str]
     quantization_format: str
-    real_order_em_accuracy: float
+    real_order_em_accuracy: Optional[float]
 
 
 TIER_CATALOG: dict[str, EdgeModelSpec] = {
     "tier1_edge": EdgeModelSpec(
-        tier="Tier 1: Edge Champion (Iter 30)",
+        tier="tier1 config only, not measured on a device",
         target_hardware="Raspberry Pi 5 / Android Termux / Local Cook Laptop",
         parameter_count_millions=2.16,
         adapter_size_mb=8.64,
@@ -40,10 +39,10 @@ TIER_CATALOG: dict[str, EdgeModelSpec] = {
         lora_alpha=16,
         target_modules=["q_proj", "v_proj"],
         quantization_format="q4_k_m / int4 GGUF",
-        real_order_em_accuracy=100.0,
+        real_order_em_accuracy=None,
     ),
     "tier2_midsize": EdgeModelSpec(
-        tier="Tier 2: Mid-Size Champion (Iter 28)",
+        tier="tier2 config only, not measured on a device",
         target_hardware="$5/mo VPS / Hetzner Cloud CPU",
         parameter_count_millions=8.80,
         adapter_size_mb=35.20,
@@ -60,10 +59,10 @@ TIER_CATALOG: dict[str, EdgeModelSpec] = {
             "down_proj",
         ],
         quantization_format="q8_0 / int8 GGUF",
-        real_order_em_accuracy=100.0,
+        real_order_em_accuracy=None,
     ),
     "tier3_cloud": EdgeModelSpec(
-        tier="Tier 3: Cloud Grand Champion (Iter 25)",
+        tier="tier3 config only, not measured on a device",
         target_hardware="Modal T4/A10G GPU / High-throughput Cloud",
         parameter_count_millions=17.60,
         adapter_size_mb=70.40,
@@ -80,7 +79,7 @@ TIER_CATALOG: dict[str, EdgeModelSpec] = {
             "down_proj",
         ],
         quantization_format="fp16 / bfloat16 safetensors",
-        real_order_em_accuracy=100.0,
+        real_order_em_accuracy=None,
     ),
 }
 
@@ -100,8 +99,12 @@ class EdgeBenchmarkResult:
     success: bool
 
 
+class EdgeNotMeasured(RuntimeError):
+    """No on-device measurement exists for this tier."""
+
+
 class EdgeBenchmarkRunner:
-    """Simulates and measures local edge quantized execution."""
+    """Refuses to invent latency, RAM, or accuracy. No on-device run exists."""
 
     def __init__(self, catalog: Optional[dict[str, EdgeModelSpec]] = None):
         self.catalog = catalog or TIER_CATALOG
@@ -111,40 +114,12 @@ class EdgeBenchmarkRunner:
         tier_key: str = "tier1_edge",
         num_queries: int = 15,
     ) -> EdgeBenchmarkResult:
+        del num_queries
         if tier_key not in self.catalog:
             raise ValueError(f"Unknown tier '{tier_key}'. Available: {list(self.catalog.keys())}")
-
-        spec = self.catalog[tier_key]
-        latencies = []
-
-        # Benchmark simulation of quantized matrix multiplications
-        for i in range(num_queries):
-            # Realistic CPU processing latency for 2.16M to 17.6M adapters
-            time.sleep(spec.target_latency_ms / 1000.0 * 0.05)  # Fast simulated bench run
-            synthetic_latency = spec.target_latency_ms * (0.95 + 0.10 * ((i % 5) / 5))
-            latencies.append(synthetic_latency)
-
-        latencies.sort()
-        p50 = latencies[len(latencies) // 2]
-        p95 = latencies[int(len(latencies) * 0.95)]
-        avg = sum(latencies) / len(latencies)
-        tokens_per_sec = (spec.parameter_count_millions * 15.0) / (avg / 1000.0)
-
-        # Baseline RAM footprint: ~450MB for 2B int4 base model + adapter size
-        ram_usage = 450.0 + spec.adapter_size_mb
-
-        return EdgeBenchmarkResult(
-            tier=spec.tier,
-            hardware=spec.target_hardware,
-            adapter_size_mb=spec.adapter_size_mb,
-            queries_run=num_queries,
-            p50_latency_ms=round(p50, 1),
-            p95_latency_ms=round(p95, 1),
-            avg_latency_ms=round(avg, 1),
-            tokens_per_sec=round(tokens_per_sec, 1),
-            estimated_ram_mb=round(ram_usage, 1),
-            exact_match_accuracy_pct=spec.real_order_em_accuracy,
-            success=True,
+        raise EdgeNotMeasured(
+            "No edge benchmark has been run. Latency, RAM, and exact-match figures "
+            "are not available. This used to sleep and print catalog constants."
         )
 
 
@@ -158,49 +133,26 @@ class EdgeExporter:
         if tier_key not in TIER_CATALOG:
             raise ValueError(f"Unknown tier: {tier_key}")
 
-        spec = TIER_CATALOG[tier_key]
         dest_dir = self.output_root / tier_key
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         manifest = {
-            "model_family": "gemma-2-2b-it",
-            "quantization": spec.quantization_format,
-            "tier_name": spec.tier,
-            "target_hardware": spec.target_hardware,
-            "parameters_m": spec.parameter_count_millions,
-            "adapter_size_mb": spec.adapter_size_mb,
-            "lora_rank": spec.lora_rank,
-            "lora_alpha": spec.lora_alpha,
-            "target_modules": spec.target_modules,
-            "runtime_engine": "llama.cpp / Ollama / GGUF",
-            "cli_command": f"ollama run tiffintally-{tier_key}:q4",
-            "system_prompt": (
-                "You are TiffinTally, an edge AI kitchen order parser. "
-                "Output strictly valid JSON OrderEvents."
+            "status": "not_measured",
+            "tier_key": tier_key,
+            "note": (
+                "No quantized weights were exported. Earlier manifests copied catalog "
+                "constants and were not produced by llama.cpp, GGUF, or a Raspberry Pi."
             ),
         }
 
-        # Write manifest
         manifest_path = dest_dir / "edge_manifest.json"
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-
-        # Write adapter config
-        adapter_config = {
-            "base_model_name_or_path": "google/gemma-2-2b-it",
-            "peft_type": "LORA",
-            "r": spec.lora_rank,
-            "lora_alpha": spec.lora_alpha,
-            "target_modules": spec.target_modules,
-            "bias": "none",
-        }
-        (dest_dir / "adapter_config.json").write_text(
-            json.dumps(adapter_config, indent=2), encoding="utf-8"
-        )
+        note_path = dest_dir / "NOT_A_MODEL.txt"
+        note_path.write_text(manifest["note"] + "\n", encoding="utf-8")
 
         return {
-            "status": "exported",
+            "status": "not_measured",
             "tier": tier_key,
             "manifest_file": str(manifest_path),
             "directory": str(dest_dir),
-            "spec": asdict(spec),
         }

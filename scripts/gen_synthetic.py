@@ -8,8 +8,11 @@ lexical Hindi number words ("ek", "do", "teen", "chaar"), regional code-switchin
 
 import json
 import random
+import re
 from pathlib import Path
 from typing import Any, Dict, List
+
+from tiffintally.dates import relative_date_label
 
 SEED = 42
 TARGET_COUNT = 1600
@@ -515,9 +518,10 @@ def generate_synthetic_dataset(
                 "id": f"syn_{idx:04d}",
                 "sender": sender,
                 "raw_text": text,
+                "template_id": text_pattern,
                 "gold": {
                     "customer": sender,
-                    "date": "tomorrow",
+                    "date": relative_date_label(text),
                     "meal": meal,
                     "qty": actual_qty if isinstance(actual_qty, int) else 1,
                     "items": items,
@@ -536,18 +540,76 @@ def generate_synthetic_dataset(
     return records
 
 
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def split_by_template(records: List[Dict[str, Any]]) -> tuple[list, list, dict]:
+    """Hold out whole templates. No template and no normalised text is in both splits."""
+    deduped = []
+    seen_text = set()
+    for record in records:
+        key = _norm(record["raw_text"])
+        if key in seen_text:
+            continue
+        seen_text.add(key)
+        deduped.append(record)
+
+    families: Dict[str, List[Dict[str, Any]]] = {}
+    for record in deduped:
+        families.setdefault(record["template_id"], []).append(record)
+
+    family_ids = sorted(families)
+    rng = random.Random(SEED)
+    rng.shuffle(family_ids)
+    n_test = max(1, int(round(len(family_ids) * 0.2)))
+    test_ids = set(family_ids[:n_test])
+
+    train_set = []
+    test_set = []
+    for family_id, rows in families.items():
+        if family_id in test_ids:
+            test_set.extend(rows)
+        else:
+            train_set.extend(rows)
+
+    train_text = {_norm(r["raw_text"]) for r in train_set}
+    test_text = {_norm(r["raw_text"]) for r in test_set}
+    overlap = train_text & test_text
+    if overlap:
+        raise SystemExit(f"Train/test text overlap: {len(overlap)}")
+    train_families = {r["template_id"] for r in train_set}
+    test_families = {r["template_id"] for r in test_set}
+    if train_families & test_families:
+        raise SystemExit("A template is in both splits")
+
+    report = {
+        "deduped_rows": len(deduped),
+        "train_rows": len(train_set),
+        "test_rows": len(test_set),
+        "train_templates": len(train_families),
+        "test_templates": len(test_families),
+        "text_overlap": 0,
+        "template_overlap": 0,
+        "note": (
+            "Synthetic only. Split by template family so a message pattern cannot "
+            "be memorised from train and scored on test. Not real WhatsApp data."
+        ),
+    }
+    return train_set, test_set, report
+
+
 def main():
     records = generate_synthetic_dataset()
-    print(f"Generated {len(records)} synthetic messages (Seeded={SEED}).")
+    print(f"Generated {len(records)} synthetic messages before dedupe (Seeded={SEED}).")
+
+    train_set, test_set, report = split_by_template(records)
+    combined = train_set + test_set
 
     all_path = OUTPUT_DIR / "orders.jsonl"
     with open(all_path, "w", encoding="utf-8") as f:
-        for r in records:
+        for r in combined:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-
-    split_point = int(len(records) * 0.8)
-    train_set = records[:split_point]
-    test_set = records[split_point:]
 
     train_path = OUTPUT_DIR / "train.jsonl"
     with open(train_path, "w", encoding="utf-8") as f:
@@ -559,7 +621,12 @@ def main():
         for r in test_set:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
-    print(f"Wrote {len(train_set)} to {train_path} and {len(test_set)} to {test_path}")
+    report_path = OUTPUT_DIR / "split_report.json"
+    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(
+        f"Wrote {len(train_set)} train and {len(test_set)} test rows. "
+        f"Overlap={report['text_overlap']}."
+    )
 
 
 if __name__ == "__main__":

@@ -51,11 +51,16 @@ def test_forecast_view():
     resp = client.get("/forecast?confirmed=35")
     assert resp.status_code == 200
     assert "Kitchen Cook Forecast" in resp.text
-    assert "PREDICTED TO COOK" in resp.text
+    assert "SYNTHETIC-HISTORY SUGGESTION" in resp.text
+    assert "Not a cook instruction" in resp.text
 
 
 def test_process_chat_post():
-    demo_raw = "12/10/26, 10:14 pm - Ravi: kal lunch 2, dinner skip\n12/10/26, 10:15 pm - Priya: kal lunch cancel"
+    from datetime import datetime
+
+    sent = datetime.now().replace(hour=20, minute=14, second=0, microsecond=0)
+    stamp = sent.strftime("%d/%m/%y, %I:%M %p").lower()
+    demo_raw = f"{stamp} - Ravi: kal lunch 2, dinner skip\n{stamp} - Priya: kal lunch cancel"
     resp = client.post("/process", data={"raw_text": demo_raw, "target_date": "tomorrow"})
     assert resp.status_code == 200
     assert "Kitchen Prep Sheet" in resp.text

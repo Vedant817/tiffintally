@@ -1,5 +1,9 @@
 """
-Generate 90 days of synthetic daily kitchen order and cooking history for TabPFN training.
+Generate 90 days of synthetic kitchen history.
+
+This is made-up data for a smoke test of the forecaster. It is not a real kitchen,
+and a model fit on it is not a TabPFN result and not a rupee saving.
+The default start is 2026-07-01 so a fresh run matches the committed file's first day.
 Reflects Indian home kitchen realities:
 - Day-of-week seasonality (Sunday drops, Monday surges, Friday highs)
 - Indian festival drops (Diwali, Raksha Bandhan)
@@ -25,7 +29,7 @@ INDIAN_HOLIDAYS_2026 = {
 
 
 def generate_kitchen_history(
-    start_date: date = date(2026, 7, 15), days: int = 90
+    start_date: date = date(2026, 7, 1), days: int = 90
 ) -> List[Dict[str, Any]]:
     random.seed(42)
     records = []

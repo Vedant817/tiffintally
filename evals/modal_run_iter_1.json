@@ -334,5 +334,7 @@
       "passed": false,
       "raw_output": "{\n  \"events\": [\n    {\n      \"customer\": \"Ungar aur maine nahi rice nahi rice onion rice onion rice onion rice onion rice onion rice onion rice onion rice onion rice onion rice onio"
     }
-  ]
+  ],
+  "retracted": true,
+  "retraction_reason": "Train/test text overlap and wrong today/tomorrow labels. Exact-match figures are not valid. Model was Qwen2.5-0.5B on Modal, not Tinker."
 }

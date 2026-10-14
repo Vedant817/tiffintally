@@ -1,3 +1,7 @@
+# HF26 Week 2 · Side Hustle — planning pack (not results)
+
+These files are the brief and the agent prompts used to start the project. They are not measurements, not a user study, and not proof of a partner integration.
+
 # HF26 Week 2 · Side Hustle — Build Pack (Vedant Mahajan)
 
 **Challenge:** https://dev.to/challenges/hacktoberfest-week2-2026-10-12

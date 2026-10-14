@@ -1,5 +1,7 @@
 # Architectural & Project Decisions (ADR Log)
 
+14 Oct 2026: the bullets below that name Tinker, TabPFN, Render, a live .tech domain, a real 50-message set, or "100% local" are plans from before the red-team pass. They are not the current system. The running extractor without a key is the regex. Fallback must be labelled as fallback. There is no Dockerfile and no live deploy.
+
 ## ADR 001: Strict No Credit Card Policy
 - **Context:** Student/early-career budget and strict hackathon rule.
 - **Decision:** Zero reliance on any service requiring a credit card for setup or evaluation.

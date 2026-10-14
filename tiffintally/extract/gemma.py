@@ -83,10 +83,11 @@ class GemmaExtractor:
             log_model_call(res)
             return res
 
-        # Step 3: Prompt Google AI Studio REST endpoint
+        # Step 3: Prompt Google AI Studio REST endpoint.
+        # The key goes in a header so it does not land in URLs, tracebacks, or access logs.
         url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
-            f"?key={self.api_key}"
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.model_name}:generateContent"
         )
         user_content = f"Sender: {pseudo_sender}\nMessage: {pseudo_text}"
         payload = {
@@ -109,7 +110,11 @@ class GemmaExtractor:
         for attempt in range(retries + 1):
             try:
                 with httpx.Client(timeout=15.0) as client:
-                    resp = client.post(url, json=payload)
+                    resp = client.post(
+                        url,
+                        json=payload,
+                        headers={"x-goog-api-key": self.api_key},
+                    )
                     latency = (time.perf_counter() - start_time) * 1000
 
                     if resp.status_code == 200:
@@ -192,8 +197,18 @@ class GemmaExtractor:
         """Process a list of ParsedMessage objects into OrderEvents."""
         all_events: list[OrderEvent] = []
         for msg in messages:
+            if getattr(msg, "is_system", False) or getattr(msg, "is_media", False):
+                continue
+            if not getattr(msg, "text", ""):
+                continue
             res = self.extract_from_text(msg.text, sender=msg.sender)
             for ev in res.events:
-                ev.timestamp = msg.timestamp
+                if getattr(msg, "timestamp_unparsed", False) or msg.timestamp is None:
+                    ev.timestamp = None
+                    ev.needs_review = True
+                    if "unparsed_timestamp" not in ev.audit_flags:
+                        ev.audit_flags.append("unparsed_timestamp")
+                else:
+                    ev.timestamp = msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")
                 all_events.append(ev)
         return all_events

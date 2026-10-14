@@ -11,6 +11,7 @@ from typing import List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
+from tiffintally.dates import relative_date_label
 from tiffintally.schema import OrderEvent
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ def parse_and_validate_llm_json(
             event = OrderEvent(
                 customer=cust,
                 secondary_customer=item.get("secondary_customer"),
-                date=item.get("date", "tomorrow"),
+                date=item.get("date") or "unspecified",
                 meal=item.get("meal", "lunch"),
                 qty=int(item.get("qty", 1) if action != "cancel" else 0),
                 items=item.get("items", ["thali"]),
@@ -131,7 +132,7 @@ def parse_and_validate_llm_json(
     # Fallback: Malformed JSON -> route to review with confidence=0.30
     fallback_event = OrderEvent(
         customer=sender,
-        date="tomorrow",
+        date=relative_date_label(raw_text),
         meal="unspecified",
         qty=0,
         action="none",
@@ -148,6 +149,7 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
     """
     lower = raw_text.lower().strip()
     events: List[OrderEvent] = []
+    spoken_date = relative_date_label(raw_text)
 
     # 1. Pure chit-chat / compliments
     chitchat_terms = [
@@ -211,7 +213,7 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         return [
             OrderEvent(
                 customer=sender,
-                date="Sunday" if "sunday" in lower else "tomorrow",
+                date="Sunday" if "sunday" in lower else spoken_date,
                 meal=target_meal,
                 qty=0,
                 action="pause",
@@ -268,7 +270,7 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         events.append(
             OrderEvent(
                 customer=sender,
-                date="tomorrow",
+                date=spoken_date,
                 meal="lunch",
                 qty=qty,
                 items=["thali"],
@@ -282,7 +284,7 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         events.append(
             OrderEvent(
                 customer=sender,
-                date="tomorrow",
+                date=spoken_date,
                 meal="dinner",
                 qty=0,
                 action="cancel",
@@ -300,7 +302,7 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         events.append(
             OrderEvent(
                 customer=sender,
-                date="tomorrow",
+                date=spoken_date,
                 meal="dinner" if has_dinner else "lunch",
                 qty=new_qty,
                 items=["thali"],
@@ -319,7 +321,7 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
     events.append(
         OrderEvent(
             customer=sender,
-            date="tomorrow",
+            date=spoken_date,
             meal=meal_type,
             qty=0 if action == "cancel" else qty,
             items=["thali"] if action != "cancel" else [],

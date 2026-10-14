@@ -1,81 +1,37 @@
-import glob
-import json
+"""Refuse to rebuild the retracted metrics dashboard.
 
-eval_files = sorted(
-    glob.glob("evals/modal_run_iter_*.json"), key=lambda x: int(x.split("_")[-1].split(".")[0])
-)
-rows = []
-for f in eval_files:
-    with open(f, "r", encoding="utf-8") as fp:
-        raw = json.load(fp)
-        m = raw.get("metrics", raw)
-        it = m.get("iteration")
-        loss = m.get("train_loss")
-        synth_em = m.get("synthetic", {}).get("exact_match_acc", 0.0)
-        real_em = m.get("real", {}).get("exact_match_acc", 0.0)
-        p50 = m.get("real", {}).get("latency_p50_ms", 0.0)
-        dur = m.get("train_duration_sec", 0.0)
-        edges = m.get("edge_cases_passed", "8/8")
+The old script filled missing exact-match cells with 100 and tagged iterations
+"Grand Champion". Re-running it must not put those figures back on the page.
+"""
 
-        # Descriptions and taggings for iterations
-        badge = ""
-        params = "17.6M"
-        modules = "All 7"
-        if it == 8:
-            badge = "Milestone (100% Real EM)"
-        elif it == 15:
-            badge = "Attn-Only 2Ep"
-            params = "2.16M"
-            modules = "q, v"
-        elif it == 16:
-            badge = "r=64 Drift"
-            params = "35.2M"
-        elif it == 17:
-            badge = "r=8 Lower Bound"
-            params = "4.4M"
-        elif it == 24:
-            badge = "Attn-Only 3Ep"
-            params = "2.16M"
-            modules = "q, v"
-        elif it == 25:
-            badge = "Cloud Grand Champion"
-            params = "17.6M"
-        elif it == 27:
-            badge = "r=16 LR Drift"
-            params = "8.8M"
-        elif it == 28:
-            badge = "Mid-Size Champion"
-            params = "8.8M"
-        elif it == 29:
-            badge = "r=8 3-Epoch"
-            params = "4.4M"
-        elif it == 30:
-            badge = "Edge Champion (295ms)"
-            params = "2.16M"
-            modules = "q, v"
-        elif it == 1:
-            badge = "Pathology 1 Truncation"
-        elif it in [2, 3]:
-            badge = "Lexical Alignment"
-        elif it == 4:
-            badge = "Zero-Loss Truncation"
-        elif it == 6:
-            badge = "Real Benchmark Discovery"
+from pathlib import Path
 
-        rows.append(
-            {
-                "iteration": it,
-                "train_loss": loss if loss is not None else 0.045,  # approximate iter 6
-                "synthetic_em": synth_em if synth_em > 0 else (75.0 if it < 6 else 100.0),
-                "real_em": real_em if real_em > 0 else (74.0 if it < 6 else 96.0),
-                "p50_latency": round(p50, 1) if p50 > 0 else (530.0 if it < 6 else 2868.1),
-                "duration": round(dur, 1) if dur > 0 else 200.0,
-                "badge": badge,
-                "params": params,
-                "modules": modules,
-            }
-        )
+TARGET = Path(__file__).resolve().parents[1] / "evals" / "dashboard.html"
+PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TiffinTally metrics — retracted</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; color: #1c1917; line-height: 1.5; }
+    h1 { font-size: 1.6rem; }
+    .note { background: #fef2f2; border-left: 4px solid #b91c1c; padding: 0.75rem 1rem; }
+  </style>
+</head>
+<body>
+  <p class="note"><strong>Retracted.</strong> This page used to chart a 100% exact match, a Grand Champion tier, and an edge latency. Those figures were not a measurement on messages the model had not memorised, and the edge numbers were constants. They are not shown here.</p>
+  <h1>No score is published from this file</h1>
+  <p>The Modal runs that exist in <code>evals/modal_run_iter_*.json</code> were Qwen2.5-0.5B jobs. Their exact-match fields are not a real-WhatsApp result. <code>RESULTS.md</code> is the status that counts. The app does not serve those weights.</p>
+  <p>A new number belongs on this page only after an evaluation script writes it. Do not type one in.</p>
+</body>
+</html>
+"""
 
-print(f"Generated data for {len(rows)} iterations")
-with open("evals/dashboard_data.json", "w", encoding="utf-8") as out:
-    json.dump(rows, out, indent=2)
+
+def main() -> None:
+    TARGET.write_text(PAGE, encoding="utf-8")
+    print("Wrote a retraction page. No exact-match or latency figures were emitted.")
+
+
+if __name__ == "__main__":
+    main()

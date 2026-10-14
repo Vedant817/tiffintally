@@ -15,10 +15,10 @@ def test_transcribe_offline_fallback(tmp_path):
     )
 
     assert result.customer == "Rohan"
-    assert "cancel" in result.transcribed_text.lower()
-    assert result.backend_used == "offline-fallback"
-    assert "14/10/26, 10:15 pm - Rohan: Aunty kal lunch cancel" in result.formatted_chat_line
-    assert result.confidence >= 0.9
+    assert result.backend_used == "demo-stub"
+    assert "not transcribed" in result.transcribed_text.lower()
+    assert "aunty kal lunch cancel" not in result.transcribed_text.lower()
+    assert result.confidence == 0.0
 
 
 def test_transcribe_missing_file():
@@ -34,5 +34,6 @@ def test_transcribe_modification_voice(tmp_path):
     transcriber = VoiceNoteTranscriber(google_api_key=None)
     result = transcriber.transcribe(dummy_audio, customer_name="Pooja")
 
-    assert "bina pyaaz" in result.transcribed_text.lower()
+    assert result.backend_used == "demo-stub"
+    assert "bina pyaaz" not in result.transcribed_text.lower()
     assert result.customer == "Pooja"

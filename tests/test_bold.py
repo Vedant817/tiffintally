@@ -4,11 +4,14 @@ Directly testing all critical edge cases, privacy, arithmetic hallucination prev
 and outbound messaging safety.
 """
 
-from datetime import time
+from datetime import datetime, time
 from pathlib import Path
 
 from tiffintally.reconcile import reconcile_ledger, reconcile_orders
 from tiffintally.schema import OrderEvent
+
+# The fixtures are the evening of 13 Oct 2026. "tomorrow" is resolved from that clock.
+AS_OF = datetime(2026, 10, 13, 12, 0)
 
 
 # Bold Test 1: Cancel after earlier order -> final count 0, not negative, not 1
@@ -33,7 +36,7 @@ def test_bold_1_cancel_after_earlier_order():
             raw_text="kal lunch cancel aunty, team lunch hai",
         ),
     ]
-    sheet = reconcile_orders(events, target_date="tomorrow")
+    sheet = reconcile_orders(events, target_date="tomorrow", as_of=AS_OF)
     assert sheet.total_lunch == 0
     assert sheet.total_thalis == 0
     assert len(sheet.packing_labels) == 0
@@ -55,7 +58,7 @@ def test_bold_2_order_after_cutoff_flagged():
             raw_text="aunty kal lunch 2 add karo please late ho gaya",
         )
     ]
-    sheet = reconcile_orders(events, target_date="tomorrow", cutoff_time=cutoff)
+    sheet = reconcile_orders(events, target_date="tomorrow", cutoff_time=cutoff, as_of=AS_OF)
     assert sheet.total_lunch == 0
     assert sheet.total_thalis == 0
     assert len(sheet.late_orders) == 1
@@ -77,7 +80,7 @@ def test_bold_3_secondary_customer_splitting():
             raw_text="Kal lunch 1 plate. Aur meri roommate Priya ke liye bhi ek lunch add kar dena",
         )
     ]
-    sheet = reconcile_orders(events, target_date="tomorrow")
+    sheet = reconcile_orders(events, target_date="tomorrow", as_of=AS_OF)
     assert sheet.total_lunch == 2
     assert len(sheet.packing_labels) == 2
     customers = {p.customer: p.qty for p in sheet.packing_labels}
@@ -187,7 +190,7 @@ def test_bold_8_duplicate_forwarded_message():
             raw_text=dup_text,
         ),
     ]
-    sheet = reconcile_orders(events, target_date="tomorrow")
+    sheet = reconcile_orders(events, target_date="tomorrow", as_of=AS_OF)
     assert sheet.total_lunch == 2
     assert sheet.total_thalis == 2
     assert len(sheet.packing_labels) == 1

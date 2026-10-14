@@ -1,0 +1,10 @@
+{
+  "deduped_rows": 392,
+  "train_rows": 342,
+  "test_rows": 50,
+  "train_templates": 146,
+  "test_templates": 36,
+  "text_overlap": 0,
+  "template_overlap": 0,
+  "note": "Synthetic only. Split by template family so a message pattern cannot be memorised from train and scored on test. Not real WhatsApp data."
+}

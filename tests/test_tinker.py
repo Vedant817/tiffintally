@@ -14,6 +14,7 @@ def test_tinker_extractor_fallback(monkeypatch):
     res = extractor.extract_from_text("kal lunch 2 plates", sender="Karan")
     assert len(res.events) >= 1
     assert res.used_fallback is True
+    assert res.model_name.endswith("-fallback")
     assert res.events[0].qty == 2
     assert res.events[0].meal == "lunch"
 

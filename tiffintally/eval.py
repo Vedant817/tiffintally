@@ -87,10 +87,14 @@ def evaluate_extractor(
     gold_actions = []
     pred_actions = []
     exact_matches = 0
+    gold_mods = []
+    pred_mods = []
+    fallback_rows = 0
+    reported_name = getattr(extractor, "model_name", getattr(extractor, "model_id", "extractor"))
 
     for item in samples:
         sender = item.get("sender", "Customer")
-        text = item.get("text", "")
+        text = item.get("raw_text") or item.get("text") or ""
         gold = item.get("gold", {})
 
         t0 = time.perf_counter()
@@ -100,6 +104,10 @@ def evaluate_extractor(
         latencies.append(result.latency_ms if result.latency_ms > 0 else latency)
         in_tokens.append(result.input_tokens)
         out_tokens.append(result.output_tokens)
+        if result.model_name:
+            reported_name = result.model_name
+        if result.used_fallback:
+            fallback_rows += 1
 
         # First event prediction
         pred_ev = result.events[0] if result.events else None
@@ -120,6 +128,8 @@ def evaluate_extractor(
 
         gold_actions.append(g_action)
         pred_actions.append(p_action)
+        gold_mods.append(tuple(gold.get("mods") or []))
+        pred_mods.append(tuple(pred_ev.mods) if pred_ev else tuple())
 
         # Check exact match across meal, qty, action
         if p_meal == g_meal and p_qty == g_qty and p_action == g_action:
@@ -130,6 +140,10 @@ def evaluate_extractor(
     qty_score = compute_f1(gold_qtys, pred_qtys)
     action_score = compute_f1(gold_actions, pred_actions)
     em_acc = round(exact_matches / n, 4) if n > 0 else 0.0
+    mod_hits = sum(1 for g, p in zip(gold_mods, pred_mods) if g == p)
+    mods_accuracy = round(mod_hits / n, 4) if n else 0.0
+    if fallback_rows and not str(reported_name).endswith("-fallback"):
+        reported_name = f"{reported_name}-fallback"
 
     p50_lat = float(np.percentile(latencies, 50)) if latencies else 0.0
     p95_lat = float(np.percentile(latencies, 95)) if latencies else 0.0
@@ -142,14 +156,14 @@ def evaluate_extractor(
     cost_per_1k = (total_tokens_per_1k / 1_000_000.0) * 0.20
 
     return ModelEvaluationReport(
-        model_name=getattr(extractor, "model_name", getattr(extractor, "model_id", "extractor")),
+        model_name=reported_name,
         dataset_name=dataset_name,
         num_samples=n,
         exact_match_accuracy=em_acc,
         meal_f1=meal_score.f1,
         qty_f1=qty_score.f1,
         action_f1=action_score.f1,
-        mods_f1=0.92,
+        mods_f1=mods_accuracy,
         latency_p50_ms=round(p50_lat, 2),
         latency_p95_ms=round(p95_lat, 2),
         avg_input_tokens=round(avg_in, 1),
@@ -232,14 +246,14 @@ def generate_results_markdown(run_data: Dict[str, Any]):
 > Run Timestamp: `{run_data.get("date_ist", "N/A")}`
 > Artifact Run Directory: `evals/runs/{run_data.get("run_timestamp")}/`
 
-All numbers reported in this document are strictly measured and generated from benchmark script runs. Zero fabricated figures.
+Numbers below come from this run only. If the model name ends in `-fallback`, the score is the regex heuristic, not Gemma, Tinker, or a fine-tune. There is no held-out set of real cook messages in git. `data/kitchen_history.csv` is synthetic. Do not cite older 100% exact-match figures.
 
 ---
 
 ## 1. Extractor Performance (Field-Level Accuracy & Exact Match)
 
-### A. Held-Out Real WhatsApp Messages (50 items)
-Measured on `data/private/real_test.jsonl` (hand-labeled real home-kitchen orders, cancellations, multi-person splits, and payments):
+### A. Real cook messages
+Only filled when `data/private/real_test.jsonl` exists. That file is gitignored and is not in this repository. An empty section means the real set was not run. Do not describe these rows as hand-collected.
 
 | Metric | Gemma 2 (AI Studio) | Tinker LoRA Fine-Tune | Difference |
 | :--- | :--- | :--- | :--- |
@@ -251,7 +265,7 @@ Measured on `data/private/real_test.jsonl` (hand-labeled real home-kitchen order
 | **Latency p50 / p95 (ms)** | {gemma_real.get("latency_p50_ms", 0.0)} / {gemma_real.get("latency_p95_ms", 0.0)} ms | {tinker_real.get("latency_p50_ms", 0.0)} / {tinker_real.get("latency_p95_ms", 0.0)} ms | Faster turnaround |
 | **Estimated Cost / 1k msgs** | ${gemma_real.get("estimated_cost_per_1k_msgs_usd", 0.0):.4f} | ${tinker_real.get("estimated_cost_per_1k_msgs_usd", 0.0):.4f} | Highly economical |
 
-### B. Synthetic Test Split (131 items)
+### B. Synthetic test split ({gemma_syn.get("num_samples", 0)} items)
 Measured on `data/synthetic/test.jsonl`:
 
 | Metric | Gemma 2 Baseline | Tinker LoRA |
@@ -263,26 +277,29 @@ Measured on `data/synthetic/test.jsonl`:
 
 ---
 
-## 2. Kitchen Plate Forecast (TabPFN vs Baselines)
+## 2. Kitchen plate forecast
 
-Tested on 14-day holdout split using historical records (`data/kitchen_history.csv`):
+The active model name is in the run JSON (`model_name`). Without `TABPFN_API_KEY` this is HistGradientBoosting. The history CSV is synthetic. TabPFN's client licence is non-commercial. This section is not a rupee-savings claim.
+
+Tested on a 14-day tail of `data/kitchen_history.csv`:
 Features: `[day_of_week, is_weekend, is_holiday, confirmed_orders, lag7_cooked, rolling7_mean]`
 
 | Model | MAE (Plates) | RMSE (Plates) | Days Within ±3 Plates |
 | :--- | :--- | :--- | :--- |
-| **TabPFN Regression ({fc_data.get("model_name", "TabPFN")})** | **{fc_data.get("tabpfn_mae", 0.0)}** | **{fc_data.get("tabpfn_rmse", 0.0)}** | **{fc_data.get("tabpfn_within_3", 0.0)}%** |
+| **Active model ({fc_data.get("model_name", "unset")})** | **{fc_data.get("tabpfn_mae", 0.0)}** | **{fc_data.get("tabpfn_rmse", 0.0)}** | **{fc_data.get("tabpfn_within_3", 0.0)}%** |
 | Naive Lag-7 (Same weekday last week) | {fc_data.get("naive_lag7_mae", 0.0)} | {fc_data.get("naive_lag7_rmse", 0.0)} | {fc_data.get("naive_within_3", 0.0)}% |
 | Confirmed-Only (No late-walkin buffer) | {fc_data.get("confirmed_only_mae", 0.0)} | {fc_data.get("confirmed_only_rmse", 0.0)} | {fc_data.get("confirmed_within_3", 0.0)}% |
 
-### Key Takeaway:
-Cooking only the confirmed WhatsApp count under-cooks by ~4.1 plates per day on average because college students and office workers frequently order at the doorstep or 5 minutes before lunch. TabPFN anticipates these patterns without requiring thousands of rows of training data.
+The MAE above is on synthetic history. It is not a food-waste saving and not a TabPFN result unless `model_name` says TabPFN.
 
 ---
 
-## 3. Privacy & Latency Audit
+## 3. Privacy
 
-- **Client-Side Pseudonymization:** 100% of customer names and phone numbers are mapped to local tokens `C001..C999` in local SQLite before network calls. Zero plain text customer identifiers leave the local machine.
-- **Outbound Message Safety:** 0 outbound messaging or SMS dispatch libraries are installed. Reminders are strictly copy-to-clipboard drafts.
+- Names are masked before a configured model call. The Google API key is sent in the `x-goog-api-key` header, not the URL.
+- Sentry is initialised with `send_default_pii=False` and does not attach message text.
+- Reminders are copy-to-clipboard drafts. The app does not send WhatsApp messages.
+- Kitchen state is stored per browser cookie in this process. It is not a multi-tenant database.
 """
 
     with open(results_path, "w", encoding="utf-8") as f:

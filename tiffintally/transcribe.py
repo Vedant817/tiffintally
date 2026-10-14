@@ -42,8 +42,8 @@ class VoiceNoteTranscriber:
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
         time_str = timestamp or datetime.now().strftime("%d/%m/%y, %I:%M %p").lower()
-        backend = "offline-fallback"
-        confidence = 0.95
+        backend = "demo-stub"
+        confidence = 0.0
         text = ""
 
         # Check for Google Gemini Audio API if key is present
@@ -81,7 +81,7 @@ class VoiceNoteTranscriber:
         ext = audio_file.suffix.lower().replace(".", "")
         mime_type = "audio/ogg" if ext in ["ogg", "opus"] else f"audio/{ext or 'mp3'}"
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.google_api_key}"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
         payload = {
             "contents": [
                 {
@@ -100,21 +100,19 @@ class VoiceNoteTranscriber:
             ],
             "generationConfig": {"temperature": 0.0},
         }
-        resp = httpx.post(url, json=payload, timeout=20.0)
+        resp = httpx.post(
+            url,
+            json=payload,
+            headers={"x-goog-api-key": self.google_api_key},
+            timeout=20.0,
+        )
         resp.raise_for_status()
         data = resp.json()
         return data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
     def _offline_transcript(self, filename: str) -> str:
-        """Smart deterministic fallback for demo mode and offline testing."""
-        fname_lower = filename.lower()
-        if "cancel" in fname_lower:
-            return "Aunty kal lunch cancel, office me team party hai."
-        elif "extra" in fname_lower or "add" in fname_lower:
-            return "Aunty kal lunch me do thali bhej dena, roommate bhi hai."
-        elif "jain" in fname_lower or "no_onion" in fname_lower:
-            return "Kal ek thali dinner bina pyaaz lahsun ke bhej do please."
-        elif "change" in fname_lower:
-            return "Aunty kal do nahi teen thali kar dena dopahar ko."
-        else:
-            return "Namaste Aunty, kal lunch 1 thali regular bhej dena time pe."
+        """Demo stub. The filename is not a transcript and must not become an order."""
+        return (
+            "Demo stub: no speech recogniser is configured, so this file was not transcribed. "
+            f"Filename was {filename!r}. Paste the customer's words as text."
+        )

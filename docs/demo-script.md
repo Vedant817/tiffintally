@@ -1,6 +1,6 @@
 # TiffinTally 60–90 Second Video Demo Script
 
-This script walks through the core problem, extraction, deterministic state, TabPFN forecasting, dues ledger, and voice briefing in under 90 seconds.
+Demo notes. Say "rules fallback" unless a Gemma key is set. Do not open tiffintally.tech. Do not call the forecast TabPFN. Do not mention a cook visit.
 
 ---
 
@@ -18,11 +18,11 @@ This script walks through the core problem, extraction, deterministic state, Tab
 
 ### [0:15 - 0:35] Instant Extraction & Pseudonymization
 - **Visual:**
-  - Browser opens to `http://localhost:8000` (or `https://tiffintally.tech`).
+  - Browser opens to `http://127.0.0.1:8000`.
   - Paste chat export into the box (or click "Paste Demo Chat Export").
   - Click **"Reconcile Kitchen Sheet"**.
 - **Voiceover:**
-  > "We paste an exported group chat or individual messages. Before anything leaves the machine, customer phone numbers and names are pseudonymized locally into safe tokens. Then, an open model fine-tuned on Hinglish kitchen slang extracts meal types, quantities, and dietary modifications in milliseconds."
+  > "We paste an exported chat. With no model key, a rules parser reads the lines on this machine. Names are swapped for tokens only on a hosted call, and only when that key is set. The fine-tune is not served on this page."
 
 ---
 
@@ -38,15 +38,15 @@ This script walks through the core problem, extraction, deterministic state, Tab
 
 ---
 
-### [0:50 - 1:05] TabPFN Kitchen Forecast (Stop Over-Cooking)
+### [0:50 - 1:05] Forecast (synthetic history only)
 - **Visual:**
   - Scroll to the **Cook Prediction card** showing:
     - *Confirmed Orders:* 35
-    - *TabPFN Predicted Total:* 43
+    - *Model suggestion (HistGradientBoosting on synthetic history):* say the number on screen, and say it is not measured on a real kitchen.
     - *Confidence Interval:* 40 to 46
   - Click on the explanation toggle showing Day-of-Week seasonality and late doorstep walk-in buffer.
 - **Voiceover:**
-  > "Cooking only confirmed orders under-cooks by 4 to 8 plates because doorstep walk-ins always arrive at lunchtime. We use TabPFN regression directly on small tabular kitchen histories to tell the cook exactly how many extra plates to prep."
+  > "This forecast is a scikit-learn model on made-up history. It is not TabPFN, and it is not a saving in rupees."
 
 ---
 
@@ -57,7 +57,7 @@ This script walks through the core problem, extraction, deterministic state, Tab
   - Navigate to `/ledger` view:
     - Show customer balances and the one-click **"Copy Polite Hinglish Reminder"** button.
 - **Voiceover:**
-  > "At 6:30 AM while chopping vegetables, she doesn't read spreadsheets. ElevenLabs delivers a warm Hinglish voice brief with exact vegetable and dal counts. And when rent is due, TiffinTally drafts polite WhatsApp reminders without ever auto-spamming."
+  > "The morning brief is a text transcript unless an ElevenLabs key is set. The dues page drafts a reminder. Nothing is sent."
 
 ---
 

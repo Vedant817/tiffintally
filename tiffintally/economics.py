@@ -150,15 +150,18 @@ class KitchenEconomics:
             open_slm_monthly_cost_inr=open_slm_monthly_inr,
             open_slm_cost_per_order_inr=open_slm_cost_per_call_inr,
             monthly_savings_inr=savings,
-            privacy_guarantee="100% Local / Zero Cloud Leakage",
+            privacy_guarantee=(
+                "Not a measured zero-leakage guarantee. "
+                "Hosted calls replace names with tokens when a key is set."
+            ),
         )
 
     def compute_waste_reduction_roi(
         self, daily_confirmed_plates: int = 40, raw_cost_per_plate: float = 38.0
     ) -> FoodWasteROI:
         """
-        Quantify kitchen food waste savings enabled by TabPFN probabilistic demand forecasting.
-        Uncalibrated kitchens routinely overprep 4-5 plates as a safety buffer against walk-ins.
+        Illustrative arithmetic only. The 4.5 and 0.8 plate figures are assumptions,
+        not a measurement from this kitchen or from TabPFN.
         """
         uncalibrated_waste = 4.5  # average plates discarded or sold at heavy loss
         tabpfn_waste = 0.8  # calibrated dynamic buffer

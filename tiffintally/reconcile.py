@@ -11,7 +11,8 @@ Handles:
 """
 
 import logging
-from datetime import datetime, time
+import re
+from datetime import datetime, time, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
 from tiffintally.schema import (
@@ -54,6 +55,35 @@ def parse_timestamp(ts: Optional[str]) -> Optional[datetime]:
     return None
 
 
+def calendar_day(label: str, reference: datetime):
+    """Resolve today/tomorrow/YYYY-MM-DD against a reference clock. Other words stay unresolved."""
+    raw = (label or "").strip().lower()
+    if raw in {"today", "aaj", "tonight"}:
+        return reference.date()
+    if raw in {"tomorrow", "kal"}:
+        return (reference + timedelta(days=1)).date()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    return None
+
+
+def event_matches_target(ev: OrderEvent, target_date: str, as_of: datetime) -> bool:
+    """Keep an event only when it is for the cook's target day.
+
+    Relative words on the event use the message timestamp. Relative words on the
+    target use `as_of` (when the cook builds the sheet). "today" does not match
+    a target of "tomorrow".
+    """
+    if not target_date or target_date.strip().lower() == "any":
+        return True
+    reference = parse_timestamp(ev.timestamp) or as_of
+    event_day = calendar_day(ev.date, reference)
+    target_day = calendar_day(target_date, as_of)
+    if event_day is not None and target_day is not None:
+        return event_day == target_day
+    return (ev.date or "").strip().lower() == target_date.strip().lower()
+
+
 def is_after_cutoff(ts: Optional[datetime], cutoff_time: Optional[time]) -> bool:
     """Return True if message was received on or after cutoff time."""
     if ts is None or cutoff_time is None:
@@ -67,12 +97,16 @@ def reconcile_orders(
     target_date: str = "tomorrow",
     cutoff_time: Optional[time] = None,
     standing_orders: Optional[Dict[str, int]] = None,
+    as_of: Optional[datetime] = None,
 ) -> DailyPrepSheet:
     """
     Apply events in time order.
     Returns the complete DailyPrepSheet.
     """
-    prep_sheet = DailyPrepSheet(date=target_date)
+    as_of = as_of or datetime.now()
+    resolved_target = calendar_day(target_date, as_of)
+    sheet_date = resolved_target.isoformat() if resolved_target else target_date
+    prep_sheet = DailyPrepSheet(date=sheet_date)
 
     # Apply standing orders if provided (e.g. daily regulars)
     state_map: Dict[Tuple[str, str], CustomerMealState] = {}
@@ -111,25 +145,26 @@ def reconcile_orders(
 
     # 3. Process events chronologically
     for ev in sorted_events:
-        # Filter by specific date if requested
-        if target_date and target_date.lower() not in ["tomorrow", "today", "any"]:
-            if (
-                ev.date
-                and ev.date.lower() not in ["tomorrow", "today", ""]
-                and ev.date.lower() != target_date.lower()
-            ):
-                continue
+        label = (ev.date or "").strip().lower()
+        if label in {"", "unspecified", "ambiguous"} and ev.action not in {"none", "payment"}:
+            ev.needs_review = True
+            if "date_unresolved" not in ev.audit_flags:
+                ev.audit_flags.append("date_unresolved")
 
-        # Check security audit flags, business bounds, or low confidence
+        # Check security audit flags, business bounds, or low confidence.
+        # Do this before the date filter so a malformed row is not dropped silently.
         is_risky = (
             ev.needs_review
             or ev.confidence < 0.70
             or bool(ev.audit_flags)
             or (ev.action == "none" and ev.raw_text and len(ev.raw_text) > 40)
         )
+        if is_risky and ev not in prep_sheet.unresolved_reviews:
+            prep_sheet.unresolved_reviews.append(ev)
+        if not event_matches_target(ev, target_date, as_of):
+            continue
+
         if is_risky:
-            if ev not in prep_sheet.unresolved_reviews:
-                prep_sheet.unresolved_reviews.append(ev)
             # If critical prompt injection, excessive quantity (>20), or explicit review flag, don't auto-apply
             if ev.needs_review or any(
                 "prompt_injection" in f or "excessive_quantity" in f for f in ev.audit_flags

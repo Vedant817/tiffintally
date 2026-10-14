@@ -1,10 +1,10 @@
 """
 TiffinTally: Distributed SLM Fine-Tuning & Multi-Benchmark Evaluation on Modal GPU.
-Uses Qwen/Qwen2.5-0.5B-Instruct + LoRA with PyTorch 2.4 SDPA on NVIDIA A10G.
-Evaluates on BOTH:
-  1. Synthetic Held-Out Test Split (in-distribution)
-  2. Real Customer WhatsApp Dataset (data/private/real_test.jsonl, 50 hand-audited rows)
-  3. Adversarial Domain Edge Cases
+Uses a Qwen2.5 Instruct checkpoint plus LoRA on an NVIDIA A10G.
+The default base model is Qwen/Qwen2.5-3B-Instruct.
+Evaluates the template-disjoint synthetic test split only.
+data/private/real_test.jsonl is not scored: its texts overlap training.
+Exact match requires meal, qty, action, mods, and date.
 Supports iterative improvement loops with persistent Volume caching (/vol/checkpoints/).
 """
 
@@ -34,7 +34,7 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
 @app.function(
     image=image,
     gpu="A10G",
-    timeout=600,
+    timeout=3600,
     volumes={"/vol": volume},
 )
 def run_finetune_job(
@@ -166,6 +166,9 @@ def run_finetune_job(
     )
     model = get_peft_model(base_model, peft_config)
     model.print_trainable_parameters()
+    if hasattr(base_model, "gradient_checkpointing_enable"):
+        base_model.gradient_checkpointing_enable()
+        model.enable_input_require_grads()
 
     output_dir = f"/tmp/checkpoints/run_{iteration}"
     training_args = TrainingArguments(
@@ -229,7 +232,7 @@ def run_finetune_job(
         valid_json_count = 0
         latencies = []
 
-        batch_size_eval = 8
+        batch_size_eval = 4
         tokenizer.padding_side = "left"
 
         for batch_start in range(0, len(records), batch_size_eval):
@@ -327,7 +330,8 @@ def run_finetune_job(
                 if mods_match:
                     mods_correct += 1
 
-                exact_ok = meal_match and qty_match and action_match
+                date_match = (pred_event.get("date") or "") == (gt_event.get("date") or "")
+                exact_ok = meal_match and qty_match and action_match and mods_match and date_match
                 if exact_ok:
                     exact_correct += 1
 
@@ -343,7 +347,18 @@ def run_finetune_job(
                     }
                 )
 
-        n_samples = max(1, len(records))
+        if not records:
+            return {
+                "summary": {
+                    "dataset_name": split_name,
+                    "num_samples": 0,
+                    "exact_match_acc": None,
+                    "status": "not_run",
+                },
+                "failures": [],
+            }
+
+        n_samples = len(records)
         em_acc = round((exact_correct / n_samples) * 100, 1)
         m_f1 = round(meal_correct / n_samples, 3)
         q_f1 = round(qty_correct / n_samples, 3)
@@ -360,6 +375,8 @@ def run_finetune_job(
                 "dataset_name": split_name,
                 "num_samples": n_samples,
                 "exact_match_acc": em_acc,
+                "exact_match_fields": ["meal", "qty", "action", "mods", "date"],
+                "status": "measured",
                 "meal_f1": m_f1,
                 "quantity_f1": q_f1,
                 "action_f1": a_f1,
@@ -375,9 +392,22 @@ def run_finetune_job(
     # Evaluate Synthetic Test Split
     synthetic_eval = evaluate_split(synthetic_val_records, "Synthetic Test Split")
     # Evaluate Real Gold WhatsApp Held-Out Split
-    real_eval = evaluate_split(
-        real_val_records, "Real Customer WhatsApp (data/private/real_test.jsonl)"
-    )
+    if real_val_records:
+        real_eval = evaluate_split(real_val_records, "Held-out file passed by the caller")
+    else:
+        real_eval = {
+            "summary": {
+                "dataset_name": "real customer messages",
+                "num_samples": 0,
+                "exact_match_acc": None,
+                "status": "not_run",
+                "reason": hyperparams.get(
+                    "real_eval_note",
+                    "No verified cook-labelled set was passed.",
+                ),
+            },
+            "failures": [],
+        }
 
     # 4. Domain-specific Edge Case Testing
     print("\nTesting critical domain edge cases...")
@@ -443,6 +473,8 @@ def run_finetune_job(
     metrics = {
         "iteration": iteration,
         "base_model": base_model_name,
+        "split": "synthetic template-disjoint held-out",
+        "real_customer_eval": "not_run",
         "train_loss": final_train_loss,
         "train_duration_sec": round(train_duration, 1),
         "synthetic": synthetic_eval["summary"],
@@ -480,12 +512,13 @@ def main(
     lr_scheduler: str = "cosine",
     weight_decay: float = 0.0,
     warmup_steps: int = 15,
+    base_model: str = "Qwen/Qwen2.5-3B-Instruct",
+    max_seq_len: int = 1024,
 ):
     """Local runner that prepares datasets and dispatches fine-tuning to Modal GPU."""
     repo_root = Path(__file__).parent.parent
     train_file = repo_root / "data/synthetic/tinker_sft_train.jsonl"
     test_file = repo_root / "data/synthetic/test.jsonl"
-    real_test_file = repo_root / "data/private/real_test.jsonl"
 
     from tiffintally.extract.base import SYSTEM_PROMPT
 
@@ -530,32 +563,9 @@ def main(
                             ]
                         }
                     )
-    synthetic_val_records = synthetic_val_records[:30]
 
+    # data/private/real_test.jsonl overlaps the training text. It is not scored.
     real_val_records = []
-    if real_test_file.exists():
-        with open(real_test_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    item = json.loads(line)
-                    sender = item.get("sender", "Customer")
-                    raw_text = item.get("text", "")
-                    gold = item.get("gold", {})
-                    real_val_records.append(
-                        {
-                            "messages": [
-                                {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                                {
-                                    "role": "user",
-                                    "content": f"Sender: {sender}\nMessage: {raw_text}",
-                                },
-                                {
-                                    "role": "assistant",
-                                    "content": json.dumps({"events": [gold]}),
-                                },
-                            ]
-                        }
-                    )
 
     edge_cases = [
         {
@@ -615,7 +625,11 @@ def main(
 
     hyperparams = {
         "iteration": iteration,
-        "base_model_name": "Qwen/Qwen2.5-0.5B-Instruct",
+        "base_model_name": base_model,
+        "real_eval_note": (
+            "Skipped data/private/real_test.jsonl. 36 of its 50 texts are in the "
+            "training file, so it is not a held-out cook set."
+        ),
         "num_epochs": epochs,
         "learning_rate": lr,
         "lora_r": lora_r,
@@ -627,7 +641,7 @@ def main(
         "lr_scheduler_type": lr_scheduler,
         "weight_decay": weight_decay,
         "warmup_steps": warmup_steps,
-        "max_seq_len": 768,
+        "max_seq_len": max_seq_len,
     }
 
     print(f"\nSubmitting fine-tuning job for Iteration {iteration} to Modal GPU (A10G)...")

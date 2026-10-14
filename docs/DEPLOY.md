@@ -1,6 +1,12 @@
-# Deployment Guide: Render Free Tier + .tech Domain
+# Deployment notes (not a live deploy)
 
-Follow these steps to deploy TiffinTally to Render and attach your custom `.tech` domain.
+Nothing here has been deployed. `https://tiffintally.tech` does not serve this app. There is no Dockerfile. `render.yaml` is a blueprint only.
+
+The steps below are a plan for later. Do not describe them as done.
+
+# Deployment guide: Render free tier
+
+Follow these steps if you later deploy TiffinTally. A custom domain is optional and is not attached.
 
 > [!IMPORTANT]
 > **No Credit Card Rule:** Render's free web service tier does NOT require a credit card. If you are ever prompted for card details during setup, **STOP immediately**, log it in `docs/DECISIONS.md`, and inform the team.
@@ -50,11 +56,13 @@ curl https://tiffintally.onrender.com/health
 
 ---
 
-## 4. Connect Custom `.tech` Domain
+## 4. Custom domain, only after a deploy exists
 
-1. In the Render Dashboard, go to your `tiffintally` service settings.
+`tiffintally.tech` does not point at this app. Do not type that name into Render unless you own the domain and intend to attach it.
+
+1. In the Render Dashboard, go to your service settings.
 2. Under **Custom Domains**, click **Add Custom Domain**.
-3. Enter your domain: `tiffintally.tech` (and `www.tiffintally.tech`).
+3. Enter a domain you control.
 4. Render will display DNS target records (e.g. `CNAME` pointing to `tiffintally.onrender.com` or an `A` record).
 5. Go to your domain registrar (where you claimed the `.tech` domain):
    - Add a `CNAME` record for `@` or `www` pointing to `tiffintally.onrender.com`.

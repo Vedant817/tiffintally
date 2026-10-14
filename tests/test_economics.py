@@ -31,7 +31,7 @@ def test_ai_unit_economics():
     assert comp.gpt4o_monthly_cost_inr > 0
     assert comp.open_slm_monthly_cost_inr == 0.0
     assert comp.monthly_savings_inr == comp.gpt4o_monthly_cost_inr
-    assert "100% Local" in comp.privacy_guarantee
+    assert "Not a measured zero-leakage guarantee" in comp.privacy_guarantee
 
 
 def test_waste_reduction_roi():

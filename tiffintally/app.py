@@ -5,7 +5,9 @@ dues ledger, voice briefs, active learning feedback flywheel, and recipe BOM eco
 """
 
 import logging
+import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
@@ -31,14 +33,26 @@ BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 CORRECTIONS_FILE = Path("data/private/corrections.jsonl")
 
-# In-memory session state for single-cook kitchen workflow
-CURRENT_SHEET: Optional[DailyPrepSheet] = None
-CURRENT_EVENTS: list[OrderEvent] = []
-CURRENT_VOICE_BRIEF: Optional[VoiceBriefResult] = None
-CURRENT_FORECAST = None
-CURRENT_BOM = None
-CURRENT_ECONOMICS = None
-CURRENT_WASTE_ROI = None
+SESSION_COOKIE = "tt_sid"
+
+
+@dataclass
+class KitchenSession:
+    """One browser's kitchen. Not shared with other visitors."""
+
+    sid: str
+    sheet: Optional[DailyPrepSheet] = None
+    events: list[OrderEvent] = field(default_factory=list)
+    voice_brief: Optional[VoiceBriefResult] = None
+    forecast: object = None
+    bom: object = None
+    economics: object = None
+    waste_roi: object = None
+    extractor_label: str = "no chat loaded"
+    used_fallback: bool = True
+
+
+SESSIONS: dict[str, KitchenSession] = {}
 
 
 class CorrectionPayload(BaseModel):
@@ -49,56 +63,81 @@ class CorrectionPayload(BaseModel):
     corrected_action: str
 
 
-def init_default_data():
-    """Seed sample Pune customer chat for instant demo experience."""
-    global \
-        CURRENT_SHEET, \
-        CURRENT_EVENTS, \
-        CURRENT_VOICE_BRIEF, \
-        CURRENT_FORECAST, \
-        CURRENT_BOM, \
-        CURRENT_ECONOMICS, \
-        CURRENT_WASTE_ROI
-    demo_raw = """12/10/26, 9:30 pm - Priya: Kal lunch 1 thali, roti nahi rice please
-12/10/26, 9:45 pm - Rahul: Kal lunch cancel aunty, office me party hai
-12/10/26, 10:14 pm - Vikram: kal 2 nahi 3 thali dinner bhejo, roommate aa gaya
-12/10/26, 10:30 pm - Amit: Kal lunch me bina pyaaz lahsun ke 1 thali
-12/10/26, 10:45 pm - Sneha: Kal lunch and dinner dono 1-1 thali
-12/10/26, 11:15 pm - Rohan: Kal lunch 2 thali extra spicy
-"""
-    parsed_msgs = parse_chat_export(demo_raw)
-    extractor = GemmaExtractor()
-    CURRENT_EVENTS = extractor.extract_batch(parsed_msgs)
+def open_session(request: Request) -> tuple[KitchenSession, bool]:
+    sid = request.cookies.get(SESSION_COOKIE)
+    if sid and sid in SESSIONS:
+        return SESSIONS[sid], False
+    sid = uuid.uuid4().hex
+    session = KitchenSession(sid=sid)
+    SESSIONS[sid] = session
+    return session, True
 
-    # Reconcile into prep sheet
-    CURRENT_SHEET = reconcile_orders(
-        events=CURRENT_EVENTS,
-        target_date="tomorrow",
-        cutoff_time=time(22, 0),
-        standing_orders={"priya": 1, "rahul": 1, "vikram": 2, "amit": 1, "sneha": 1},
+
+def remember_cookie(response, session: KitchenSession, is_new: bool):
+    if is_new:
+        response.set_cookie(SESSION_COOKIE, session.sid, httponly=True, samesite="lax")
+    return response
+
+
+def fill_session(
+    session: KitchenSession,
+    events: list[OrderEvent],
+    target_date: str,
+    cutoff_t: time,
+    extractor_label: str,
+    used_fallback: bool,
+) -> None:
+    """Build the sheet from this cook's events only. Standing orders default to empty."""
+    session.events = events
+    session.extractor_label = extractor_label
+    session.used_fallback = used_fallback
+    session.sheet = reconcile_orders(
+        events=events,
+        target_date=target_date,
+        cutoff_time=cutoff_t,
+        standing_orders=None,
     )
-
-    # Generate audio brief
-    voice_service = VoiceBriefService()
-    CURRENT_VOICE_BRIEF = voice_service.generate_morning_brief(CURRENT_SHEET)
-
-    # Kitchen forecast
+    session.voice_brief = VoiceBriefService().generate_morning_brief(session.sheet)
     forecaster = KitchenForecaster()
-    CURRENT_FORECAST = forecaster.how_many_to_cook(
+    session.forecast = forecaster.how_many_to_cook(
         target_date=(datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
-        confirmed_count=CURRENT_SHEET.total_thalis,
+        confirmed_count=session.sheet.total_thalis,
     )
-
-    # Kitchen Economics and Grocery BOM
     econ = KitchenEconomics()
-    CURRENT_BOM = econ.compute_bom(CURRENT_SHEET.total_thalis)
-    CURRENT_ECONOMICS = econ.compute_ai_unit_economics(CURRENT_SHEET.total_thalis)
-    CURRENT_WASTE_ROI = econ.compute_waste_reduction_roi(CURRENT_SHEET.total_thalis)
+    session.bom = econ.compute_bom(session.sheet.total_thalis)
+    session.economics = econ.compute_ai_unit_economics(session.sheet.total_thalis)
+    session.waste_roi = econ.compute_waste_reduction_roi(session.sheet.total_thalis)
+
+
+def ensure_empty(session: KitchenSession) -> None:
+    if session.sheet is None:
+        fill_session(
+            session,
+            events=[],
+            target_date="tomorrow",
+            cutoff_t=time(22, 0),
+            extractor_label="no chat loaded",
+            used_fallback=True,
+        )
+
+
+def sheet_context(session: KitchenSession) -> dict:
+    return {
+        "sheet": session.sheet,
+        "voice_brief": session.voice_brief,
+        "forecast": session.forecast,
+        "bom": session.bom,
+        "economics": session.economics,
+        "waste_roi": session.waste_roi,
+        "extractor_label": session.extractor_label,
+        "used_fallback": session.used_fallback,
+        "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
+    }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_default_data()
+    # Do not seed fictional customers into a process-wide sheet.
     yield
 
 
@@ -141,14 +180,7 @@ async def process(
     target_date: str = Form("tomorrow"),
     cutoff: str = Form("22:00"),
 ):
-    global \
-        CURRENT_SHEET, \
-        CURRENT_EVENTS, \
-        CURRENT_VOICE_BRIEF, \
-        CURRENT_FORECAST, \
-        CURRENT_BOM, \
-        CURRENT_ECONOMICS, \
-        CURRENT_WASTE_ROI
+    session, is_new = open_session(request)
 
     content = ""
     if chat_file and chat_file.filename:
@@ -157,116 +189,84 @@ async def process(
     elif raw_text:
         content = raw_text
     else:
-        content = "12/10/26, 10:14 pm - Ravi: kal lunch 2, dinner skip"
+        content = ""
 
-    parsed_msgs = parse_chat_export(content)
+    parsed_msgs = parse_chat_export(content) if content.strip() else []
     extractor = GemmaExtractor()
-    CURRENT_EVENTS = extractor.extract_batch(parsed_msgs)
+    events = extractor.extract_batch(parsed_msgs) if parsed_msgs else []
+    label = extractor.model_name
+    used_fallback = not extractor.is_available()
+    if used_fallback and not label.endswith("-fallback"):
+        label = f"{label}-fallback"
 
-    # Parse cutoff time
     try:
         parts = cutoff.split(":")
         cutoff_t = time(int(parts[0]), int(parts[1]))
     except Exception:
         cutoff_t = time(22, 0)
 
-    CURRENT_SHEET = reconcile_orders(
-        events=CURRENT_EVENTS,
+    fill_session(
+        session,
+        events=events,
         target_date=target_date,
-        cutoff_time=cutoff_t,
-        standing_orders={"priya": 1, "rahul": 1, "vikram": 2, "amit": 1, "sneha": 1},
+        cutoff_t=cutoff_t,
+        extractor_label=label,
+        used_fallback=used_fallback,
     )
 
-    voice_service = VoiceBriefService()
-    CURRENT_VOICE_BRIEF = voice_service.generate_morning_brief(CURRENT_SHEET)
-
-    forecaster = KitchenForecaster()
-    CURRENT_FORECAST = forecaster.how_many_to_cook(
-        target_date=(datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
-        confirmed_count=CURRENT_SHEET.total_thalis,
-    )
-
-    econ = KitchenEconomics()
-    CURRENT_BOM = econ.compute_bom(CURRENT_SHEET.total_thalis)
-    CURRENT_ECONOMICS = econ.compute_ai_unit_economics(CURRENT_SHEET.total_thalis)
-    CURRENT_WASTE_ROI = econ.compute_waste_reduction_roi(CURRENT_SHEET.total_thalis)
-
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="prep_sheet.html",
-        context={
-            "sheet": CURRENT_SHEET,
-            "voice_brief": CURRENT_VOICE_BRIEF,
-            "forecast": CURRENT_FORECAST,
-            "bom": CURRENT_BOM,
-            "economics": CURRENT_ECONOMICS,
-            "waste_roi": CURRENT_WASTE_ROI,
-            "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
-        },
+        context=sheet_context(session),
     )
+    return remember_cookie(response, session, is_new)
 
 
 @app.get("/prep", response_class=HTMLResponse)
 def view_prep_sheet(request: Request):
-    global \
-        CURRENT_SHEET, \
-        CURRENT_VOICE_BRIEF, \
-        CURRENT_FORECAST, \
-        CURRENT_BOM, \
-        CURRENT_ECONOMICS, \
-        CURRENT_WASTE_ROI
-    if not CURRENT_SHEET:
-        init_default_data()
-
-    return templates.TemplateResponse(
+    session, is_new = open_session(request)
+    ensure_empty(session)
+    response = templates.TemplateResponse(
         request=request,
         name="prep_sheet.html",
-        context={
-            "sheet": CURRENT_SHEET,
-            "voice_brief": CURRENT_VOICE_BRIEF,
-            "forecast": CURRENT_FORECAST,
-            "bom": CURRENT_BOM,
-            "economics": CURRENT_ECONOMICS,
-            "waste_roi": CURRENT_WASTE_ROI,
-            "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
-        },
+        context=sheet_context(session),
     )
+    return remember_cookie(response, session, is_new)
 
 
 @app.get("/station", response_class=HTMLResponse)
 def view_kds_station(request: Request):
     """Touch-friendly Kitchen Display Station (KDS) for packing and container ticking."""
-    global CURRENT_SHEET
-    if not CURRENT_SHEET:
-        init_default_data()
-
-    return templates.TemplateResponse(
+    session, is_new = open_session(request)
+    ensure_empty(session)
+    response = templates.TemplateResponse(
         request=request,
         name="station.html",
         context={
-            "sheet": CURRENT_SHEET,
+            "sheet": session.sheet,
             "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
         },
     )
+    return remember_cookie(response, session, is_new)
 
 
 @app.get("/ledger", response_class=HTMLResponse)
 def view_ledger(request: Request):
-    global CURRENT_EVENTS
-    if not CURRENT_EVENTS:
-        init_default_data()
+    session, is_new = open_session(request)
+    ensure_empty(session)
 
     ledger = reconcile_ledger(
-        CURRENT_EVENTS,
+        session.events,
         price_per_thali=80.0,
-        previous_balances={"ravi": 400.0, "priya": 240.0, "vikram": 1500.0},
+        previous_balances=None,
     )
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="ledger.html",
         context={"ledger": ledger},
     )
+    return remember_cookie(response, session, is_new)
 
 
 @app.get("/forecast", response_class=HTMLResponse)
@@ -297,10 +297,11 @@ def forecast_view(
 
 
 @app.get("/api/audio/morning_brief")
-def get_morning_brief_audio():
-    global CURRENT_VOICE_BRIEF
-    if CURRENT_VOICE_BRIEF and CURRENT_VOICE_BRIEF.audio_path:
-        p = Path(CURRENT_VOICE_BRIEF.audio_path)
+def get_morning_brief_audio(request: Request):
+    session, _is_new = open_session(request)
+    ensure_empty(session)
+    if session.voice_brief and session.voice_brief.audio_path:
+        p = Path(session.voice_brief.audio_path)
         if p.exists():
             return FileResponse(p, media_type="audio/mpeg")
     raise HTTPException(status_code=404, detail="Audio brief not generated or cached")

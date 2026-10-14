@@ -9,6 +9,13 @@
     <p style="color: var(--text-muted); font-size: 0.9rem;">
       Reconciled at {{ current_time }}
     </p>
+    <p style="font-size: 0.85rem; margin-top: 6px;">
+      Extractor: <strong>{{ extractor_label }}</strong>
+      {% if used_fallback %}
+        (rules fallback, not a fine-tuned model).
+      {% endif %}
+      Standing orders added: none.
+    </p>
   </div>
   <div style="display: flex; gap: 10px;">
     <button onclick="window.print()" class="btn btn-outline">
@@ -57,17 +64,17 @@
 <div class="card no-print" style="border-left: 4px solid #2e7d32; background: #f1f8e9;">
   <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
     <div>
-      <h3 style="font-size: 1rem; color: #1b5e20;">📈 TabPFN Kitchen Cook Forecast</h3>
+      <h3 style="font-size: 1rem; color: #1b5e20;">📈 Kitchen Cook Forecast</h3>
       <p style="font-size: 0.88rem; color: #2e7d32; margin-top: 2px;">
         {{ forecast.explanation }}
       </p>
     </div>
     <div style="text-align: right;">
       <div style="font-size: 1.4rem; font-weight: 700; color: #1b5e20;">
-        {{ forecast.predicted_to_cook }} Thalis
+        Cook {{ forecast.confirmed_orders }} from the chat
       </div>
       <span style="font-size: 0.8rem; color: #558b2f;">
-        (Confirmed: {{ forecast.confirmed_orders }} + Buffer: +{{ forecast.recommended_buffer }})
+        Model buffer +{{ forecast.recommended_buffer }} is not an order. Do not add it to the pot.
       </span>
     </div>
   </div>
@@ -200,26 +207,9 @@
     </tbody>
   </table>
 
-  <!-- Unit Economics ROI Highlights -->
-  {% if waste_roi and economics %}
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; background: #eef2ff; padding: 12px; border-radius: 8px;">
-    <div>
-      <div style="font-size: 0.78rem; text-transform: uppercase; color: #4338ca; font-weight: 700;">Food Waste Saved (TabPFN)</div>
-      <div style="font-size: 1.25rem; font-weight: 800; color: #1e1b4b;">₹{{ waste_roi.monthly_waste_cost_saved_inr|round|int }} / month</div>
-      <div style="font-size: 0.78rem; color: #475569;">{{ waste_roi.daily_waste_plates_saved|round(1) }} plates saved per day</div>
-    </div>
-    <div>
-      <div style="font-size: 0.78rem; text-transform: uppercase; color: #4338ca; font-weight: 700;">AI Marginal API Cost</div>
-      <div style="font-size: 1.25rem; font-weight: 800; color: #10b981;">₹0.00 / query</div>
-      <div style="font-size: 0.78rem; color: #475569;">Fine-Tuned Open SLM on local CPU/device</div>
-    </div>
-    <div>
-      <div style="font-size: 0.78rem; text-transform: uppercase; color: #4338ca; font-weight: 700;">Customer Privacy Flywheel</div>
-      <div style="font-size: 1.25rem; font-weight: 800; color: #1e1b4b;">100% Local Guard</div>
-      <div style="font-size: 0.78rem; color: #475569;">Zero phone numbers leaked to cloud APIs</div>
-    </div>
-  </div>
-  {% endif %}
+  <p style="font-size: 0.82rem; color: #64748b;">
+    Grocery lines are a recipe scale for the thali count above. They are not a saving, and they are not a TabPFN result.
+  </p>
 </div>
 {% endif %}
 

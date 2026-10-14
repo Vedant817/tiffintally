@@ -34,4 +34,4 @@ def test_how_many_to_cook_agent_tool():
     # Predicted plates should be at least confirmed orders
     assert res.predicted_to_cook >= 41
     assert res.recommended_buffer >= 0
-    assert "thalis" in res.explanation
+    assert "Do not add the buffer" in res.explanation

@@ -1,7 +1,10 @@
 """
-Tinker LoRA Fine-Tuned Model Extractor for small open-weight models (e.g. Qwen2.5-3B / Llama-3.2-3B).
-Provides hosted sampling via Thinking Machines Tinker API with client pseudonymization,
-production security guardrails, and robust offline evaluation fallback.
+Optional extractor for a Thinking Machines Tinker sampling endpoint.
+
+No Tinker fine-tune has been run in this repo. The Modal runs were Qwen2.5-0.5B
+on Modal GPUs, and they are not served here. Without TINKER_API_KEY and an
+explicit TINKER_API_BASE, this class returns the regex heuristic and labels the
+result as a fallback. It does not call a made-up host.
 """
 
 import logging
@@ -23,8 +26,9 @@ from tiffintally.security import InputGuardrail, enforce_business_bounds
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TINKER_MODEL = os.getenv("TINKER_MODEL_ID", "qwen2.5-3b-tiffintally-lora")
-TINKER_API_BASE = os.getenv("TINKER_API_BASE", "https://api.thinkingmachines.ai/v1")
+DEFAULT_TINKER_MODEL = os.getenv("TINKER_MODEL_ID", "tinker-not-configured")
+# Empty unless the operator sets a real base URL. The old default host was invented.
+TINKER_API_BASE = os.getenv("TINKER_API_BASE", "")
 
 
 class TinkerExtractor:
@@ -42,6 +46,9 @@ class TinkerExtractor:
         self.guardrail = InputGuardrail()
 
     def is_available(self) -> bool:
+        base = (TINKER_API_BASE or "").strip()
+        if not base or "thinkingmachines.ai" in base:
+            return False
         return bool(self.api_key and len(self.api_key.strip()) > 5)
 
     def extract_from_text(self, raw_text: str, sender: str = "Customer") -> ExtractionResult:
@@ -69,12 +76,12 @@ class TinkerExtractor:
             latency = (time.perf_counter() - t0) * 1000
             res = ExtractionResult(
                 events=events,
-                model_name=f"{self.model_id}-surrogate",
+                model_name=f"{self.model_id}-fallback",
                 latency_ms=latency,
                 input_tokens=len(raw_text.split()),
                 output_tokens=len(events) * 20,
                 used_fallback=True,
-                error="TINKER_API_KEY not configured: using offline fine-tune surrogate",
+                error="Tinker is not configured. Using the regex heuristic, not a fine-tuned model.",
             )
             log_model_call(res)
             return res
@@ -157,7 +164,7 @@ class TinkerExtractor:
 
         res = ExtractionResult(
             events=fallback_events,
-            model_name=f"{self.model_id}-surrogate",
+            model_name=f"{self.model_id}-fallback",
             latency_ms=latency,
             input_tokens=len(raw_text.split()),
             output_tokens=len(fallback_events) * 20,

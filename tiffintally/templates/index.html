@@ -6,8 +6,9 @@
 <div class="card" style="border-left: 4px solid var(--primary);">
   <h1 style="font-size: 1.5rem; margin-bottom: 8px;">Order Intake & Extraction</h1>
   <p style="color: var(--text-muted); font-size: 0.95rem;">
-    Upload your exported WhatsApp chat (<code>.txt</code>) or paste the raw chat text below.
-    TiffinTally pseudonymizes customer identities before calling AI extractors, reconciles cancellations and changes deterministically, and prepares the kitchen's daily prep sheet.
+    Upload an exported WhatsApp chat (<code>.txt</code>) or paste the text below.
+    Orders are reconciled in Python for the date you pick. Nothing is added for customers who did not write in.
+    A hosted model is called only when its API key is set. That path swaps names and phone numbers for tokens first. With no key, the rules parser runs on this machine and the chat is not uploaded.
   </p>
 </div>
 
@@ -16,7 +17,7 @@
     <h2 style="font-size: 1.15rem;">Paste or Upload WhatsApp Chat</h2>
     <div style="display: flex; gap: 8px;">
       <button type="button" class="btn btn-secondary" onclick="loadDemoSample()">
-        ⚡ Load Demo Batch (Realistic Chat)
+        Load sample chat (made-up names)
       </button>
     </div>
   </div>
@@ -52,11 +53,12 @@
 </div>
 
 <div class="card" style="background: #fafafa;">
-  <h3 style="font-size: 1rem; margin-bottom: 8px;">🛡️ Privacy & Operational Guarantees</h3>
+  <h3 style="font-size: 1rem; margin-bottom: 8px;">What this page does and does not do</h3>
   <ul style="font-size: 0.88rem; color: #555; padding-left: 20px; line-height: 1.6;">
-    <li><strong>Client-Side Pseudonymization:</strong> Real customer names & phone numbers are mapped to local sequential tokens (<code>C001..C999</code>) in SQLite before calling any cloud LLM.</li>
-    <li><strong>Deterministic Reconciler:</strong> Time-ordered cancel/update logic is pure Python — zero arithmetic hallucination from language models.</li>
-    <li><strong>No Auto-Sending:</strong> Payment reminders and notifications are generated as drafts for you to review and copy with one tap. The app has zero messaging API keys.</li>
+    <li><strong>Your sheet stays in this browser session.</strong> Another visitor does not see it. The copy lives in the server process until restart. Do not put a shared deploy online without a login.</li>
+    <li><strong>Hosted models.</strong> If a Gemma or Tinker key is set, names and Indian phone numbers in the outbound text are replaced with tokens such as <code>C001</code>. The map is a SQLite file on the machine running the app. The prep sheet still shows the names you pasted. With no key, no chat text is sent.</li>
+    <li><strong>Reconciler.</strong> Cancels and quantity changes are applied in timestamp order in Python. The language model, when one is used, only proposes events.</li>
+    <li><strong>No auto-send.</strong> Payment reminders are drafts you copy. There is no WhatsApp Business API key in this app.</li>
   </ul>
 </div>
 {% endblock %}
@@ -64,18 +66,27 @@
 {% block scripts %}
 <script>
 function loadDemoSample() {
-  const demoText = `12/10/26, 10:14 pm - Ravi: kal lunch 2, dinner skip
-12/10/26, 10:15 pm - Priya: kal lunch 1, aaj roti nahi extra rice dena please
-12/10/26, 10:18 pm - Sneha: kal lunch cancel aunty, team lunch hai
-12/10/26, 10:20 pm - Karan: Kal lunch 1 plate. Aur meri roommate Tanvi ke liye bhi ek lunch add kar dena
-12/10/26, 10:24 pm - Vikram: ₹1500 GPay kiya aunty check kar lo
-12/10/26, 10:30 pm - Ananya: earlier ordered 1, please change it to 3 thalis for dinner tomorrow
-12/10/26, 10:35 pm - Rohan: thank you aunty khana mast tha!
-12/10/26, 10:40 pm - Pooja: कल दो थाली दोपहर को भेजना, बिना प्याज के
-12/10/26, 10:55 pm - Amit: Sunday off please, going home
-12/10/26, 11:15 pm - Deepak: kal lunch 2 add karo please late message aunty`;
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  const line = (hour, minute, text) =>
+    `${dd}/${mm}/${yy}, ${hour}:${minute} pm - ${text}`;
+  // 8:xx pm is before the 10 pm cutoff. 11:15 pm is late on purpose.
+  const demoText = [
+    line("8", "14", "Ravi: kal lunch 2, dinner skip"),
+    line("8", "15", "Priya: kal lunch 1, aaj roti nahi extra rice dena please"),
+    line("8", "18", "Sneha: kal lunch cancel aunty, team lunch hai"),
+    line("8", "20", "Karan: Kal lunch 1 plate. Aur meri roommate Tanvi ke liye bhi ek lunch add kar dena"),
+    line("8", "24", "Vikram: ₹1500 GPay kiya aunty check kar lo"),
+    line("8", "30", "Ananya: earlier ordered 1, please change it to 3 thalis for dinner tomorrow"),
+    line("8", "35", "Rohan: thank you aunty khana mast tha!"),
+    line("8", "40", "Pooja: कल दो थाली दोपहर को भेजना, बिना प्याज के"),
+    line("8", "55", "Amit: Sunday off please, going home"),
+    line("11", "15", "Deepak: kal lunch 2 add karo please late message aunty"),
+  ].join("\n");
 
-  document.getElementById('raw_text').value = demoText;
+  document.getElementById("raw_text").value = demoText;
 }
 </script>
 {% endblock %}

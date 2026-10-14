@@ -1,8 +1,5 @@
 """
-Production Telemetry and Distributed Pipeline Tracing for TiffinTally.
-Powered by Sentry SDK for AI agent monitoring, latency tracing,
-guardrail security incident alerting, and kitchen economic metrics.
-Qualifies for Sentry Hackathon Partner Prize ($100).
+Optional Sentry tracing. Customer message text is not attached to events.
 """
 
 import contextlib
@@ -21,6 +18,34 @@ except ImportError:
 logger = logging.getLogger("tiffintally.telemetry")
 
 _INITIALIZED = False
+_SECRET_HINTS = ("api_key", "authorization", "token", "password", "secret", "dsn")
+
+
+def _scrub_event(event, hint):
+    """Drop message text and anything that looks like a credential before send."""
+    request = event.get("request")
+    if isinstance(request, dict):
+        request.pop("data", None)
+        request.pop("cookies", None)
+        headers = request.get("headers")
+        if isinstance(headers, dict):
+            for key in list(headers):
+                if any(hint_name in key.lower() for hint_name in _SECRET_HINTS):
+                    headers[key] = "[redacted]"
+    extra = event.get("extra")
+    if isinstance(extra, dict):
+        extra.pop("raw_text_preview", None)
+        extra.pop("raw_text", None)
+    return event
+
+
+def _scrub_breadcrumb(crumb, hint):
+    data = crumb.get("data")
+    if isinstance(data, dict):
+        for key in ("raw_text", "body", "message", "input"):
+            if key in data:
+                data[key] = "[redacted]"
+    return crumb
 
 
 def init_telemetry(
@@ -50,6 +75,20 @@ def init_telemetry(
             environment=environment,
             traces_sample_rate=traces_sample_rate,
             release="tiffintally@0.2.0",
+            # Replaces the deprecated send_default_pii=False. No user info,
+            # cookies, headers, query strings, or HTTP bodies.
+            data_collection={
+                "user_info": False,
+                "cookies": {"mode": "off"},
+                "http_headers": {"request": {"mode": "off"}},
+                "url_query_params": {"mode": "off"},
+                "http_bodies": [],
+                "gen_ai": {"inputs": False, "outputs": False},
+                "stack_frame_variables": False,
+                "frame_context_lines": 0,
+            },
+            before_send=_scrub_event,
+            before_breadcrumb=_scrub_breadcrumb,
         )
         sentry_sdk.set_tag("app", "tiffintally")
         sentry_sdk.set_tag("domain", "home_kitchen_automation")
@@ -117,9 +156,9 @@ def capture_guardrail_incident(raw_text: str, flags: list[str], customer: str = 
             with scope_mgr() as scope:
                 scope.set_level("warning")
                 scope.set_tag("security_incident", "prompt_injection")
-                scope.set_extra("customer", customer)
                 scope.set_extra("flags", flags)
-                scope.set_extra("raw_text_preview", raw_text[:200])
+                scope.set_extra("text_length", len(raw_text or ""))
+                scope.set_tag("customer_attached", "no")
                 sentry_sdk.capture_message(
                     f"TiffinTally Guardrail Alert: {', '.join(flags)} detected",
                     level="warning",

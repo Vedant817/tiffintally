@@ -1,8 +1,10 @@
 """
-Kitchen plate count forecasting using Prior Labs TabPFN.
-Predicts actual plates needed tomorrow (confirmed orders + expected late additions)
-from historical daily records, day of week, Indian holidays, lag-7, and rolling mean.
-Provides fallback model (GradientBoosting) if TabPFN API key is unconfigured.
+Kitchen plate forecast.
+
+The default model is scikit-learn HistGradientBoosting on data/kitchen_history.csv,
+which is synthetic. TabPFN is used only when TABPFN_API_KEY is set and the client
+imports. TabPFN's client licence is non-commercial. This module does not estimate
+rupee savings.
 """
 
 import logging
@@ -230,9 +232,18 @@ class KitchenForecaster:
         day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         dow_name = day_names[dow]
 
+        if self._model_type.startswith("TabPFN"):
+            licence = " TabPFN's client licence is non-commercial. History file is still synthetic."
+        else:
+            licence = (
+                " No TabPFN call was made. The history file is synthetic, so this buffer"
+                " is not a measured saving."
+            )
         explanation = (
             f"Based on {dow_name} history and {confirmed_count} confirmed orders, "
-            f"expecting ~{buffer} late walk-ins/additions. Recommend cooking {pred_plates} thalis."
+            f"the model suggests a buffer of {buffer}. Cook the {confirmed_count} from the chat. "
+            f"Do not add the buffer to the pot."
+            f" Model: {self._model_type}.{licence}"
         )
 
         return ForecastResult(

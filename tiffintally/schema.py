@@ -61,6 +61,7 @@ class ParsedMessage(BaseModel):
     is_media: bool = False
     is_system: bool = False
     raw_line: str = ""
+    timestamp_unparsed: bool = False
 
 
 class PackingLabel(BaseModel):

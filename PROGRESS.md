@@ -1,5 +1,7 @@
 # TiffinTally Build Progress
 
+Checkboxes below were written while several headline numbers were still false. `RESULTS.md` is the status that counts. The 100% real-message score, the Tinker 3B claim, the TabPFN rupee saving, the edge latency, and the first-user story are retracted.
+
 **Start Date:** 2026-10-13 13:30 IST  
 **Target Deadline:** 2026-10-18 11:59 PM PDT (2026-10-19 12:29 PM IST)  
 **Internal Feature Freeze:** 2026-10-19 09:00 AM IST
