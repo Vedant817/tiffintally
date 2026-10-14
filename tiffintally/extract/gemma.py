@@ -4,8 +4,6 @@ Uses gemma-2-9b-it / gemma-3-12b-it with structured JSON schema output,
 pseudonymized names, adversarial input guardrails, and deterministic fallbacks.
 """
 
-import json
-import logging
 import os
 import time
 from typing import Optional

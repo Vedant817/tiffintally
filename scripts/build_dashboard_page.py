@@ -4,33 +4,35 @@ with open("evals/dashboard_data.json", "r", encoding="utf-8") as fp:
     iterations = json.load(fp)
 
 iter_labels = [f"It {r['iteration']}" for r in iterations]
-loss_values = [round(r['train_loss'], 4) if r['train_loss'] else 0.045 for r in iterations]
-real_em_values = [r['real_em'] for r in iterations]
-synth_em_values = [r['synthetic_em'] for r in iterations]
-latency_values = [r['p50_latency'] if r['p50_latency'] < 1000 else 650 for r in iterations] # clip iter 6 local cold-start outlier for graph readability
+loss_values = [round(r["train_loss"], 4) if r["train_loss"] else 0.045 for r in iterations]
+real_em_values = [r["real_em"] for r in iterations]
+synth_em_values = [r["synthetic_em"] for r in iterations]
+latency_values = [
+    r["p50_latency"] if r["p50_latency"] < 1000 else 650 for r in iterations
+]  # clip iter 6 local cold-start outlier for graph readability
 
-html_content = f"""<!DOCTYPE html>
+html_content = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>TiffinTally: 30-Iteration Scientific Fine-Tuning Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root {{
+    :root {
       --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }}
-    body {{
+    }
+    body {
       font-family: var(--font-family);
       margin: 0;
       padding: 12px 4px;
       color: var(--foreground, #e0e0e0);
       background: transparent;
       line-height: 1.45;
-    }}
-    .header-box {{
+    }
+    .header-box {
       margin-bottom: 20px;
-    }}
-    .title {{
+    }
+    .title {
       font-size: 22px;
       font-weight: 700;
       letter-spacing: -0.02em;
@@ -39,116 +41,116 @@ html_content = f"""<!DOCTYPE html>
       display: flex;
       align-items: center;
       gap: 10px;
-    }}
-    .subtitle {{
+    }
+    .subtitle {
       font-size: 13px;
       color: var(--muted-foreground, #a0a0a0);
       margin: 0;
-    }}
-    .kpi-grid {{
+    }
+    .kpi-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 12px;
       margin-bottom: 24px;
-    }}
-    .kpi-card {{
+    }
+    .kpi-card {
       background: var(--card, rgba(255, 255, 255, 0.04));
       border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
       border-radius: var(--radius, 10px);
       padding: 12px 14px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }}
-    .kpi-label {{
+    }
+    .kpi-label {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--muted-foreground, #888);
       margin-bottom: 4px;
       font-weight: 600;
-    }}
-    .kpi-val {{
+    }
+    .kpi-val {
       font-size: 22px;
       font-weight: 800;
       color: var(--foreground, #fff);
       display: flex;
       align-items: baseline;
       gap: 4px;
-    }}
-    .kpi-unit {{
+    }
+    .kpi-unit {
       font-size: 12px;
       font-weight: 500;
       color: var(--muted-foreground, #aaa);
-    }}
-    .kpi-sub {{
+    }
+    .kpi-sub {
       font-size: 11px;
       color: var(--accent, #6366f1);
       margin-top: 3px;
       font-weight: 500;
-    }}
-    .chart-panel {{
+    }
+    .chart-panel {
       background: var(--card, rgba(255, 255, 255, 0.04));
       border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
       border-radius: var(--radius, 10px);
       padding: 16px;
       margin-bottom: 20px;
-    }}
-    .chart-header {{
+    }
+    .chart-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 12px;
-    }}
-    .chart-title {{
+    }
+    .chart-title {
       font-size: 14px;
       font-weight: 600;
       color: var(--foreground, #fff);
       margin: 0;
-    }}
-    .chart-desc {{
+    }
+    .chart-desc {
       font-size: 11px;
       color: var(--muted-foreground, #888);
       margin: 0;
-    }}
-    .chart-container {{
+    }
+    .chart-container {
       position: relative;
       height: 220px;
       width: 100%;
-    }}
-    .two-col {{
+    }
+    .two-col {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
       margin-bottom: 20px;
-    }}
-    @media (max-width: 650px) {{
-      .two-col {{ grid-template-columns: 1fr; }}
-    }}
-    .tier-cards {{
+    }
+    @media (max-width: 650px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+    .tier-cards {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 12px;
       margin-bottom: 24px;
-    }}
-    @media (max-width: 650px) {{
-      .tier-cards {{ grid-template-columns: 1fr; }}
-    }}
-    .tier-card {{
+    }
+    @media (max-width: 650px) {
+      .tier-cards { grid-template-columns: 1fr; }
+    }
+    .tier-card {
       background: var(--card, rgba(255, 255, 255, 0.04));
       border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
       border-radius: var(--radius, 10px);
       padding: 14px;
       position: relative;
       transition: transform 0.2s ease, border-color 0.2s ease;
-    }}
-    .tier-card.featured {{
+    }
+    .tier-card.featured {
       border-color: #10b981;
       background: rgba(16, 185, 129, 0.06);
-    }}
-    .tier-card.champion {{
+    }
+    .tier-card.champion {
       border-color: #6366f1;
       background: rgba(99, 102, 241, 0.06);
-    }}
-    .tier-badge {{
+    }
+    .tier-badge {
       font-size: 9px;
       text-transform: uppercase;
       font-weight: 700;
@@ -156,45 +158,45 @@ html_content = f"""<!DOCTYPE html>
       border-radius: 4px;
       display: inline-block;
       margin-bottom: 6px;
-    }}
-    .badge-edge {{ background: #10b981; color: #fff; }}
-    .badge-cloud {{ background: #6366f1; color: #fff; }}
-    .badge-mid {{ background: #f59e0b; color: #fff; }}
-    .tier-name {{
+    }
+    .badge-edge { background: #10b981; color: #fff; }
+    .badge-cloud { background: #6366f1; color: #fff; }
+    .badge-mid { background: #f59e0b; color: #fff; }
+    .tier-name {
       font-size: 14px;
       font-weight: 700;
       margin: 0 0 4px 0;
       color: var(--foreground, #fff);
-    }}
-    .tier-specs {{
+    }
+    .tier-specs {
       font-size: 11px;
       color: var(--muted-foreground, #999);
       margin: 0 0 10px 0;
       line-height: 1.4;
-    }}
-    .tier-stat-row {{
+    }
+    .tier-stat-row {
       display: flex;
       justify-content: space-between;
       font-size: 11px;
       padding: 3px 0;
       border-top: 1px solid var(--border, rgba(255,255,255,0.06));
-    }}
-    .tier-stat-row span:first-child {{ color: var(--muted-foreground, #888); }}
-    .tier-stat-row span:last-child {{ font-weight: 600; color: var(--foreground, #fff); }}
-    .table-container {{
+    }
+    .tier-stat-row span:first-child { color: var(--muted-foreground, #888); }
+    .tier-stat-row span:last-child { font-weight: 600; color: var(--foreground, #fff); }
+    .table-container {
       background: var(--card, rgba(255, 255, 255, 0.04));
       border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
       border-radius: var(--radius, 10px);
       padding: 12px;
       overflow-x: auto;
-    }}
-    table {{
+    }
+    table {
       width: 100%;
       border-collapse: collapse;
       font-size: 11.5px;
       text-align: left;
-    }}
-    th {{
+    }
+    th {
       padding: 8px 10px;
       border-bottom: 1px solid var(--border, rgba(255,255,255,0.12));
       color: var(--muted-foreground, #888);
@@ -202,26 +204,26 @@ html_content = f"""<!DOCTYPE html>
       text-transform: uppercase;
       font-size: 10px;
       letter-spacing: 0.04em;
-    }}
-    td {{
+    }
+    td {
       padding: 7px 10px;
       border-bottom: 1px solid var(--border, rgba(255,255,255,0.05));
       color: var(--foreground, #ddd);
-    }}
-    tr:hover td {{
+    }
+    tr:hover td {
       background: rgba(255,255,255,0.03);
-    }}
-    .status-pill {{
+    }
+    .status-pill {
       display: inline-block;
       font-size: 10px;
       font-weight: 600;
       padding: 2px 7px;
       border-radius: 999px;
-    }}
-    .pill-green {{ background: rgba(16, 185, 129, 0.2); color: #34d399; }}
-    .pill-indigo {{ background: rgba(99, 102, 241, 0.2); color: #818cf8; }}
-    .pill-amber {{ background: rgba(245, 158, 11, 0.2); color: #fbbf24; }}
-    .pill-gray {{ background: rgba(255, 255, 255, 0.08); color: #999; }}
+    }
+    .pill-green { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .pill-indigo { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
+    .pill-amber { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .pill-gray { background: rgba(255, 255, 255, 0.08); color: #999; }
   </style>
 </head>
 <body>
@@ -361,18 +363,22 @@ for r in reversed(iterations):
     elif "Drift" in r["badge"] or "Truncation" in r["badge"]:
         badge_html = f'<span class="status-pill pill-amber">{r["badge"]}</span>'
 
-    em_style = "color:#34d399; font-weight:600;" if r['real_em'] == 100.0 else "color:#fbbf24; font-weight:600;"
-    lat_style = "color:#34d399; font-weight:600;" if r['p50_latency'] < 350 else ""
+    em_style = (
+        "color:#34d399; font-weight:600;"
+        if r["real_em"] == 100.0
+        else "color:#fbbf24; font-weight:600;"
+    )
+    lat_style = "color:#34d399; font-weight:600;" if r["p50_latency"] < 350 else ""
 
     html_content += f"""
         <tr>
-          <td style="font-weight:700;">#{r['iteration']}</td>
-          <td>{r['modules']} ({r['params']})</td>
-          <td style="font-family:monospace;">{r['train_loss']:.4f}</td>
-          <td>{r['synthetic_em']:.1f}%</td>
-          <td style="{em_style}">{r['real_em']:.1f}%</td>
-          <td style="{lat_style}">{r['p50_latency']:.1f} ms</td>
-          <td>{r['duration']:.1f}s</td>
+          <td style="font-weight:700;">#{r["iteration"]}</td>
+          <td>{r["modules"]} ({r["params"]})</td>
+          <td style="font-family:monospace;">{r["train_loss"]:.4f}</td>
+          <td>{r["synthetic_em"]:.1f}%</td>
+          <td style="{em_style}">{r["real_em"]:.1f}%</td>
+          <td style="{lat_style}">{r["p50_latency"]:.1f} ms</td>
+          <td>{r["duration"]:.1f}s</td>
           <td>{badge_html}</td>
         </tr>
     """

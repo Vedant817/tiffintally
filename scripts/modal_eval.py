@@ -194,9 +194,7 @@ def evaluate_checkpoint(
             {"role": "system", "content": val_records[0]["messages"][0]["content"]},
             {"role": "user", "content": f"Sender: {ec['sender']}\nMessage: {ec['text']}"},
         ]
-        in_str = tokenizer.apply_chat_template(
-            prompt, tokenize=False, add_generation_prompt=True
-        )
+        in_str = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(in_str, return_tensors="pt").to(model.device)
         with torch.no_grad():
             outputs = model.generate(
@@ -233,7 +231,9 @@ def evaluate_checkpoint(
             val = parsed_ev.get(key)
             if key == "mods":
                 val_set = set(val) if isinstance(val, list) else set([val] if val else [])
-                exp_set = set(exp_val) if isinstance(exp_val, list) else set([exp_val] if exp_val else [])
+                exp_set = (
+                    set(exp_val) if isinstance(exp_val, list) else set([exp_val] if exp_val else [])
+                )
                 if val_set != exp_set:
                     passed = False
                     break

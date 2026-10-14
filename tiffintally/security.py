@@ -70,10 +70,7 @@ class InputGuardrail:
 
         # 1. Normalize Unicode (NFKC) and strip non-printable zero-width characters
         text = unicodedata.normalize("NFKC", text)
-        cleaned_chars = [
-            c for c in text
-            if unicodedata.category(c) not in ("Cf", "Co", "Cs")
-        ]
+        cleaned_chars = [c for c in text if unicodedata.category(c) not in ("Cf", "Co", "Cs")]
         text = "".join(cleaned_chars)
 
         # 2. Check length bound
@@ -114,7 +111,9 @@ class InputGuardrail:
         )
 
 
-def enforce_business_bounds(qty: int, max_allowed: int = MAX_REASONABLE_QUANTITY) -> tuple[int, Optional[str]]:
+def enforce_business_bounds(
+    qty: int, max_allowed: int = MAX_REASONABLE_QUANTITY
+) -> tuple[int, Optional[str]]:
     """
     Enforces business rationality bounds on extracted order quantities.
     Prevents negative orders, zero orders without cancel action, and excessive spikes.

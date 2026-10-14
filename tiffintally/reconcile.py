@@ -131,7 +131,9 @@ def reconcile_orders(
             if ev not in prep_sheet.unresolved_reviews:
                 prep_sheet.unresolved_reviews.append(ev)
             # If critical prompt injection, excessive quantity (>20), or explicit review flag, don't auto-apply
-            if ev.needs_review or any("prompt_injection" in f or "excessive_quantity" in f for f in ev.audit_flags):
+            if ev.needs_review or any(
+                "prompt_injection" in f or "excessive_quantity" in f for f in ev.audit_flags
+            ):
                 continue
 
         # Skip pure chit-chat

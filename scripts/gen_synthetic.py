@@ -69,7 +69,18 @@ SENDERS = [
     "Devendra",
 ]
 
-FRIENDS = ["Priya", "Amit", "Rahul", "Sneha", "Rohan", "Neha", "Vikas", "Anjali", "Tanvi", "Saurabh"]
+FRIENDS = [
+    "Priya",
+    "Amit",
+    "Rahul",
+    "Sneha",
+    "Rohan",
+    "Neha",
+    "Vikas",
+    "Anjali",
+    "Tanvi",
+    "Saurabh",
+]
 
 QTY_WORDS = {
     1: ["1", "ek", "one"],
@@ -113,18 +124,60 @@ TEMPLATES_MODS = [
     ("dinner 1, no garlic no onion", "dinner", 1, ["thali"], ["no onion", "no garlic"], "new"),
     ("kal lunch {qty}, kam teekha banana", "lunch", "{qty}", ["thali"], ["less spicy"], "new"),
     ("lunch 1, extra rice please aunty", "lunch", 1, ["thali"], ["extra rice"], "new"),
-    ("kal dinner {qty}, less oily please stomach upset hai", "dinner", "{qty}", ["thali"], ["less oily"], "new"),
+    (
+        "kal dinner {qty}, less oily please stomach upset hai",
+        "dinner",
+        "{qty}",
+        ["thali"],
+        ["less oily"],
+        "new",
+    ),
     ("kal lunch 1, dal zyada sabzi kam", "lunch", 1, ["thali"], ["dal zyada", "sabzi kam"], "new"),
     ("kal lunch 2, ek bina pyaaz ka", "lunch", 2, ["thali"], ["no onion"], "new"),
-    ("1 thali lunch, replace curd with extra sabzi", "lunch", 1, ["thali"], ["no curd", "extra sabzi"], "new"),
+    (
+        "1 thali lunch, replace curd with extra sabzi",
+        "lunch",
+        1,
+        ["thali"],
+        ["no curd", "extra sabzi"],
+        "new",
+    ),
     ("bina pyaaz ke {qty} thali bhejo lunch me", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
     ("bina pyaaz ke {qty} tiffin dinner me", "dinner", "{qty}", ["thali"], ["no onion"], "new"),
     ("bina pyaaz {qty} lunch box please", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
     ("pyaaz mat dalna kal ke {qty} dinner me", "dinner", "{qty}", ["thali"], ["no onion"], "new"),
-    ("bina pyaaz ke {qty} plate bhejo kal dopahar", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
-    ("aunty kal bina pyaaz ke {qty} dabba bhej dena", "lunch", "{qty}", ["thali"], ["no onion"], "new"),
-    ("bina lehsun pyaaz {qty} thali kal lunch", "lunch", "{qty}", ["thali"], ["no onion", "no garlic"], "new"),
-    ("bina lehsun pyaaz ke {qty} thali dinner", "dinner", "{qty}", ["thali"], ["no onion", "no garlic"], "new"),
+    (
+        "bina pyaaz ke {qty} plate bhejo kal dopahar",
+        "lunch",
+        "{qty}",
+        ["thali"],
+        ["no onion"],
+        "new",
+    ),
+    (
+        "aunty kal bina pyaaz ke {qty} dabba bhej dena",
+        "lunch",
+        "{qty}",
+        ["thali"],
+        ["no onion"],
+        "new",
+    ),
+    (
+        "bina lehsun pyaaz {qty} thali kal lunch",
+        "lunch",
+        "{qty}",
+        ["thali"],
+        ["no onion", "no garlic"],
+        "new",
+    ),
+    (
+        "bina lehsun pyaaz ke {qty} thali dinner",
+        "dinner",
+        "{qty}",
+        ["thali"],
+        ["no onion", "no garlic"],
+        "new",
+    ),
     ("jain khana {qty} plate kal dinner", "dinner", "{qty}", ["thali"], ["jain"], "new"),
     ("jain thali {qty} plate lunch tomorrow", "lunch", "{qty}", ["thali"], ["jain"], "new"),
     ("kam teekha {qty} lunch bhej dena", "lunch", "{qty}", ["thali"], ["less spicy"], "new"),
@@ -132,23 +185,65 @@ TEMPLATES_MODS = [
     ("less spicy {qty} dinner box", "dinner", "{qty}", ["thali"], ["less spicy"], "new"),
     ("bina mirchi ke {qty} dabba dinner", "dinner", "{qty}", ["thali"], ["no chili"], "new"),
     ("bina mirchi wala {qty} dabba kal lunch", "lunch", "{qty}", ["thali"], ["no chili"], "new"),
-    ("roti nahi sirf rice dena {qty} plate lunch", "lunch", "{qty}", ["thali"], ["roti nahi rice"], "new"),
+    (
+        "roti nahi sirf rice dena {qty} plate lunch",
+        "lunch",
+        "{qty}",
+        ["thali"],
+        ["roti nahi rice"],
+        "new",
+    ),
     ("oil kam rakhna {qty} thali dinner me", "dinner", "{qty}", ["thali"], ["less oily"], "new"),
     ("bina pyaaz ke teen thali bhejo lunch me", "lunch", 3, ["thali"], ["no onion"], "new"),
     ("less spicy teen dinner box", "dinner", 3, ["thali"], ["less spicy"], "new"),
     ("kam teekha do thali lunch me", "lunch", 2, ["thali"], ["less spicy"], "new"),
-    ("Please give curd instead of kheer tomorrow lunch", "lunch", 1, ["thali"], ["curd instead of kheer"], "new"),
-    ("lunch 1 thali, strictly Jain no root vegetables", "lunch", 1, ["thali"], ["jain no root vegetables"], "new"),
+    (
+        "Please give curd instead of kheer tomorrow lunch",
+        "lunch",
+        1,
+        ["thali"],
+        ["curd instead of kheer"],
+        "new",
+    ),
+    (
+        "lunch 1 thali, strictly Jain no root vegetables",
+        "lunch",
+        1,
+        ["thali"],
+        ["jain no root vegetables"],
+        "new",
+    ),
     ("tomorrow lunch 2, 1 normal 1 without dal", "lunch", 2, ["thali"], ["one without dal"], "new"),
-    ("Aunty lunch me 4 roti dena rice mat bhejna", "lunch", 1, ["thali"], ["4 roti no rice"], "new"),
+    (
+        "Aunty lunch me 4 roti dena rice mat bhejna",
+        "lunch",
+        1,
+        ["thali"],
+        ["4 roti no rice"],
+        "new",
+    ),
     ("dinner 1 plate, can you send extra pickle?", "dinner", 1, ["thali"], ["extra pickle"], "new"),
     ("kal lunch 1 thali, less oil in sabzi please", "lunch", 1, ["thali"], ["less oil"], "new"),
-    ("Aunty kal afternoon 2 meals, but 1 meal no rice only rotis please", "lunch", 2, ["thali"], ["one no rice only rotis"], "new"),
+    (
+        "Aunty kal afternoon 2 meals, but 1 meal no rice only rotis please",
+        "lunch",
+        2,
+        ["thali"],
+        ["one no rice only rotis"],
+        "new",
+    ),
 ]
 
 # 3. Delivery Timings & Clock References
 TEMPLATES_DELIVERY_TIMINGS = [
-    ("Send dinner tonight by 8:30 pm sharp, 1 thali less spicy", "dinner", 1, ["thali"], ["less spicy"], "new"),
+    (
+        "Send dinner tonight by 8:30 pm sharp, 1 thali less spicy",
+        "dinner",
+        1,
+        ["thali"],
+        ["less spicy"],
+        "new",
+    ),
     ("1 plate lunch tomorrow, please deliver by 1:00 PM", "lunch", 1, ["thali"], [], "new"),
     ("dinner 2 thali tonight around 9 pm", "dinner", 2, ["thali"], [], "new"),
     ("lunch at 12:30 pm sharp, 1 dabba", "lunch", 1, ["thali"], [], "new"),
@@ -183,7 +278,14 @@ TEMPLATES_CHANGES = [
     ("change dinner from 2 to 1 thali", "dinner", 1, ["thali"], [], "change"),
     ("aunty dopahar ka dabba cancel, shaam ko 2 kar dena", "dinner", 2, ["thali"], [], "change"),
     ("change lunch to dinner tomorrow", "dinner", 1, ["thali"], [], "change"),
-    ("Earlier I asked for 1 dinner, please change it to 3 thalis, friends are coming over", "dinner", 3, ["thali"], [], "change"),
+    (
+        "Earlier I asked for 1 dinner, please change it to 3 thalis, friends are coming over",
+        "dinner",
+        3,
+        ["thali"],
+        [],
+        "change",
+    ),
     ("kal lunch cancel, dinner 2 plates", "dinner", 2, ["thali"], [], "change"),
     ("kal lunch 2 nahi 1 hi bhejna, dost bahar gaya", "lunch", 1, ["thali"], [], "change"),
     ("change 1 to 2 thalis for dinner tonight", "dinner", 2, ["thali"], [], "change"),
@@ -209,7 +311,14 @@ TEMPLATES_MULTI_PERSON = [
     ("dono {friend} and me will take dinner tonight", "dinner", 2, ["thali"], [], "new"),
     ("{friend} ka bhi ek dinner pack kar do saath me", "dinner", 1, ["thali"], [], "new"),
     ("roommate {friend} ka lunch cancel, mera regular bhejna", "lunch", 1, ["thali"], [], "new"),
-    ("Aunty kal lunch 1 plate. Aur meri roommate {friend} ke liye bhi ek lunch add kar dena", "lunch", 2, ["thali"], [], "new"),
+    (
+        "Aunty kal lunch 1 plate. Aur meri roommate {friend} ke liye bhi ek lunch add kar dena",
+        "lunch",
+        2,
+        ["thali"],
+        [],
+        "new",
+    ),
     ("Add 1 dinner for my cousin {friend} as well", "dinner", 1, ["thali"], [], "new"),
     ("add one more plate for {friend} dinner tonight", "dinner", 1, ["thali"], [], "new"),
 ]
@@ -221,10 +330,26 @@ TEMPLATES_PAYMENTS = [
     ("1000 transfer kar diya Paytm pe", "unspecified", 0, [], [], "payment", 1000.0),
     ("dues clear kar diye 2000 Google Pay se", "unspecified", 0, [], [], "payment", 2000.0),
     ("Aunty 800 bhej diye account me", "unspecified", 0, [], [], "payment", 800.0),
-    ("Aunty ₹2100 transfer kiya GPay pe, last 2 weeks ka", "unspecified", 0, [], [], "payment", 2100.0),
+    (
+        "Aunty ₹2100 transfer kiya GPay pe, last 2 weeks ka",
+        "unspecified",
+        0,
+        [],
+        [],
+        "payment",
+        2100.0,
+    ),
     ("GPay done 1500", "unspecified", 0, [], [], "payment", 1500.0),
     ("paid ₹800 on phonepe just now", "unspecified", 0, [], [], "payment", 800.0),
-    ("sending ₹3200 for full month tomorrow morning aunty", "unspecified", 0, [], [], "payment", 3200.0),
+    (
+        "sending ₹3200 for full month tomorrow morning aunty",
+        "unspecified",
+        0,
+        [],
+        [],
+        "payment",
+        3200.0,
+    ),
     ("₹1600 transferred via Paytm", "unspecified", 0, [], [], "payment", 1600.0),
     ("paid dues 2400 on gpay", "unspecified", 0, [], [], "payment", 2400.0),
 ]
@@ -370,7 +495,9 @@ def generate_synthetic_dataset(
 
             if isinstance(actual_qty, int) and actual_qty in QTY_WORDS:
                 candidates = QTY_WORDS[actual_qty]
-                chosen_qty_str = random.choice(candidates) if random.random() < 0.65 else str(actual_qty)
+                chosen_qty_str = (
+                    random.choice(candidates) if random.random() < 0.65 else str(actual_qty)
+                )
             else:
                 chosen_qty_str = str(actual_qty)
 

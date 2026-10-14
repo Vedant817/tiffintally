@@ -4,14 +4,13 @@ Serves mobile-friendly kitchen UI, printable prep sheets, touch KDS station mode
 dues ledger, voice briefs, active learning feedback flywheel, and recipe BOM economics.
 """
 
-import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Form, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -52,7 +51,14 @@ class CorrectionPayload(BaseModel):
 
 def init_default_data():
     """Seed sample Pune customer chat for instant demo experience."""
-    global CURRENT_SHEET, CURRENT_EVENTS, CURRENT_VOICE_BRIEF, CURRENT_FORECAST, CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
+    global \
+        CURRENT_SHEET, \
+        CURRENT_EVENTS, \
+        CURRENT_VOICE_BRIEF, \
+        CURRENT_FORECAST, \
+        CURRENT_BOM, \
+        CURRENT_ECONOMICS, \
+        CURRENT_WASTE_ROI
     demo_raw = """12/10/26, 9:30 pm - Priya: Kal lunch 1 thali, roti nahi rice please
 12/10/26, 9:45 pm - Rahul: Kal lunch cancel aunty, office me party hai
 12/10/26, 10:14 pm - Vikram: kal 2 nahi 3 thali dinner bhejo, roommate aa gaya
@@ -135,7 +141,14 @@ async def process(
     target_date: str = Form("tomorrow"),
     cutoff: str = Form("22:00"),
 ):
-    global CURRENT_SHEET, CURRENT_EVENTS, CURRENT_VOICE_BRIEF, CURRENT_FORECAST, CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
+    global \
+        CURRENT_SHEET, \
+        CURRENT_EVENTS, \
+        CURRENT_VOICE_BRIEF, \
+        CURRENT_FORECAST, \
+        CURRENT_BOM, \
+        CURRENT_ECONOMICS, \
+        CURRENT_WASTE_ROI
 
     content = ""
     if chat_file and chat_file.filename:
@@ -195,7 +208,13 @@ async def process(
 
 @app.get("/prep", response_class=HTMLResponse)
 def view_prep_sheet(request: Request):
-    global CURRENT_SHEET, CURRENT_VOICE_BRIEF, CURRENT_FORECAST, CURRENT_BOM, CURRENT_ECONOMICS, CURRENT_WASTE_ROI
+    global \
+        CURRENT_SHEET, \
+        CURRENT_VOICE_BRIEF, \
+        CURRENT_FORECAST, \
+        CURRENT_BOM, \
+        CURRENT_ECONOMICS, \
+        CURRENT_WASTE_ROI
     if not CURRENT_SHEET:
         init_default_data()
 

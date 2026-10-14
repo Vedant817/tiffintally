@@ -1,6 +1,5 @@
 """Tests for production security envelope and adversarial input guardrails."""
 
-import pytest
 from tiffintally.security import InputGuardrail, enforce_business_bounds
 
 
@@ -34,10 +33,10 @@ def test_prompt_injection_flagged():
 def test_zero_width_unicode_stripped():
     guard = InputGuardrail()
     # Insert zero-width spaces (\u200B) between letters
-    sneaky = "A\u200Bu\u200Bn\u200Bt\u200By 2 thali"
+    sneaky = "A\u200bu\u200bn\u200bt\u200by 2 thali"
     res = guard.sanitize(sneaky)
     assert res.clean_text == "Aunty 2 thali"
-    assert "\u200B" not in res.clean_text
+    assert "\u200b" not in res.clean_text
 
 
 def test_message_length_capping():

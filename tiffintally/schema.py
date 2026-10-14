@@ -49,9 +49,7 @@ class OrderEvent(BaseModel):
     audit_flags: List[str] = Field(
         default_factory=list, description="Security and guardrail audit flags"
     )
-    needs_review: bool = Field(
-        default=False, description="Flag indicating manual review required"
-    )
+    needs_review: bool = Field(default=False, description="Flag indicating manual review required")
 
 
 class ParsedMessage(BaseModel):

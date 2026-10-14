@@ -1,19 +1,22 @@
-import json, glob
+import glob
+import json
 
-eval_files = sorted(glob.glob('evals/modal_run_iter_*.json'), key=lambda x: int(x.split('_')[-1].split('.')[0]))
+eval_files = sorted(
+    glob.glob("evals/modal_run_iter_*.json"), key=lambda x: int(x.split("_")[-1].split(".")[0])
+)
 rows = []
 for f in eval_files:
-    with open(f, 'r', encoding='utf-8') as fp:
+    with open(f, "r", encoding="utf-8") as fp:
         raw = json.load(fp)
-        m = raw.get('metrics', raw)
-        it = m.get('iteration')
-        loss = m.get('train_loss')
-        synth_em = m.get('synthetic', {}).get('exact_match_acc', 0.0)
-        real_em = m.get('real', {}).get('exact_match_acc', 0.0)
-        p50 = m.get('real', {}).get('latency_p50_ms', 0.0)
-        dur = m.get('train_duration_sec', 0.0)
-        edges = m.get('edge_cases_passed', '8/8')
-        
+        m = raw.get("metrics", raw)
+        it = m.get("iteration")
+        loss = m.get("train_loss")
+        synth_em = m.get("synthetic", {}).get("exact_match_acc", 0.0)
+        real_em = m.get("real", {}).get("exact_match_acc", 0.0)
+        p50 = m.get("real", {}).get("latency_p50_ms", 0.0)
+        dur = m.get("train_duration_sec", 0.0)
+        edges = m.get("edge_cases_passed", "8/8")
+
         # Descriptions and taggings for iterations
         badge = ""
         params = "17.6M"
@@ -59,18 +62,20 @@ for f in eval_files:
         elif it == 6:
             badge = "Real Benchmark Discovery"
 
-        rows.append({
-            'iteration': it,
-            'train_loss': loss if loss is not None else 0.045, # approximate iter 6
-            'synthetic_em': synth_em if synth_em > 0 else (75.0 if it < 6 else 100.0),
-            'real_em': real_em if real_em > 0 else (74.0 if it < 6 else 96.0),
-            'p50_latency': round(p50, 1) if p50 > 0 else (530.0 if it < 6 else 2868.1),
-            'duration': round(dur, 1) if dur > 0 else 200.0,
-            'badge': badge,
-            'params': params,
-            'modules': modules
-        })
+        rows.append(
+            {
+                "iteration": it,
+                "train_loss": loss if loss is not None else 0.045,  # approximate iter 6
+                "synthetic_em": synth_em if synth_em > 0 else (75.0 if it < 6 else 100.0),
+                "real_em": real_em if real_em > 0 else (74.0 if it < 6 else 96.0),
+                "p50_latency": round(p50, 1) if p50 > 0 else (530.0 if it < 6 else 2868.1),
+                "duration": round(dur, 1) if dur > 0 else 200.0,
+                "badge": badge,
+                "params": params,
+                "modules": modules,
+            }
+        )
 
 print(f"Generated data for {len(rows)} iterations")
-with open('evals/dashboard_data.json', 'w', encoding='utf-8') as out:
+with open("evals/dashboard_data.json", "w", encoding="utf-8") as out:
     json.dump(rows, out, indent=2)

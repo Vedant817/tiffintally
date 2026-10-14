@@ -6,7 +6,7 @@ and AI inference unit economics analysis for TiffinTally.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List
 
 
 @dataclass
@@ -62,12 +62,12 @@ class KitchenEconomics:
     """
 
     # Recipe breakdown per single standard thali (in grams / kg / units)
-    ATTA_PER_THALI_KG = 0.075      # 75g atta = 3 rotis
-    DAL_PER_THALI_KG = 0.040       # 40g raw pulses
-    VEGETABLES_PER_THALI_KG = 0.150 # 150g mixed seasonal vegetables
-    RICE_PER_THALI_KG = 0.060      # 60g raw basmati/kolam rice
-    OIL_SPICES_PER_THALI_INR = 7.0 # ₹7 spices, oil, tadka
-    PACKAGING_BOX_INR = 5.0        # ₹5 3-compartment CPET container
+    ATTA_PER_THALI_KG = 0.075  # 75g atta = 3 rotis
+    DAL_PER_THALI_KG = 0.040  # 40g raw pulses
+    VEGETABLES_PER_THALI_KG = 0.150  # 150g mixed seasonal vegetables
+    RICE_PER_THALI_KG = 0.060  # 60g raw basmati/kolam rice
+    OIL_SPICES_PER_THALI_INR = 7.0  # ₹7 spices, oil, tadka
+    PACKAGING_BOX_INR = 5.0  # ₹5 3-compartment CPET container
 
     # Current grocery market prices in Pune / Tier-1 Indian cities (INR / kg)
     PRICE_ATTA_PER_KG = 42.0
@@ -161,7 +161,7 @@ class KitchenEconomics:
         Uncalibrated kitchens routinely overprep 4-5 plates as a safety buffer against walk-ins.
         """
         uncalibrated_waste = 4.5  # average plates discarded or sold at heavy loss
-        tabpfn_waste = 0.8        # calibrated dynamic buffer
+        tabpfn_waste = 0.8  # calibrated dynamic buffer
         saved_plates = uncalibrated_waste - tabpfn_waste
 
         daily_saved_inr = round(saved_plates * raw_cost_per_plate, 2)

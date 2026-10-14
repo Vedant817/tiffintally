@@ -1,7 +1,8 @@
 """Unit tests for offline edge quantized export and benchmarking."""
 
 from pathlib import Path
-from tiffintally.edge import EdgeBenchmarkRunner, EdgeExporter, TIER_CATALOG
+
+from tiffintally.edge import TIER_CATALOG, EdgeBenchmarkRunner, EdgeExporter
 
 
 def test_edge_catalog_specs():

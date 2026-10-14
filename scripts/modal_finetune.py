@@ -77,9 +77,15 @@ def run_finetune_job(
     print("\n=======================================================")
     print(f"🚀 Starting TiffinTally Iteration {iteration} on Modal (A10G GPU)")
     print(f"Base Model: {base_model_name} | Epochs: {num_epochs} | LR: {lr}")
-    print(f"LoRA: r={lora_r}, alpha={lora_alpha}, dropout={lora_dropout} | Modules: {len(target_modules)}")
-    print(f"Schedule: {lr_scheduler_type} | Weight Decay: {weight_decay} | Warmup: {warmup_steps} | Train size: {len(train_records)}")
-    print(f"Val sizes: Synthetic={len(synthetic_val_records)} | Real Held-Out={len(real_val_records)}")
+    print(
+        f"LoRA: r={lora_r}, alpha={lora_alpha}, dropout={lora_dropout} | Modules: {len(target_modules)}"
+    )
+    print(
+        f"Schedule: {lr_scheduler_type} | Weight Decay: {weight_decay} | Warmup: {warmup_steps} | Train size: {len(train_records)}"
+    )
+    print(
+        f"Val sizes: Synthetic={len(synthetic_val_records)} | Real Held-Out={len(real_val_records)}"
+    )
     print("=======================================================\n")
 
     tokenizer = AutoTokenizer.from_pretrained(base_model_name, trust_remote_code=True)
@@ -369,7 +375,9 @@ def run_finetune_job(
     # Evaluate Synthetic Test Split
     synthetic_eval = evaluate_split(synthetic_val_records, "Synthetic Test Split")
     # Evaluate Real Gold WhatsApp Held-Out Split
-    real_eval = evaluate_split(real_val_records, "Real Customer WhatsApp (data/private/real_test.jsonl)")
+    real_eval = evaluate_split(
+        real_val_records, "Real Customer WhatsApp (data/private/real_test.jsonl)"
+    )
 
     # 4. Domain-specific Edge Case Testing
     print("\nTesting critical domain edge cases...")
@@ -380,9 +388,7 @@ def run_finetune_job(
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": f"Sender: {ec['sender']}\nMessage: {ec['text']}"},
         ]
-        in_str = tokenizer.apply_chat_template(
-            prompt, tokenize=False, add_generation_prompt=True
-        )
+        in_str = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(in_str, return_tensors="pt").to(model.device)
         with torch.no_grad():
             outputs = model.generate(

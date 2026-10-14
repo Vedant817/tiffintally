@@ -176,7 +176,9 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         ]
 
     # 2. Payment confirmations
-    pay_matches = re.findall(r"(?:rs\.?|inr|₹)?\s*(\d{2,5})\s*(?:gpay|phonepe|paytm|sent|kiya|transfer)", lower)
+    pay_matches = re.findall(
+        r"(?:rs\.?|inr|₹)?\s*(\d{2,5})\s*(?:gpay|phonepe|paytm|sent|kiya|transfer)", lower
+    )
     if pay_matches or "gpay kiya" in lower or "phonepe" in lower:
         amt = float(pay_matches[0]) if pay_matches else 0.0
         return [

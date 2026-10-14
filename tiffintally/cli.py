@@ -106,11 +106,16 @@ def forecast(
 
 @app.command("benchmark-edge")
 def benchmark_edge(
-    tier: str = typer.Option("all", "--tier", "-t", help="Tier to benchmark: tier1_edge, tier2_midsize, tier3_cloud, or all"),
+    tier: str = typer.Option(
+        "all",
+        "--tier",
+        "-t",
+        help="Tier to benchmark: tier1_edge, tier2_midsize, tier3_cloud, or all",
+    ),
     queries: int = typer.Option(10, "--queries", "-q", help="Number of benchmark queries"),
 ):
     """Benchmark local edge inference latency, RAM footprint, and throughput."""
-    from tiffintally.edge import EdgeBenchmarkRunner, TIER_CATALOG
+    from tiffintally.edge import TIER_CATALOG, EdgeBenchmarkRunner
 
     runner = EdgeBenchmarkRunner()
     tiers_to_run = list(TIER_CATALOG.keys()) if tier == "all" else [tier]
@@ -140,7 +145,9 @@ def benchmark_edge(
 @app.command("export-edge")
 def export_edge(
     tier: str = typer.Option("tier1_edge", "--tier", "-t", help="Tier to export"),
-    output_dir: Path = typer.Option(Path("models/edge_export"), "--output", "-o", help="Target export folder"),
+    output_dir: Path = typer.Option(
+        Path("models/edge_export"), "--output", "-o", help="Target export folder"
+    ),
 ):
     """Export Ollama/GGUF deployment manifests and adapter configurations."""
     from tiffintally.edge import EdgeExporter
@@ -161,7 +168,9 @@ def export_sft(
 
     mgr = ActiveLearningManager()
     count = mgr.export_sft_dataset(output_path=output_path)
-    console.print(f"[bold green]Exported {count} active learning examples to SFT dataset![/bold green]")
+    console.print(
+        f"[bold green]Exported {count} active learning examples to SFT dataset![/bold green]"
+    )
 
 
 @eval_app.command("all")

@@ -9,7 +9,9 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
 from pydantic import BaseModel
+
 
 class TranscriptionResult(BaseModel):
     customer: str
@@ -20,10 +22,12 @@ class TranscriptionResult(BaseModel):
     backend_used: str
     confidence: float
 
+
 class VoiceNoteTranscriber:
     """
     Handles speech-to-text conversion of customer WhatsApp voice notes.
     """
+
     def __init__(self, google_api_key: Optional[str] = None):
         self.google_api_key = google_api_key or os.getenv("GOOGLE_API_KEY")
 
@@ -69,6 +73,7 @@ class VoiceNoteTranscriber:
     def _transcribe_with_gemini(self, audio_file: Path) -> str:
         """Call Gemini Multimodal Audio transcription using httpx."""
         import base64
+
         import httpx
 
         audio_bytes = audio_file.read_bytes()
@@ -81,17 +86,19 @@ class VoiceNoteTranscriber:
             "contents": [
                 {
                     "parts": [
-                        {"text": "Transcribe this Indian kitchen customer WhatsApp voice note verbatim in English or Hinglish. Return only the transcript text."},
+                        {
+                            "text": "Transcribe this Indian kitchen customer WhatsApp voice note verbatim in English or Hinglish. Return only the transcript text."
+                        },
                         {
                             "inline_data": {
                                 "mime_type": mime_type,
                                 "data": b64_audio,
                             }
-                        }
+                        },
                     ]
                 }
             ],
-            "generationConfig": {"temperature": 0.0}
+            "generationConfig": {"temperature": 0.0},
         }
         resp = httpx.post(url, json=payload, timeout=20.0)
         resp.raise_for_status()

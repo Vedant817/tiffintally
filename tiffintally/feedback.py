@@ -8,6 +8,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+
 from pydantic import BaseModel
 
 CORRECTIONS_FILE = Path("data/private/corrections.jsonl")
@@ -102,7 +103,10 @@ class ActiveLearningManager:
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": c.raw_text},
-                        {"role": "assistant", "content": json.dumps(assistant_output, ensure_ascii=False)},
+                        {
+                            "role": "assistant",
+                            "content": json.dumps(assistant_output, ensure_ascii=False),
+                        },
                     ]
                 }
                 out.write(json.dumps(sft_example, ensure_ascii=False) + "\n")

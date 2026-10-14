@@ -13,6 +13,7 @@ from typing import Any, Generator, Optional
 
 try:
     import sentry_sdk
+
     HAS_SENTRY = True
 except ImportError:
     HAS_SENTRY = False
@@ -61,7 +62,9 @@ def init_telemetry(
 
 
 @contextlib.contextmanager
-def trace_span(op: str, name: str, data: Optional[dict[str, Any]] = None) -> Generator[Optional[Any], None, None]:
+def trace_span(
+    op: str, name: str, data: Optional[dict[str, Any]] = None
+) -> Generator[Optional[Any], None, None]:
     """
     Context manager to trace critical pipeline stages:
     - audio.transcription
@@ -106,7 +109,11 @@ def capture_guardrail_incident(raw_text: str, flags: list[str], customer: str = 
     if HAS_SENTRY:
         try:
             # Scope isolation in modern Sentry SDK
-            scope_mgr = sentry_sdk.isolation_scope if hasattr(sentry_sdk, "isolation_scope") else sentry_sdk.push_scope
+            scope_mgr = (
+                sentry_sdk.isolation_scope
+                if hasattr(sentry_sdk, "isolation_scope")
+                else sentry_sdk.push_scope
+            )
             with scope_mgr() as scope:
                 scope.set_level("warning")
                 scope.set_tag("security_incident", "prompt_injection")
@@ -121,7 +128,9 @@ def capture_guardrail_incident(raw_text: str, flags: list[str], customer: str = 
             logger.debug("Failed sending guardrail alert to Sentry: %s", e)
 
 
-def record_metric(name: str, value: float, unit: str = "none", tags: Optional[dict[str, str]] = None) -> None:
+def record_metric(
+    name: str, value: float, unit: str = "none", tags: Optional[dict[str, str]] = None
+) -> None:
     """Record key metrics: latency, token counts, plate waste saved, marginal AI cost."""
     logger.info("METRIC [%s]: %.2f %s (tags=%s)", name, value, unit, tags)
     if HAS_SENTRY:

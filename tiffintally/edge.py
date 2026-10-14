@@ -50,7 +50,15 @@ TIER_CATALOG: dict[str, EdgeModelSpec] = {
         target_latency_ms=459.3,
         lora_rank=16,
         lora_alpha=64,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        target_modules=[
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
         quantization_format="q8_0 / int8 GGUF",
         real_order_em_accuracy=100.0,
     ),
@@ -62,7 +70,15 @@ TIER_CATALOG: dict[str, EdgeModelSpec] = {
         target_latency_ms=466.8,
         lora_rank=32,
         lora_alpha=64,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        target_modules=[
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
         quantization_format="fp16 / bfloat16 safetensors",
         real_order_em_accuracy=100.0,
     ),
@@ -101,24 +117,10 @@ class EdgeBenchmarkRunner:
         spec = self.catalog[tier_key]
         latencies = []
 
-        # Synthetic test queries representing authentic Hinglish WhatsApp messages
-        queries = [
-            "kal lunch 2 thali bhej do, roti nahi extra rice",
-            "aunty kal dinner cancel, roommate bahar gaya hai",
-            "kal 2 nahi 3 thali dinner bhejo",
-            "kal lunch me bina pyaaz lahsun ke 1 thali",
-            "kal lunch and dinner dono 1-1 thali",
-        ]
-
-        start_total = time.perf_counter()
+        # Benchmark simulation of quantized matrix multiplications
         for i in range(num_queries):
-            q = queries[i % len(queries)]
-            t0 = time.perf_counter()
-            # Edge CPU matrix multiplication simulation proportional to param size
             # Realistic CPU processing latency for 2.16M to 17.6M adapters
             time.sleep(spec.target_latency_ms / 1000.0 * 0.05)  # Fast simulated bench run
-            duration = (time.perf_counter() - t0) * 1000
-            # Scale simulated latency to reflect actual edge profile
             synthetic_latency = spec.target_latency_ms * (0.95 + 0.10 * ((i % 5) / 5))
             latencies.append(synthetic_latency)
 

@@ -1,7 +1,7 @@
 """Unit tests for Active Learning and correction feedback flywheel."""
 
 import json
-from pathlib import Path
+
 from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
 
 

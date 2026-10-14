@@ -38,6 +38,7 @@ def run_eval_job(
 ) -> Dict[str, Any]:
     import os
     import time
+
     import numpy as np
     import torch
     from peft import PeftModel
@@ -213,9 +214,7 @@ def run_eval_job(
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": f"Sender: {ec['sender']}\nMessage: {ec['text']}"},
         ]
-        in_str = tokenizer.apply_chat_template(
-            prompt, tokenize=False, add_generation_prompt=True
-        )
+        in_str = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(in_str, return_tensors="pt").to(model.device)
         with torch.no_grad():
             outputs = model.generate(
@@ -400,7 +399,9 @@ def main(iteration: int = 6):
         },
     ]
 
-    print(f"\nSubmitting evaluation job for Checkpoint Iteration {iteration} to Modal GPU (A10G)...")
+    print(
+        f"\nSubmitting evaluation job for Checkpoint Iteration {iteration} to Modal GPU (A10G)..."
+    )
     result = run_eval_job.remote(
         iteration=iteration,
         synthetic_records=synthetic_records,

@@ -8,7 +8,6 @@ import argparse
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -208,7 +207,7 @@ def run_iteration(iteration: int) -> bool:
         return False
 
     spec = ITERATION_SPECS[iteration]
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f"🚀 LAUNCHING ITERATION {iteration}: {spec['title']}")
     print(f"Hyperparameters: {spec}")
     print("=======================================================\n")
