@@ -210,8 +210,12 @@ def test_bold_9_malformed_json_fallback_and_review():
 
 # Bold Test 10: Missing GEMMA_API_KEY -> informative error, graceful fallback
 def test_bold_10_missing_api_key_graceful_fallback(monkeypatch):
-    monkeypatch.delenv("GEMMA_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    """With no endpoint and no key, the regex answers and says so.
+
+    The model used to require a Google AI Studio key. It is served on Modal now,
+    so "no key" is no longer the offline signal; "no endpoint" is.
+    """
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "off")
 
     from tiffintally.extract.gemma import GemmaExtractor
 
@@ -220,9 +224,19 @@ def test_bold_10_missing_api_key_graceful_fallback(monkeypatch):
 
     res = extractor.extract_from_text("kal lunch 1 plate", sender="Rohit")
     assert res.used_fallback is True
+    assert res.model_name.endswith("-fallback")
     assert len(res.events) >= 1
     assert res.events[0].qty == 1
     assert res.events[0].meal == "lunch"
+
+
+def test_bold_10b_gemini_backend_still_needs_a_key(monkeypatch):
+    """The AI Studio path still refuses to run without a key."""
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "gemini")
+    from tiffintally.extract.gemma import GemmaExtractor
+
+    assert GemmaExtractor(api_key=None).is_available() is False
+    assert GemmaExtractor(api_key="not-a-real-key").is_available() is True
 
 
 # Bold Test 11: Secret scan across entire repo -> zero live keys, git diff clean

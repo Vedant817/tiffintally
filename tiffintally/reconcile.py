@@ -11,7 +11,7 @@ Handles:
 """
 
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
 from tiffintally.dates import resolve_day_label
@@ -34,6 +34,15 @@ class CustomerMealState:
         self.items: List[str] = []
         self.mods: List[str] = []
         self.is_paused: bool = False
+
+
+# A message stamped between midnight and this hour belongs to the previous
+# evening. Someone who types "kal lunch 2" at 00:30 means the coming day, not
+# the one they are still awake in.
+AFTER_MIDNIGHT_HOUR = 4
+
+# Actions that add to an existing order rather than replacing it.
+DELTA_ACTIONS = {"add"}
 
 
 def parse_timestamp(ts: Optional[str]) -> Optional[datetime]:
@@ -76,13 +85,14 @@ def pause_covers_target(ev: OrderEvent, target_date: str, as_of: datetime) -> bo
 def event_matches_target(ev: OrderEvent, target_date: str, as_of: datetime) -> bool:
     """Keep an event only when it is for the cook's target day.
 
-    Relative words on the event use the message timestamp. Relative words on the
-    target use `as_of` (when the cook builds the sheet). "today" does not match
-    a target of "tomorrow".
+    Relative words on the event use the message timestamp, resolved against the
+    evening it was written in: at 00:30 "kal" means the coming day, so it is not
+    shifted a second time. Relative words on the target use `as_of` (when the
+    cook builds the sheet). "today" does not match a target of "tomorrow".
     """
     if not target_date or target_date.strip().lower() == "any":
         return True
-    reference = parse_timestamp(ev.timestamp) or as_of
+    reference = evening_reference(parse_timestamp(ev.timestamp), as_of)
     event_day = calendar_day(ev.date, reference)
     target_day = calendar_day(target_date, as_of)
     if event_day is not None and target_day is not None:
@@ -90,12 +100,129 @@ def event_matches_target(ev: OrderEvent, target_date: str, as_of: datetime) -> b
     return (ev.date or "").strip().lower() == target_date.strip().lower()
 
 
+_RELATIVE_DATE_LABELS = {"today", "tomorrow", "aaj", "kal", "tonight"}
+
+
+def is_after_midnight(ts: Optional[datetime]) -> bool:
+    """True for a message stamped in the small hours."""
+    return ts is not None and ts.hour < AFTER_MIDNIGHT_HOUR
+
+
 def is_after_cutoff(ts: Optional[datetime], cutoff_time: Optional[time]) -> bool:
-    """Return True if message was received on or after cutoff time."""
+    """True when the message arrived too late to change tomorrow's plan.
+
+    A message between midnight and AFTER_MIDNIGHT_HOUR is read as belonging to
+    the previous evening, so 00:30 counts as late rather than as an early
+    morning order that dodged the cutoff entirely.
+    """
     if ts is None or cutoff_time is None:
         return False
-    # Compare time of day
+    if ts.hour < AFTER_MIDNIGHT_HOUR:
+        return True
     return ts.time() > cutoff_time
+
+
+def evening_reference(ts: Optional[datetime], as_of: datetime) -> datetime:
+    """Clock used to resolve relative words in a message.
+
+    00:30 on the 16th is, for ordering purposes, the evening of the 15th.
+    """
+    if ts is not None and ts.hour < AFTER_MIDNIGHT_HOUR:
+        return ts - timedelta(hours=AFTER_MIDNIGHT_HOUR)
+    return ts or as_of
+
+
+def sheet_state_qty(state_map: Dict[Tuple[str, str], CustomerMealState], ev: OrderEvent) -> int:
+    """Plates this customer currently has for the meal a cancel refers to."""
+    meals = ["lunch", "dinner"] if ev.meal == "both" else [ev.meal] if ev.meal else ["lunch"]
+    return sum(
+        state_map.get((ev.customer.strip().lower(), meal)).qty
+        for meal in meals
+        if state_map.get((ev.customer.strip().lower(), meal)) is not None
+    )
+
+
+def _cook_names(cook_names: Optional[List[str]]) -> set[str]:
+    return {name.strip().lower() for name in (cook_names or []) if name.strip()}
+
+
+def _conflicting_quantities(events: List[OrderEvent]) -> Set[Tuple[str, str]]:
+    """(customer, meal) pairs whose own orders disagree on the count.
+
+    Two cases, and a `change` is deliberately in neither:
+
+    - Two different counts stamped the same minute. Android exports have minute
+      precision, so this is ambiguous rather than a sequence.
+    - Two `new` orders for one display name on one day with different counts.
+      Usually two different people saved under one name.
+
+    A `new` followed by a `change` is a correction, not a contradiction, and an
+    `add` is a delta, so neither is treated as a conflict.
+    """
+    by_minute: Dict[Tuple[str, str, str], Set[int]] = {}
+    by_day: Dict[Tuple[str, str, str], Set[int]] = {}
+    for ev in events:
+        if ev.action not in {"new", "change"} or ev.qty <= 0:
+            continue
+        cust = ev.customer.strip().lower()
+        day = (ev.date or "").strip().lower() or (ev.timestamp or "")[:10]
+        if ev.action == "new":
+            by_day.setdefault((cust, ev.meal, day), set()).add(ev.qty)
+        if ev.timestamp:
+            by_minute.setdefault((cust, ev.meal, ev.timestamp[:16]), set()).add(ev.qty)
+
+    conflicts = {(cust, meal) for (cust, meal, _day), qtys in by_day.items() if len(qtys) > 1}
+    conflicts |= {
+        (cust, meal) for (cust, meal, _minute), qtys in by_minute.items() if len(qtys) > 1
+    }
+    return conflicts
+
+
+def _sort_key(ev: OrderEvent):
+    """Time order with a stable tiebreak.
+
+    WhatsApp exports carry minute precision, so two messages can share a stamp.
+    `line_index` is the position in the export, which makes the result depend on
+    the file rather than on dict ordering. `list.index` is not usable here: two
+    distinct events compare equal under pydantic's field equality.
+    """
+    return (parse_timestamp(ev.timestamp) or datetime.min, ev.line_index)
+
+
+def _final_states(
+    events: List[OrderEvent],
+    target_date: str,
+    as_of: datetime,
+) -> Dict[Tuple[str, str, str], CustomerMealState]:
+    """Replay events into the last known plate count per (customer, day, meal).
+
+    Keyed by day as well as customer: a pause for Thursday must not erase the
+    customer's plate for Friday, and a ledger line has to add up across days.
+
+    This is the single source of truth for the prep sheet and for the bill.
+    Billing used to sum every `new` and `change`, so "lunch 2" followed by
+    "change to 3" billed five thalis.
+    """
+    state_map: Dict[Tuple[str, str, str], CustomerMealState] = {}
+
+    for ev in sorted(events, key=_sort_key):
+        label = (ev.date or "").strip().lower()
+        if label in {"", "unspecified", "ambiguous"} and ev.action not in {"none", "payment"}:
+            continue
+        if not event_matches_target(ev, target_date, as_of):
+            continue
+        if ev.needs_review or ev.audit_flags:
+            continue
+        if ev.action not in {"new", "change", "add", "cancel", "pause"}:
+            continue
+
+        day = label if label else (ev.timestamp or "")[:10]
+        day_map: Dict[Tuple[str, str], CustomerMealState] = {}
+        _apply_event(ev, day_map)
+        for (cust, meal), st in day_map.items():
+            state_map[(cust, day, meal)] = st
+
+    return state_map
 
 
 def reconcile_orders(
@@ -104,17 +231,25 @@ def reconcile_orders(
     cutoff_time: Optional[time] = None,
     standing_orders: Optional[Dict[str, int]] = None,
     as_of: Optional[datetime] = None,
+    cook_names: Optional[List[str]] = None,
+    accept_late_cancels: bool = False,
 ) -> DailyPrepSheet:
     """
     Apply events in time order.
     Returns the complete DailyPrepSheet.
+
+    `cook_names` are display names of the cook herself. In a group her own
+    "ok kal lunch 2 done" must not be counted as a customer's order.
+
+    `accept_late_cancels` applies cancels that arrived after the cutoff. By
+    default they are shown as a pending reduction instead: a late cancel saves
+    food, but only the cook knows whether she has already packed it.
     """
     as_of = as_of or datetime.now()
     resolved_target = calendar_day(target_date, as_of)
     sheet_date = resolved_target.isoformat() if resolved_target else target_date
     prep_sheet = DailyPrepSheet(date=sheet_date)
 
-    # Apply standing orders if provided (e.g. daily regulars)
     state_map: Dict[Tuple[str, str], CustomerMealState] = {}
     if standing_orders:
         for cust, default_qty in standing_orders.items():
@@ -123,12 +258,20 @@ def reconcile_orders(
             st.items = ["thali"]
             state_map[(cust.lower(), "lunch")] = st
 
-    # 1. Deduplication (Bold test 8: duplicate forwarded messages counted once)
+    cooks = _cook_names(cook_names)
+    conflicting = _conflicting_quantities(events)
+    cook_message_count = 0
+
+    # 1. Deduplication. A forwarded message repeated twice is one order.
     seen_dedup_keys: Set[Tuple[str, Optional[str], str, str, int, str]] = set()
     deduped_events: List[OrderEvent] = []
 
     for ev in events:
-        # Key: (customer, timestamp, raw_text, action, qty, meal)
+        if cooks and ev.customer.strip().lower() in cooks:
+            # The cook's own line. Counted so the sheet can say how many were
+            # skipped, but never a plate and never a review row: she wrote it.
+            cook_message_count += 1
+            continue
         dedup_key = (
             ev.customer.strip().lower(),
             ev.timestamp,
@@ -142,14 +285,11 @@ def reconcile_orders(
         seen_dedup_keys.add(dedup_key)
         deduped_events.append(ev)
 
-    # 2. Sort events by timestamp if available
-    def sort_key(e: OrderEvent):
-        dt = parse_timestamp(e.timestamp)
-        return dt if dt else datetime.min
+    # 2. Stable order: minute-precision stamps tie-break on position in the
+    #    export, so the sheet depends on the file and not on dict ordering.
+    sorted_events = sorted(deduped_events, key=_sort_key)
 
-    sorted_events = sorted(deduped_events, key=sort_key)
-
-    # 3. Process events chronologically
+    # 3. Process events chronologically.
     for ev in sorted_events:
         label = (ev.date or "").strip().lower()
         if label in {"", "unspecified", "ambiguous"} and ev.action not in {"none", "payment"}:
@@ -157,29 +297,48 @@ def reconcile_orders(
             if "date_unresolved" not in ev.audit_flags:
                 ev.audit_flags.append("date_unresolved")
 
-        # Check security audit flags, business bounds, or low confidence.
-        # Do this before the date filter so a malformed row is not dropped silently.
+        is_conflicting = (
+            ev.customer.strip().lower(),
+            ev.meal,
+        ) in conflicting and ev.action in {"new", "change", "add"}
+
+        # "kal" written at 00:30 is genuinely ambiguous: tonight or the coming
+        # morning. The evening reading is applied, and the row is surfaced so the
+        # cook can confirm rather than cook the wrong day.
+        after_midnight = is_after_midnight(parse_timestamp(ev.timestamp)) and (
+            label in _RELATIVE_DATE_LABELS
+        )
+        if after_midnight and "after_midnight" not in ev.audit_flags:
+            ev.audit_flags.append("after_midnight")
+
         is_risky = (
             ev.needs_review
             or ev.confidence < 0.70
             or bool(ev.audit_flags)
+            or is_conflicting
+            or after_midnight
             or (ev.action == "none" and ev.raw_text and len(ev.raw_text) > 40)
         )
         if is_risky and ev not in prep_sheet.unresolved_reviews:
             prep_sheet.unresolved_reviews.append(ev)
+        if is_conflicting and "same_minute_conflict" not in ev.audit_flags:
+            ev.audit_flags.append("same_minute_conflict")
+
+        # A dated pause window only removes the days it covers.
         if ev.action == "pause" and "date_range" in ev.audit_flags:
             if pause_covers_target(ev, target_date, as_of):
                 cust = ev.customer.strip().lower()
                 for meal in ("lunch", "dinner"):
-                    standing = state_map.get((cust, meal))
-                    if standing is not None:
-                        standing.qty = 0
-                        standing.is_paused = True
-                        standing.items = []
-                        standing.mods = []
+                    st = state_map.get((cust, meal))
+                    if st is not None:
+                        st.qty = 0
+                        st.is_paused = True
+                        st.items = []
+                        st.mods = []
                 if ev not in prep_sheet.cancellations:
                     prep_sheet.cancellations.append(ev)
             continue
+
         if not event_matches_target(ev, target_date, as_of):
             if label not in {"", "unspecified", "ambiguous"} and ev.action not in {
                 "none",
@@ -188,101 +347,50 @@ def reconcile_orders(
                 prep_sheet.other_days.append(ev)
             continue
 
-        if is_risky:
-            # If critical prompt injection, excessive quantity (>20), or explicit review flag, don't auto-apply
-            if ev.needs_review or any(
-                "prompt_injection" in f or "excessive_quantity" in f for f in ev.audit_flags
-            ):
-                continue
-
-        # Skip pure chit-chat
-        if ev.action == "none":
+        # A row the cook has to judge is not applied to the sheet.
+        if ev.needs_review or any(
+            f.startswith(("prompt_injection", "excessive_quantity")) for f in ev.audit_flags
+        ):
             continue
 
-        # Skip payment notes from kitchen cooking tally
-        if ev.action == "payment":
+        if ev.action in {"none", "payment"}:
             continue
 
-        # Check late cutoff
+        # Late messages. A late cancel saves food, so offer it. A late extra
+        # plate needs the cook's yes.
         dt = parse_timestamp(ev.timestamp)
-        late = is_after_cutoff(dt, cutoff_time)
-        if late:
+        if is_after_cutoff(dt, cutoff_time):
             ev.is_late = True
-            prep_sheet.late_orders.append(ev)
-            # Late orders after cutoff are flagged for cook approval, not silently added
+            if ev.action in {"cancel", "pause"}:
+                if accept_late_cancels:
+                    _apply_event(ev, state_map)
+                else:
+                    prep_sheet.late_cancellations.append(ev)
+            else:
+                prep_sheet.late_orders.append(ev)
             continue
 
-        # Meals to apply (lunch, dinner, or both)
-        target_meals = []
-        if ev.meal in ["lunch", "dinner"]:
-            target_meals = [ev.meal]
-        elif ev.meal == "both":
-            target_meals = ["lunch", "dinner"]
-        else:
-            target_meals = ["lunch"]  # default fallback
+        if is_conflicting:
+            continue
 
-        # Check for secondary customer (Bold test 3: "Priya ke liye bhi ek" from Ravi)
-        customer_allocations: List[Tuple[str, int]] = []
-        if ev.secondary_customer and ev.qty >= 2:
-            # Secondary customer gets 1, primary gets remainder
-            customer_allocations.append((ev.customer, ev.qty - 1))
-            customer_allocations.append((ev.secondary_customer, 1))
-        elif ev.secondary_customer and ev.qty == 1:
-            # Entire order is for secondary customer
-            customer_allocations.append((ev.secondary_customer, 1))
-        else:
-            customer_allocations.append((ev.customer, ev.qty))
+        if ev.action in {"cancel", "pause"}:
+            prep_sheet.cancellations.append(ev)
 
-        for cust_name, qty in customer_allocations:
-            for meal in target_meals:
-                key = (cust_name.strip().lower(), meal)
-                if key not in state_map:
-                    state_map[key] = CustomerMealState(customer=cust_name.strip(), meal=meal)
-                st = state_map[key]
+        _apply_event(ev, state_map)
 
-                if ev.action == "new":
-                    st.qty = qty
-                    if ev.items:
-                        st.items = list(ev.items)
-                    elif st.qty > 0 and not st.items:
-                        st.items = ["thali"]
-                    if ev.mods:
-                        st.mods.extend(ev.mods)
-
-                elif ev.action == "change":
-                    st.qty = qty
-                    if ev.items:
-                        st.items = list(ev.items)
-                    if ev.mods:
-                        st.mods.extend(ev.mods)
-
-                elif ev.action == "cancel":
-                    st.qty = 0
-                    st.items = []
-                    st.mods = []
-                    prep_sheet.cancellations.append(ev)
-
-                elif ev.action == "pause":
-                    st.qty = 0
-                    st.is_paused = True
-                    st.items = []
-                    st.mods = []
-                    prep_sheet.cancellations.append(ev)
-
-    # 4. Build final packing labels and aggregate totals
+    # 4. Build packing labels and totals.
     total_lunch = 0
     total_dinner = 0
     packing_labels: List[PackingLabel] = []
     special_mods: List[SpecialMod] = []
 
-    for (c_key, meal), st in sorted(state_map.items()):
+    for (_c_key, meal), st in sorted(state_map.items()):
         if st.qty > 0 and not st.is_paused:
             if meal == "lunch":
                 total_lunch += st.qty
             elif meal == "dinner":
                 total_dinner += st.qty
 
-            # Add packing label
             packing_labels.append(
                 PackingLabel(
                     customer=st.customer,
@@ -295,14 +403,9 @@ def reconcile_orders(
                 )
             )
 
-            # Record special mods
             for mod in st.mods:
                 special_mods.append(
-                    SpecialMod(
-                        customer=st.customer,
-                        meal=meal,
-                        mod_description=mod,
-                    )
+                    SpecialMod(customer=st.customer, meal=meal, mod_description=mod)
                 )
 
     prep_sheet.total_lunch = total_lunch
@@ -310,58 +413,133 @@ def reconcile_orders(
     prep_sheet.total_thalis = total_lunch + total_dinner
     prep_sheet.packing_labels = packing_labels
     prep_sheet.special_mods = special_mods
+    prep_sheet.cook_names = sorted(cook_names or [])
+    prep_sheet.cook_message_count = cook_message_count
+    pending = sum(1 for ev in prep_sheet.late_cancellations if ev.meal in ("lunch", "both"))
+    for ev in prep_sheet.late_cancellations:
+        pending += sheet_state_qty(state_map, ev)
+    prep_sheet.late_cancellation_total = pending
 
     return prep_sheet
+
+
+def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealState]) -> None:
+    """Fold one event into the plate-count state."""
+    meals = (
+        ["lunch", "dinner"]
+        if ev.meal == "both"
+        else [ev.meal]
+        if ev.meal in ("lunch", "dinner")
+        else ["lunch"]
+    )
+
+    # A cancel or pause carries qty 0 by definition, so it must not be filtered
+    # out by a quantity guard. That guard is how "kal lunch cancel" left two
+    # plates on the sheet and two plates on the bill.
+    if ev.action in {"cancel", "pause"}:
+        for meal in meals:
+            key = (ev.customer.strip().lower(), meal)
+            st = state_map.setdefault(
+                key, CustomerMealState(customer=ev.customer.strip(), meal=meal)
+            )
+            st.qty = 0
+            st.items = []
+            st.mods = []
+            st.is_paused = ev.action == "pause"
+        return
+
+    if ev.action not in {"new", "change", "add"}:
+        return
+
+    # "roommate Priya ke liye bhi ek" is a second plate, not a replacement.
+    allocations: List[Tuple[str, int]] = []
+    if ev.secondary_customer and ev.qty > 1:
+        allocations.append((ev.customer, ev.qty - 1))
+        allocations.append((ev.secondary_customer, 1))
+    elif ev.secondary_customer:
+        allocations.append((ev.secondary_customer, 1))
+    else:
+        allocations.append((ev.customer, ev.qty))
+
+    for cust_name, qty in allocations:
+        if qty <= 0:
+            continue
+        for meal in meals:
+            key = (cust_name.strip().lower(), meal)
+            st = state_map.setdefault(key, CustomerMealState(customer=cust_name.strip(), meal=meal))
+
+            if ev.action in DELTA_ACTIONS:
+                st.qty += qty
+                st.items = st.items or ["thali"]
+            else:
+                st.qty = qty
+                st.items = list(ev.items) if ev.items else (st.items or ["thali"])
+            if ev.mods:
+                st.mods.extend(m for m in ev.mods if m not in st.mods)
 
 
 def reconcile_ledger(
     events: List[OrderEvent],
     price_per_thali: float = 80.0,
     previous_balances: Optional[Dict[str, float]] = None,
+    target_date: str = "any",
+    as_of: Optional[datetime] = None,
 ) -> Dict[str, CustomerLedger]:
     """
     Calculate customer financial ledgers and generate polite Hinglish reminders.
     Never auto-sends any message.
+
+    The bill comes from the reconciled plate count per (customer, day, meal),
+    not from a sum of events, so a change is not billed twice and a cancelled
+    meal is not billed at all.
     """
-    ledgers: Dict[str, CustomerLedger] = {}
+    as_of = as_of or datetime.now()
     prev_bals = previous_balances or {}
 
-    for ev in events:
-        # A cook row the sheet refused is not a bill. A payment still counts.
-        if ev.action != "payment" and (ev.needs_review or "date_unresolved" in ev.audit_flags):
-            continue
-        if ev.action in {"new", "change"} and (ev.date or "").strip().lower() in {
-            "",
-            "unspecified",
-            "ambiguous",
-        }:
-            continue
-        cust = ev.customer.strip()
-        cust_key = cust.lower()
+    states = _final_states(events, target_date, as_of)
 
+    ledgers: Dict[str, CustomerLedger] = {}
+    for (cust_key, _day, _meal), st in sorted(states.items()):
         if cust_key not in ledgers:
-            initial_bal = prev_bals.get(cust_key, 0.0)
+            opening = prev_bals.get(cust_key, 0.0)
             ledgers[cust_key] = CustomerLedger(
-                customer=cust,
+                customer=st.customer,
                 price_per_thali=price_per_thali,
                 total_orders=0,
-                total_billed=initial_bal,
+                total_billed=opening,
                 total_paid=0.0,
-                balance_due=initial_bal,
+                balance_due=opening,
             )
         entry = ledgers[cust_key]
+        entry.total_orders += st.qty
+        entry.total_billed += st.qty * price_per_thali
+        entry.balance_due += st.qty * price_per_thali
 
-        if ev.action in ["new", "change"] and ev.qty > 0 and not ev.is_late:
-            entry.total_orders += ev.qty
-            entry.total_billed += ev.qty * price_per_thali
-            entry.balance_due += ev.qty * price_per_thali
-
-        elif ev.action == "payment":
-            amount = ev.payment_amount or 0.0
+    # Payments and refunds credit the balance.
+    for ev in events:
+        cust_key = ev.customer.strip().lower()
+        if ev.action != "payment":
+            continue
+        if ev.needs_review and not ev.payment_amount:
+            continue
+        if cust_key not in ledgers:
+            opening = prev_bals.get(cust_key, 0.0)
+            ledgers[cust_key] = CustomerLedger(
+                customer=ev.customer.strip(),
+                price_per_thali=price_per_thali,
+                total_billed=opening,
+                balance_due=opening,
+            )
+        entry = ledgers[cust_key]
+        amount = ev.payment_amount or 0.0
+        is_refund = bool(ev.payment_note and "refund" in ev.payment_note.lower())
+        if is_refund:
+            entry.balance_due += amount
+            entry.total_refunded += amount
+        else:
             entry.total_paid += amount
             entry.balance_due -= amount
 
-    # Generate polite Hinglish payment reminders
     for entry in ledgers.values():
         if entry.balance_due > 0:
             entry.draft_reminder = (

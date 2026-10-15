@@ -6,7 +6,8 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 MealType = Literal["lunch", "dinner", "both", "unspecified"]
-OrderAction = Literal["new", "change", "cancel", "pause", "payment", "none"]
+# "add" is a delta: "ek aur" / "+1" adds a plate instead of replacing the count.
+OrderAction = Literal["new", "change", "add", "cancel", "pause", "payment", "none"]
 
 
 class OrderEvent(BaseModel):
@@ -26,7 +27,12 @@ class OrderEvent(BaseModel):
         description="Dietary customizations (e.g. ['no onion', 'roti nahi rice'])",
     )
     action: OrderAction = Field(
-        default="new", description="Action type: new, change, cancel, pause, payment, none"
+        default="new", description="Action type: new, change, add, cancel, pause, payment, none"
+    )
+    line_index: int = Field(
+        default=0,
+        description="Position of the source line in the export. Breaks ties between "
+        "messages that share a minute-precision timestamp.",
     )
     payment_note: Optional[str] = Field(
         default=None, description="Payment note text if payment mentioned"
@@ -96,9 +102,24 @@ class DailyPrepSheet(BaseModel):
     packing_labels: List[PackingLabel] = Field(default_factory=list)
     special_mods: List[SpecialMod] = Field(default_factory=list)
     late_orders: List[OrderEvent] = Field(default_factory=list)
+    late_cancellations: List[OrderEvent] = Field(
+        default_factory=list,
+        description="Cancels that arrived after the cutoff. Shown as a pending "
+        "reduction with a one-tap accept rather than silently applied.",
+    )
     cancellations: List[OrderEvent] = Field(default_factory=list)
     unresolved_reviews: List[OrderEvent] = Field(default_factory=list)
     other_days: List[OrderEvent] = Field(default_factory=list)
+    cook_names: List[str] = Field(
+        default_factory=list,
+        description="Display names of the cook. Her own messages are never counted.",
+    )
+    cook_message_count: int = Field(
+        default=0, description="Messages from the cook that were skipped as her own."
+    )
+    late_cancellation_total: int = Field(
+        default=0, description="Plates that late cancels would remove if accepted."
+    )
 
 
 class CustomerLedger(BaseModel):
@@ -110,5 +131,6 @@ class CustomerLedger(BaseModel):
     price_per_thali: float = 80.0
     total_billed: float = 0.0
     total_paid: float = 0.0
+    total_refunded: float = 0.0
     balance_due: float = 0.0
     draft_reminder: str = ""

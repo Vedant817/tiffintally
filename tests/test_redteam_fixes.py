@@ -19,7 +19,13 @@ def test_aaj_raat_is_today_not_tomorrow():
     assert events[0].qty == 1
 
 
-def test_kal_uses_the_message_clock_not_the_cook_clock():
+def test_kal_after_midnight_means_the_day_the_customer_meant():
+    """ "kal" at 00:30 on the 13th is read as the evening of the 12th.
+
+    So "kal" is the 13th, not the 14th. Before this the relative word was
+    resolved against the raw stamp, which pushed a 00:30 order a day too far
+    and hid it on the wrong sheet.
+    """
     event = OrderEvent(
         customer="Neha",
         date="tomorrow",
@@ -29,11 +35,17 @@ def test_kal_uses_the_message_clock_not_the_cook_clock():
         timestamp="2026-10-13 00:30:00",
         raw_text="kal lunch 1",
     )
-    morning = datetime(2026, 10, 14, 9, 0)
-    today = reconcile_orders([event], target_date="today", as_of=morning)
-    tomorrow = reconcile_orders([event], target_date="tomorrow", as_of=morning)
-    assert today.total_thalis == 1
-    assert tomorrow.total_thalis == 0
+    # Cook opens the sheet for the 13th later that morning.
+    for_the_13th = reconcile_orders(
+        [event], target_date="2026-10-13", as_of=datetime(2026, 10, 13, 9, 0)
+    )
+    assert for_the_13th.total_thalis == 1
+
+    # It must not appear on the 14th, which is what the old rule produced.
+    for_the_14th = reconcile_orders(
+        [event], target_date="2026-10-14", as_of=datetime(2026, 10, 14, 9, 0)
+    )
+    assert for_the_14th.total_thalis == 0
 
 
 def test_today_does_not_land_on_tomorrows_sheet():
@@ -83,6 +95,7 @@ def test_sessions_do_not_share_customer_names():
 
 
 def test_gemma_sends_the_key_in_a_header(monkeypatch):
+    """The key must never appear in a URL, on either backend."""
     import httpx
 
     seen = {}
@@ -108,9 +121,50 @@ def test_gemma_sends_the_key_in_a_header(monkeypatch):
 
     monkeypatch.setattr(httpx, "Client", FakeClient)
     monkeypatch.setattr("tiffintally.extract.gemma.time.sleep", lambda *_: None)
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "gemini")
+
     GemmaExtractor(api_key="test-key-12345").extract_from_text("kal lunch 1", "A")
     assert "key=" not in seen["url"]
+    assert "test-key-12345" not in seen["url"]
     assert seen["headers"]["x-goog-api-key"] == "test-key-12345"
+
+
+def test_modal_backend_sends_no_google_key(monkeypatch):
+    """The Modal backend is unauthenticated, so no key is attached to it."""
+    import httpx
+
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = "{}"
+
+        def json(self):
+            return {"results": [[{"meal": "lunch", "qty": 1, "action": "new", "mods": []}]]}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            seen["url"] = url
+            seen["headers"] = headers or {}
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "modal")
+    monkeypatch.setenv("GOOGLE_API_KEY", "should-not-be-sent")
+
+    result = GemmaExtractor().extract_from_text("kal lunch 1", "A")
+    assert seen["url"].endswith(".modal.run")
+    assert "x-goog-api-key" not in seen["headers"]
+    assert result.used_fallback is False
 
 
 def test_synthetic_split_has_no_template_or_text_overlap():
