@@ -6,6 +6,7 @@ token counts, and real cost projections across synthetic test split and held-out
 
 import json
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -17,11 +18,20 @@ from pydantic import BaseModel
 from tiffintally.extract.base import ExtractionResult
 from tiffintally.extract.gemma import GemmaExtractor
 from tiffintally.extract.tinker import TinkerExtractor
-from tiffintally.forecast import KitchenForecaster, load_and_preprocess_history
 
 logger = logging.getLogger(__name__)
 
 EVALS_DIR = Path("evals/runs")
+
+# A row whose model_name ends in "-fallback" is the regex heuristic, whatever the
+# extractor was configured as. Never print a vendor name over those numbers.
+FALLBACK_SUFFIX = "-fallback"
+REGEX_DISPLAY = "regex (fallback)"
+
+# Blended list price for a hosted open-weight model, USD per million tokens.
+# Only applied when a real API call ran. Override when the backend changes.
+HOSTED_MODEL_USD_PER_MTOK = float(os.getenv("HOSTED_MODEL_USD_PER_MTOK", "0.20"))
+GEMMA_INPUT_OUTPUT_USD_PER_MTOK = HOSTED_MODEL_USD_PER_MTOK
 
 
 class MetricScore(BaseModel):
@@ -43,7 +53,11 @@ class ModelEvaluationReport(BaseModel):
     latency_p95_ms: float
     avg_input_tokens: float
     avg_output_tokens: float
-    estimated_cost_per_1k_msgs_usd: float
+    # None means "no token price applies", not zero. The regex makes no API call,
+    # so any currency figure next to it would be invented arithmetic.
+    estimated_cost_per_1k_msgs_usd: Optional[float] = None
+    used_fallback: bool = False
+    not_run_reason: Optional[str] = None
     timestamp: str
 
 
@@ -142,18 +156,23 @@ def evaluate_extractor(
     em_acc = round(exact_matches / n, 4) if n > 0 else 0.0
     mod_hits = sum(1 for g, p in zip(gold_mods, pred_mods) if g == p)
     mods_accuracy = round(mod_hits / n, 4) if n else 0.0
-    if fallback_rows and not str(reported_name).endswith("-fallback"):
-        reported_name = f"{reported_name}-fallback"
+    if fallback_rows and not str(reported_name).endswith(FALLBACK_SUFFIX):
+        reported_name = f"{reported_name}{FALLBACK_SUFFIX}"
 
     p50_lat = float(np.percentile(latencies, 50)) if latencies else 0.0
     p95_lat = float(np.percentile(latencies, 95)) if latencies else 0.0
     avg_in = float(np.mean(in_tokens)) if in_tokens else 0.0
     avg_out = float(np.mean(out_tokens)) if out_tokens else 0.0
 
-    # Pricing calculation (Google AI Studio Gemma 2: $0.20 / 1M tokens; fine-tune serverless: $0.15 / 1M)
-    # 1,000 messages * (avg_in + avg_out) tokens
-    total_tokens_per_1k = (avg_in + avg_out) * 1000
-    cost_per_1k = (total_tokens_per_1k / 1_000_000.0) * 0.20
+    # Cost is only meaningful for a real API call. The regex costs nothing to run,
+    # so a $/1k figure beside it would be arithmetic against a token count the
+    # regex never produced.
+    is_fallback = str(reported_name).endswith(FALLBACK_SUFFIX)
+    if is_fallback:
+        cost_per_1k = None
+    else:
+        total_tokens_per_1k = (avg_in + avg_out) * 1000
+        cost_per_1k = (total_tokens_per_1k / 1_000_000.0) * GEMMA_INPUT_OUTPUT_USD_PER_MTOK
 
     return ModelEvaluationReport(
         model_name=reported_name,
@@ -168,13 +187,40 @@ def evaluate_extractor(
         latency_p95_ms=round(p95_lat, 2),
         avg_input_tokens=round(avg_in, 1),
         avg_output_tokens=round(avg_out, 1),
-        estimated_cost_per_1k_msgs_usd=round(cost_per_1k, 4),
+        estimated_cost_per_1k_msgs_usd=(round(cost_per_1k, 4) if cost_per_1k is not None else None),
+        used_fallback=is_fallback,
         timestamp=datetime.now().isoformat(),
     )
 
 
+def not_run_report(dataset_name: str, reason: str) -> Dict[str, Any]:
+    """A row for a dataset that was not measured. Never a 0.0%."""
+    return ModelEvaluationReport(
+        model_name="NOT RUN",
+        dataset_name=dataset_name,
+        num_samples=0,
+        exact_match_accuracy=0.0,
+        meal_f1=0.0,
+        qty_f1=0.0,
+        action_f1=0.0,
+        mods_f1=0.0,
+        latency_p50_ms=0.0,
+        latency_p95_ms=0.0,
+        avg_input_tokens=0.0,
+        avg_output_tokens=0.0,
+        estimated_cost_per_1k_msgs_usd=None,
+        not_run_reason=reason,
+        timestamp=datetime.now().isoformat(),
+    ).model_dump()
+
+
 def run_full_evaluation_suite() -> Dict[str, Any]:
-    """Execute complete end-to-end benchmark suite and persist run artifact."""
+    """Run the suite and persist artifacts under evals/runs/<ts>/ only.
+
+    Deliberately never writes RESULTS.md. RESULTS.md is hand-written from saved
+    runs and cites their paths; a generated table over it is how the round-1
+    "Gemma 2 | Tinker" headers ended up sitting on top of regex scores.
+    """
     run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = EVALS_DIR / run_timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -182,11 +228,12 @@ def run_full_evaluation_suite() -> Dict[str, Any]:
     results: Dict[str, Any] = {
         "run_timestamp": run_timestamp,
         "date_ist": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
+        "run_dir": str(run_dir).replace("\\", "/"),
+        "report_path": f"{run_dir.as_posix()}/REPORT.md",
         "extractors": {},
-        "forecast": {},
     }
 
-    # 1. Extractor benchmarks on synthetic test split
+    # 1. Extractor benchmarks on the frozen synthetic test split
     syn_test_path = Path("data/synthetic/test.jsonl")
     if not syn_test_path.exists():
         from scripts.gen_synthetic import main as gen_syn
@@ -196,111 +243,145 @@ def run_full_evaluation_suite() -> Dict[str, Any]:
     gemma_ext = GemmaExtractor()
     tinker_ext = TinkerExtractor()
 
-    rep_gemma_syn = evaluate_extractor(gemma_ext, syn_test_path, "synthetic_test_131")
-    rep_tinker_syn = evaluate_extractor(tinker_ext, syn_test_path, "synthetic_test_131")
+    rep_gemma_syn = evaluate_extractor(gemma_ext, syn_test_path, "synthetic_test_frozen")
+    rep_tinker_syn = evaluate_extractor(tinker_ext, syn_test_path, "synthetic_test_frozen")
 
     results["extractors"]["gemma_synthetic"] = rep_gemma_syn.model_dump()
     results["extractors"]["tinker_synthetic"] = rep_tinker_syn.model_dump()
 
     # 2. Extractor benchmarks on held-out real data
     real_test_path = Path("data/private/real_test.jsonl")
+    real_rows = 0
     if real_test_path.exists():
-        rep_gemma_real = evaluate_extractor(gemma_ext, real_test_path, "real_holdout_50")
-        rep_tinker_real = evaluate_extractor(tinker_ext, real_test_path, "real_holdout_50")
+        with open(real_test_path, "r", encoding="utf-8") as f:
+            real_rows = sum(1 for line in f if line.strip())
+
+    if real_rows > 0:
+        rep_gemma_real = evaluate_extractor(gemma_ext, real_test_path, "real_heldout_cook_messages")
+        rep_tinker_real = evaluate_extractor(
+            tinker_ext, real_test_path, "real_heldout_cook_messages"
+        )
         results["extractors"]["gemma_real"] = rep_gemma_real.model_dump()
         results["extractors"]["tinker_real"] = rep_tinker_real.model_dump()
     else:
-        results["extractors"]["real_holdout"] = "NOT RUN: data/private/real_test.jsonl not found."
+        reason = (
+            "data/private/real_test.jsonl holds no labelled rows. No cook has "
+            "supplied real messages yet, so there is nothing to score."
+        )
+        results["extractors"]["gemma_real"] = not_run_report("real_heldout_cook_messages", reason)
+        results["extractors"]["tinker_real"] = not_run_report("real_heldout_cook_messages", reason)
 
-    # 3. Forecast benchmark (TabPFN vs Baselines)
-    forecaster = KitchenForecaster()
-    df_history = load_and_preprocess_history()
-    _, forecast_bench = forecaster.fit_and_evaluate(df_history, test_days=14)
-    results["forecast"] = forecast_bench.model_dump()
-
-    # Save run artifact
+    # Save run artifacts. Nothing outside this directory is written.
     summary_path = run_dir / "summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
-    # Update RESULTS.md
-    generate_results_markdown(results)
+    report_path = Path(results["report_path"])
+    report_path.write_text(generate_run_report(results), encoding="utf-8")
 
     return results
 
 
-def generate_results_markdown(run_data: Dict[str, Any]):
-    """Update root RESULTS.md from empirical test run data."""
-    results_path = Path("RESULTS.md")
+def display_model_name(model_name: str) -> str:
+    """Column header text. A `-fallback` row is the regex, whatever was configured."""
+    name = str(model_name or "unknown")
+    if name.endswith(FALLBACK_SUFFIX):
+        return REGEX_DISPLAY
+    return name
 
-    ext_data = run_data["extractors"]
-    fc_data = run_data["forecast"]
 
-    gemma_syn = ext_data.get("gemma_synthetic", {})
-    tinker_syn = ext_data.get("tinker_synthetic", {})
-    gemma_real = ext_data.get("gemma_real", {})
-    tinker_real = ext_data.get("tinker_real", {})
+def _row(rep: Dict[str, Any]) -> Dict[str, str]:
+    """One table row. NOT RUN rows stay words; they never become 0.0%."""
+    header = display_model_name(rep.get("model_name", ""))
+    if rep.get("not_run_reason"):
+        return {
+            "model": header,
+            "exact": "NOT RUN",
+            "meal_f1": "NOT RUN",
+            "qty_f1": "NOT RUN",
+            "action_f1": "NOT RUN",
+            "mods_f1": "NOT RUN",
+            "latency": "n/a",
+            "cost": "n/a",
+            "note": rep["not_run_reason"],
+        }
+    cost = rep.get("estimated_cost_per_1k_msgs_usd")
+    return {
+        "model": header,
+        "exact": f"{rep['exact_match_accuracy'] * 100:.1f}%",
+        "meal_f1": f"{rep['meal_f1']:.3f}",
+        "qty_f1": f"{rep['qty_f1']:.3f}",
+        "action_f1": f"{rep['action_f1']:.3f}",
+        "mods_f1": f"{rep['mods_f1']:.3f}",
+        "latency": f"{rep['latency_p50_ms']:.0f} / {rep['latency_p95_ms']:.0f} ms",
+        "cost": f"${cost:.4f}" if cost is not None else "n/a",
+        "note": "regex heuristic, no model call" if rep.get("used_fallback") else "model call",
+    }
 
-    content = f"""# TiffinTally Empirical Evaluation & Benchmark Results
 
-> Run Timestamp: `{run_data.get("date_ist", "N/A")}`
-> Artifact Run Directory: `evals/runs/{run_data.get("run_timestamp")}/`
+_TABLE_HEADER = (
+    "| Model actually used | Exact match | Meal F1 | Qty F1 | Action F1 | Mods F1 "
+    "| Latency p50/p95 | Cost /1k msgs | Note |\n"
+    "| :--- | ---: | ---: | ---: | ---: | ---: | :--- | ---: | :--- |"
+)
 
-Numbers below come from this run only. If the model name ends in `-fallback`, the score is the regex heuristic, not Gemma, Tinker, or a fine-tune. There is no held-out set of real cook messages in git. `data/kitchen_history.csv` is synthetic. Do not cite older 100% exact-match figures.
 
----
+def _table(rows: List[Dict[str, str]]) -> str:
+    lines = [_TABLE_HEADER]
+    for r in rows:
+        lines.append(
+            f"| {r['model']} | {r['exact']} | {r['meal_f1']} | {r['qty_f1']} "
+            f"| {r['action_f1']} | {r['mods_f1']} | {r['latency']} | {r['cost']} | {r['note']} |"
+        )
+    return "\n".join(lines)
 
-## 1. Extractor Performance (Field-Level Accuracy & Exact Match)
 
-### A. Real cook messages
-Only filled when `data/private/real_test.jsonl` exists. That file is gitignored and is not in this repository. An empty section means the real set was not run. Do not describe these rows as hand-collected.
+def generate_run_report(run_data: Dict[str, Any]) -> str:
+    """Render REPORT.md for this run only.
 
-| Metric | Gemma 2 (AI Studio) | Tinker LoRA Fine-Tune | Difference |
-| :--- | :--- | :--- | :--- |
-| **Exact Match Accuracy** | **{gemma_real.get("exact_match_accuracy", 0.0) * 100:.1f}%** | **{tinker_real.get("exact_match_accuracy", 0.0) * 100:.1f}%** | {(tinker_real.get("exact_match_accuracy", 0.0) - gemma_real.get("exact_match_accuracy", 0.0)) * 100:+.1f}% |
-| **Meal Type F1** | {gemma_real.get("meal_f1", 0.0):.3f} | {tinker_real.get("meal_f1", 0.0):.3f} | {tinker_real.get("meal_f1", 0.0) - gemma_real.get("meal_f1", 0.0):+.3f} |
-| **Quantity F1** | {gemma_real.get("qty_f1", 0.0):.3f} | {tinker_real.get("qty_f1", 0.0):.3f} | {tinker_real.get("qty_f1", 0.0) - gemma_real.get("qty_f1", 0.0):+.3f} |
-| **Action (New/Cancel/Pause) F1** | {gemma_real.get("action_f1", 0.0):.3f} | {tinker_real.get("action_f1", 0.0):.3f} | {tinker_real.get("action_f1", 0.0) - gemma_real.get("action_f1", 0.0):+.3f} |
-| **Special Modifications F1** | {gemma_real.get("mods_f1", 0.0):.3f} | {tinker_real.get("mods_f1", 0.0):.3f} | {tinker_real.get("mods_f1", 0.0) - gemma_real.get("mods_f1", 0.0):+.3f} |
-| **Latency p50 / p95 (ms)** | {gemma_real.get("latency_p50_ms", 0.0)} / {gemma_real.get("latency_p95_ms", 0.0)} ms | {tinker_real.get("latency_p50_ms", 0.0)} / {tinker_real.get("latency_p95_ms", 0.0)} ms | Faster turnaround |
-| **Estimated Cost / 1k msgs** | ${gemma_real.get("estimated_cost_per_1k_msgs_usd", 0.0):.4f} | ${tinker_real.get("estimated_cost_per_1k_msgs_usd", 0.0):.4f} | Highly economical |
+    Column headers come from the `model_name` each row actually reported, so a
+    fallback row reads "regex (fallback)" instead of borrowing a vendor name.
+    """
+    ext = run_data.get("extractors", {})
 
-### B. Synthetic test split ({gemma_syn.get("num_samples", 0)} items)
-Measured on `data/synthetic/test.jsonl`:
+    real_rows = [_row(ext[k]) for k in ("gemma_real", "tinker_real") if k in ext]
+    syn_rows = [_row(ext[k]) for k in ("gemma_synthetic", "tinker_synthetic") if k in ext]
 
-| Metric | Gemma 2 Baseline | Tinker LoRA |
-| :--- | :--- | :--- |
-| Exact Match | {gemma_syn.get("exact_match_accuracy", 0.0) * 100:.1f}% | {tinker_syn.get("exact_match_accuracy", 0.0) * 100:.1f}% |
-| Meal F1 | {gemma_syn.get("meal_f1", 0.0):.3f} | {tinker_syn.get("meal_f1", 0.0):.3f} |
-| Quantity F1 | {gemma_syn.get("qty_f1", 0.0):.3f} | {tinker_syn.get("qty_f1", 0.0):.3f} |
-| Action F1 | {gemma_syn.get("action_f1", 0.0):.3f} | {tinker_syn.get("action_f1", 0.0):.3f} |
+    not_run = [r for r in real_rows if r["exact"] == "NOT RUN"]
 
----
+    return f"""# TiffinTally eval run {run_data.get("run_timestamp")}
 
-## 2. Kitchen plate forecast
+Run time: {run_data.get("date_ist")}
+Artifact: `{run_data.get("run_dir")}/summary.json`
+Command: `uv run tiffintally eval`
 
-The active model name is in the run JSON (`model_name`). Without `TABPFN_API_KEY` this is HistGradientBoosting. The history CSV is synthetic. TabPFN's client licence is non-commercial. This section is not a rupee-savings claim.
+This file is generated per run. It does not edit `RESULTS.md`, which is written by
+hand from saved runs and cites their paths.
 
-Tested on a 14-day tail of `data/kitchen_history.csv`:
-Features: `[day_of_week, is_weekend, is_holiday, confirmed_orders, lag7_cooked, rolling7_mean]`
+## How to read these tables
 
-| Model | MAE (Plates) | RMSE (Plates) | Days Within ±3 Plates |
-| :--- | :--- | :--- | :--- |
-| **Active model ({fc_data.get("model_name", "unset")})** | **{fc_data.get("tabpfn_mae", 0.0)}** | **{fc_data.get("tabpfn_rmse", 0.0)}** | **{fc_data.get("tabpfn_within_3", 0.0)}%** |
-| Naive Lag-7 (Same weekday last week) | {fc_data.get("naive_lag7_mae", 0.0)} | {fc_data.get("naive_lag7_rmse", 0.0)} | {fc_data.get("naive_within_3", 0.0)}% |
-| Confirmed-Only (No late-walkin buffer) | {fc_data.get("confirmed_only_mae", 0.0)} | {fc_data.get("confirmed_only_rmse", 0.0)} | {fc_data.get("confirmed_within_3", 0.0)}% |
+A column headed **{REGEX_DISPLAY}** means no model call happened for that row: the
+extractor fell back to the regex heuristic, usually because no API key was set or
+the call failed. Its cost is `n/a` because no tokens were billed. A row reading
+`NOT RUN` means that dataset was not measured at all; it is not a 0.0% score.
 
-The MAE above is on synthetic history. It is not a food-waste saving and not a TabPFN result unless `model_name` says TabPFN.
+## 1. Real held-out cook messages
 
----
+{"No cook messages have been collected yet, so this table is empty by design." if not_run else ""}
 
-## 3. Privacy
+{_table(real_rows) if real_rows else "_No real-message runs in this artifact._"}
 
-- Names are masked before a configured model call. The Google API key is sent in the `x-goog-api-key` header, not the URL.
-- Sentry is initialised with `send_default_pii=False` and does not attach message text.
-- Reminders are copy-to-clipboard drafts. The app does not send WhatsApp messages.
-- Kitchen state is stored per browser cookie in this process. It is not a multi-tenant database.
+## 2. Frozen synthetic test split
+
+`data/synthetic/test.jsonl`. Frozen on {run_data.get("run_timestamp")}; extractor
+rules and labels are never edited to move these numbers.
+
+{_table(syn_rows) if syn_rows else "_No synthetic runs in this artifact._"}
+
+## 3. What this run does not measure
+
+- No forecast or plate-count prediction. It was removed from the product because it
+  lost to simply cooking the confirmed orders.
+- No on-device or edge latency. There is no on-device run.
+- No TabPFN call. None was ever made.
 """
-
-    with open(results_path, "w", encoding="utf-8") as f:
-        f.write(content)
