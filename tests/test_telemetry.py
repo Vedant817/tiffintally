@@ -6,6 +6,7 @@ from tiffintally.telemetry import (
     capture_guardrail_incident,
     init_telemetry,
     record_metric,
+    telemetry_enabled,
     trace_span,
 )
 
@@ -15,10 +16,11 @@ def test_init_telemetry_without_dsn():
     assert result is False  # Graceful false when no DSN provided
 
 
-def test_init_telemetry_with_fake_dsn():
-    fake_dsn = "https://public@sentry.example.com/1"
-    result = init_telemetry(dsn=fake_dsn)
-    assert result is True
+def test_init_telemetry_never_initializes_sentry_in_tests():
+    """conftest sets TIFFINTALLY_TELEMETRY=0, so even a DSN must not init Sentry."""
+    result = init_telemetry(dsn="https://public@sentry.example.com/1")
+    assert result is False
+    assert telemetry_enabled() is False
 
 
 def test_trace_span_context_manager():

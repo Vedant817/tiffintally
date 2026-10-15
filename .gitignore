@@ -13,6 +13,10 @@ logs/
 *.sqlite*
 *.sqlite3
 
+# Model-call telemetry is a local audit log, not a tracked artifact.
+# Tests write to a tmp path (see tests/conftest.py).
+evals/telemetry.jsonl
+
 # Python artifacts
 __pycache__/
 *.py[cod]

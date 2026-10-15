@@ -48,6 +48,12 @@ def _scrub_breadcrumb(crumb, hint):
     return crumb
 
 
+def telemetry_enabled() -> bool:
+    """False when TIFFINTALLY_TELEMETRY is 0/false/no. Tests run with it off."""
+    flag = os.getenv("TIFFINTALLY_TELEMETRY", "1").strip().lower()
+    return flag not in {"0", "false", "no", "off"}
+
+
 def init_telemetry(
     dsn: Optional[str] = None,
     environment: str = "production",
@@ -59,6 +65,10 @@ def init_telemetry(
     """
     global _INITIALIZED
     target_dsn = dsn or os.getenv("SENTRY_DSN")
+
+    if not telemetry_enabled():
+        logger.info("TIFFINTALLY_TELEMETRY is off; Sentry not initialized.")
+        return False
 
     if not HAS_SENTRY:
         logger.info("sentry-sdk not available; telemetry using local logger.")

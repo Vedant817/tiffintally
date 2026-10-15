@@ -4,6 +4,7 @@ Base extractor interfaces, telemetry, and deterministic rule-based extractor.
 
 import json
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -49,7 +50,16 @@ Rules:
 10. Dual-meal clauses: If lunch and dinner are both ordered (e.g. "kal lunch 1, dinner 1" or "dono time ek ek"), set meal='both', qty=1, action='new'.
 11. Hindi/Devanagari: "रात" / "रात का खाना" -> meal='dinner'. "दोपहर" / "दोपहर का खाना" -> meal='lunch'."""
 
-TELEMETRY_LOG = Path("evals/telemetry.jsonl")
+DEFAULT_TELEMETRY_LOG = Path("evals/telemetry.jsonl")
+
+
+def telemetry_log_path() -> Path:
+    """Where model-call telemetry is appended. Tests point this at a tmp path.
+
+    Read per call so a test that sets TELEMETRY_LOG before importing still wins.
+    """
+    override = os.getenv("TELEMETRY_LOG")
+    return Path(override) if override else DEFAULT_TELEMETRY_LOG
 
 
 class ExtractionResult(BaseModel):
@@ -66,7 +76,8 @@ class ExtractionResult(BaseModel):
 def log_model_call(result: ExtractionResult):
     """Log latency and token usage for empirical audit."""
     try:
-        TELEMETRY_LOG.parent.mkdir(parents=True, exist_ok=True)
+        log_path = telemetry_log_path()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         record = {
             "timestamp": time.time(),
             "model_name": result.model_name,
@@ -76,7 +87,7 @@ def log_model_call(result: ExtractionResult):
             "used_fallback": result.used_fallback,
             "error": result.error,
         }
-        with open(TELEMETRY_LOG, "a", encoding="utf-8") as f:
+        with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
     except Exception as e:
         logger.warning(f"Telemetry logging failed: {e}")
