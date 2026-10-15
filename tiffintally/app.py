@@ -1,14 +1,14 @@
 """
 FastAPI application for TiffinTally.
-Serves mobile-friendly kitchen UI, printable prep sheets, touch KDS station mode,
-dues ledger, voice briefs, active learning feedback flywheel, and recipe BOM economics.
+Serves a mobile-friendly kitchen UI, printable prep sheets, the dues ledger,
+voice briefs, and the active-learning correction flywheel.
 """
 
 import logging
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 from pathlib import Path
 from typing import Optional
 
@@ -17,10 +17,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from tiffintally.economics import KitchenEconomics
 from tiffintally.extract.gemma import GemmaExtractor
 from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
-from tiffintally.forecast import KitchenForecaster
 from tiffintally.parser import parse_chat_export
 from tiffintally.reconcile import reconcile_ledger, reconcile_orders
 from tiffintally.schema import DailyPrepSheet, OrderEvent
@@ -44,10 +42,6 @@ class KitchenSession:
     sheet: Optional[DailyPrepSheet] = None
     events: list[OrderEvent] = field(default_factory=list)
     voice_brief: Optional[VoiceBriefResult] = None
-    forecast: object = None
-    bom: object = None
-    economics: object = None
-    waste_roi: object = None
     extractor_label: str = "no chat loaded"
     used_fallback: bool = True
     cutoff: time = field(default_factory=lambda: time(22, 0))
@@ -100,15 +94,6 @@ def fill_session(
         standing_orders=None,
     )
     session.voice_brief = VoiceBriefService().generate_morning_brief(session.sheet)
-    forecaster = KitchenForecaster()
-    session.forecast = forecaster.how_many_to_cook(
-        target_date=session.sheet.date,
-        confirmed_count=session.sheet.total_thalis,
-    )
-    econ = KitchenEconomics()
-    session.bom = econ.compute_bom(session.sheet.total_thalis)
-    session.economics = econ.compute_ai_unit_economics(session.sheet.total_thalis)
-    session.waste_roi = econ.compute_waste_reduction_roi(session.sheet.total_thalis)
 
 
 def ensure_empty(session: KitchenSession) -> None:
@@ -127,10 +112,6 @@ def sheet_context(session: KitchenSession) -> dict:
     return {
         "sheet": session.sheet,
         "voice_brief": session.voice_brief,
-        "forecast": session.forecast,
-        "bom": session.bom,
-        "economics": session.economics,
-        "waste_roi": session.waste_roi,
         "extractor_label": session.extractor_label,
         "used_fallback": session.used_fallback,
         "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
@@ -155,14 +136,8 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @app.get("/health")
 def health_check():
-    return {
-        "status": "ok",
-        "app": "tiffintally",
-        "version": "0.2.0",
-        "guardrails": "active",
-        "kds_station": "available",
-        "active_learning": "ready",
-    }
+    """Liveness only. Feature lists belong in the README, not a health check."""
+    return {"status": "ok", "version": app.version}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -236,22 +211,6 @@ def view_prep_sheet(request: Request):
     return remember_cookie(response, session, is_new)
 
 
-@app.get("/station", response_class=HTMLResponse)
-def view_kds_station(request: Request):
-    """Touch-friendly Kitchen Display Station (KDS) for packing and container ticking."""
-    session, is_new = open_session(request)
-    ensure_empty(session)
-    response = templates.TemplateResponse(
-        request=request,
-        name="station.html",
-        context={
-            "sheet": session.sheet,
-            "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
-        },
-    )
-    return remember_cookie(response, session, is_new)
-
-
 @app.get("/ledger", response_class=HTMLResponse)
 def view_ledger(request: Request):
     session, is_new = open_session(request)
@@ -269,33 +228,6 @@ def view_ledger(request: Request):
         context={"ledger": ledger},
     )
     return remember_cookie(response, session, is_new)
-
-
-@app.get("/forecast", response_class=HTMLResponse)
-def forecast_view(
-    request: Request,
-    date: Optional[str] = None,
-    confirmed: int = 0,
-):
-    target_dt = date or (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
-    forecaster = KitchenForecaster()
-    result = forecaster.how_many_to_cook(target_date=target_dt, confirmed_count=confirmed)
-
-    econ = KitchenEconomics()
-    bom = econ.compute_bom(result.predicted_to_cook)
-    roi = econ.compute_waste_reduction_roi(daily_confirmed_plates=confirmed)
-
-    return templates.TemplateResponse(
-        request=request,
-        name="forecast.html",
-        context={
-            "target_date": target_dt,
-            "confirmed": confirmed,
-            "result": result,
-            "bom": bom,
-            "roi": roi,
-        },
-    )
 
 
 @app.get("/api/audio/morning_brief")
