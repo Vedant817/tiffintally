@@ -423,8 +423,17 @@ def _meal_qty(text: str, meal: str) -> int:
     return 1
 
 
-def _nearest_quantity(text: str, spans: List[Tuple[int, int, str]], meal: str) -> Optional[int]:
-    """The quantity closest to this meal word, in either direction, within 24 chars."""
+def _nearest_quantity(
+    text: str,
+    spans: List[Tuple[int, int, str]],
+    meal: str,
+    skip: Optional[Tuple[int, int]] = None,
+) -> Optional[int]:
+    """The quantity closest to this meal word, in either direction, within 24 chars.
+
+    `skip` excludes one span, so a delta's own number is not also read as the
+    order it is adding to: in "+1 kal lunch" the 1 is the delta, not a base.
+    """
     target = [(s, e) for s, e, m in spans if m == meal]
     if not target:
         return None
@@ -432,6 +441,8 @@ def _nearest_quantity(text: str, spans: List[Tuple[int, int, str]], meal: str) -
     best: Optional[Tuple[int, int]] = None
     for s, e in target:
         for qs, qe, raw in candidates:
+            if skip and qs >= skip[0] and qe <= skip[1]:
+                continue
             value = _match_number(raw)
             if value is None:
                 continue
@@ -557,6 +568,28 @@ def _fractional_quantity(text: str) -> Optional[str]:
         r"(?:plate|thali|dabba)\s*(?:kitna|kitni)?\s*(?:half|adha|aadha|adhi)", text, re.IGNORECASE
     )
     return match.group(0) if match else None
+
+
+def _find_delta(text: str) -> Optional[Tuple[Optional[str], Tuple[int, int]]]:
+    """The ("one more", span) in a message, or None.
+
+    Skipped when the number belongs to a side item rather than a plate: in
+    "lunch 1 aur 2 roti extra" the 2 is extra roti, not a second thali.
+    """
+    match = re.search(
+        rf"(?:\+\s*(\d{{1,2}})|(\b{_ROMAN_NUMBER_ALT}\b|\d{{1,2}})\s+(?:aur|more|or)\b)"
+        rf"|\b(ek|one)\s+(?:aur|more)\b"
+        rf"|\baur\s+(ek|one|1)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    start, end = match.span()
+    after = text[end : end + 24]
+    if re.match(r"\s*\d{0,2}\s*(roti|rotli|paratha|sabzi|chapati|piece)", after, re.IGNORECASE):
+        return None
+    return (match.group(1) or match.group(2) or match.group(3)), (start, end)
 
 
 def _canonical_mods(text: str) -> List[str]:
@@ -914,6 +947,37 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         for ev in events:
             flag(ev)
         return events
+
+    # A delta: "ek aur", "one more", "+1". This adds a plate to what is already
+    # ordered. Read as a fresh order it replaced the count instead, so "lunch 2"
+    # followed by "kal lunch ek aur" left one plate on the sheet.
+    delta = _find_delta(lower)
+    if delta:
+        token, span = delta
+        count = _match_number(token) if token else 1
+        meal = meal_spans[0][2] if meal_spans else "lunch"
+        base_qty = _nearest_quantity(lower, meal_spans, meal, skip=span) if meal_spans else None
+
+        if base_qty:
+            # "lunch 2, aur ek" is one message for three plates, not a separate
+            # instruction to add one to an order we have not seen.
+            action, qty = "new", base_qty + (count or 0)
+        else:
+            action, qty = "add", count or 1
+
+        ev = OrderEvent(
+            customer=sender,
+            date=spoken_date,
+            meal=meal,
+            qty=qty,
+            items=["thali"],
+            mods=mods,
+            action=action,
+            raw_text=raw_text,
+            secondary_customer=secondary_cust,
+            confidence=0.85,
+        )
+        return [flag(ev)]
 
     # A single meal, or a bare plate count.
     if meal_spans:

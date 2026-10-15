@@ -45,14 +45,48 @@ def test_voice_brief_caching(tmp_path, monkeypatch):
 
     monkeypatch.setattr(voice_module, "BRIEFINGS_DIR", tmp_path)
 
-    # Pre-create cached dummy audio file
-    fake_audio = tmp_path / "brief_Tomorrow.mp3"
+    sheet = DailyPrepSheet(date="Tomorrow", total_thalis=12, total_lunch=12)
+    fingerprint = voice_module.sheet_fingerprint(sheet)
+    fake_audio = tmp_path / f"brief_cookA1_Tomorrow_{fingerprint}.mp3"
     fake_audio.write_bytes(b"FAKE_MP3_DATA")
 
-    service = VoiceBriefService(api_key=None)
-    sheet = DailyPrepSheet(date="Tomorrow", total_thalis=12, total_lunch=12)
+    service = VoiceBriefService(api_key=None, session_id="cookA1")
     res = service.generate_morning_brief(sheet, force_refresh=False)
 
     assert res.audio_path == str(fake_audio)
     assert res.used_tts_api is True
     assert "cache" in res.message.lower()
+
+
+def test_voice_cache_does_not_cross_cooks(tmp_path, monkeypatch):
+    """Cook B must not hear cook A's plate counts for the same day."""
+    import tiffintally.voice as voice_module
+
+    monkeypatch.setattr(voice_module, "BRIEFINGS_DIR", tmp_path)
+
+    cook_a_sheet = DailyPrepSheet(date="Tomorrow", total_thalis=12, total_lunch=12)
+    cook_b_sheet = DailyPrepSheet(date="Tomorrow", total_thalis=3, total_lunch=3)
+
+    assert voice_module.sheet_fingerprint(cook_a_sheet) != voice_module.sheet_fingerprint(
+        cook_b_sheet
+    )
+
+    audio = tmp_path / f"brief_cookA1_Tomorrow_{voice_module.sheet_fingerprint(cook_a_sheet)}.mp3"
+    audio.write_bytes(b"COOK A AUDIO")
+
+    result = VoiceBriefService(api_key=None, session_id="cookB2").generate_morning_brief(
+        cook_b_sheet
+    )
+    assert result.audio_path is None, "cook B was served cook A's cached audio"
+
+
+def test_voice_cache_refreshes_after_a_late_cancel(tmp_path, monkeypatch):
+    """A re-run after a late cancel must not replay yesterday's counts."""
+    import tiffintally.voice as voice_module
+
+    monkeypatch.setattr(voice_module, "BRIEFINGS_DIR", tmp_path)
+
+    before = DailyPrepSheet(date="Tomorrow", total_thalis=12, total_lunch=12)
+    after = DailyPrepSheet(date="Tomorrow", total_thalis=10, total_lunch=10)
+
+    assert voice_module.sheet_fingerprint(before) != voice_module.sheet_fingerprint(after)

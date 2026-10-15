@@ -5,6 +5,7 @@ voice briefs, and the active-learning correction flywheel.
 """
 
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -23,6 +24,12 @@ from tiffintally.parser import parse_chat_export
 from tiffintally.reconcile import reconcile_ledger, reconcile_orders
 from tiffintally.schema import DailyPrepSheet, OrderEvent
 from tiffintally.transcribe import VoiceNoteTranscriber
+from tiffintally.uploads import (
+    MAX_UPLOAD_BYTES,
+    UploadRejected,
+    check_paste_size,
+    decode_chat_upload,
+)
 from tiffintally.voice import VoiceBriefResult, VoiceBriefService
 
 logger = logging.getLogger(__name__)
@@ -32,6 +39,15 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 CORRECTIONS_FILE = Path("data/private/corrections.jsonl")
 
 SESSION_COOKIE = "tt_sid"
+
+# A cook exports once a night. Two hours idle is generous for that.
+SESSION_IDLE_SECONDS = int(os.getenv("SESSION_IDLE_SECONDS", str(2 * 60 * 60)))
+MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "500"))
+
+
+def demo_mode() -> bool:
+    """True on a public deployment, where nothing may be written to disk."""
+    return os.getenv("TIFFINTALLY_DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass
@@ -44,7 +60,12 @@ class KitchenSession:
     voice_brief: Optional[VoiceBriefResult] = None
     extractor_label: str = "no chat loaded"
     used_fallback: bool = True
+    model_messages: int = 0
+    fallback_messages: int = 0
+    accept_late_cancels: bool = False
+    cook_names: list[str] = field(default_factory=list)
     cutoff: time = field(default_factory=lambda: time(22, 0))
+    touched: datetime = field(default_factory=datetime.now)
 
 
 SESSIONS: dict[str, KitchenSession] = {}
@@ -58,12 +79,31 @@ class CorrectionPayload(BaseModel):
     corrected_action: str
 
 
+def _prune_sessions(now: datetime) -> None:
+    """Evict idle sessions.
+
+    SESSIONS grew without bound: 2,000 cookieless GETs left 2,001 entries, each
+    holding a sheet, on a free-tier process.
+    """
+    stale = [
+        sid
+        for sid, session in SESSIONS.items()
+        if (now - session.touched).total_seconds() > SESSION_IDLE_SECONDS
+    ]
+    for sid in stale:
+        SESSIONS.pop(sid, None)
+
+
 def open_session(request: Request) -> tuple[KitchenSession, bool]:
+    now = datetime.now()
+    if len(SESSIONS) > MAX_SESSIONS:
+        _prune_sessions(now)
     sid = request.cookies.get(SESSION_COOKIE)
     if sid and sid in SESSIONS:
+        SESSIONS[sid].touched = now
         return SESSIONS[sid], False
     sid = uuid.uuid4().hex
-    session = KitchenSession(sid=sid)
+    session = KitchenSession(sid=sid, touched=now)
     SESSIONS[sid] = session
     return session, True
 
@@ -81,19 +121,27 @@ def fill_session(
     cutoff_t: time,
     extractor_label: str,
     used_fallback: bool,
+    model_messages: int = 0,
+    fallback_messages: int = 0,
 ) -> None:
     """Build the sheet from this cook's events only. Standing orders default to empty."""
     session.events = events
     session.extractor_label = extractor_label
     session.used_fallback = used_fallback
+    session.model_messages = model_messages
+    session.fallback_messages = fallback_messages
     session.cutoff = cutoff_t
     session.sheet = reconcile_orders(
         events=events,
         target_date=target_date,
         cutoff_time=cutoff_t,
         standing_orders=None,
+        cook_names=session.cook_names,
+        accept_late_cancels=session.accept_late_cancels,
     )
-    session.voice_brief = VoiceBriefService().generate_morning_brief(session.sheet)
+    session.voice_brief = VoiceBriefService(session_id=session.sid).generate_morning_brief(
+        session.sheet
+    )
 
 
 def ensure_empty(session: KitchenSession) -> None:
@@ -114,6 +162,10 @@ def sheet_context(session: KitchenSession) -> dict:
         "voice_brief": session.voice_brief,
         "extractor_label": session.extractor_label,
         "used_fallback": session.used_fallback,
+        "model_messages": session.model_messages,
+        "fallback_messages": session.fallback_messages,
+        "cook_names": session.cook_names,
+        "accept_late_cancels": session.accept_late_cancels,
         "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
     }
 
@@ -132,6 +184,28 @@ app = FastAPI(
 )
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+@app.middleware("http")
+async def reject_oversized_bodies(request: Request, call_next):
+    """Refuse a huge body before it is parsed.
+
+    Starlette's form parser reads the whole multipart body first, so a 21 MB
+    paste was rejected as a 400 *after* the server had already spent the memory
+    and the seconds. Check Content-Length first and answer 413 immediately.
+    """
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={
+                "detail": (
+                    f"That upload is {int(declared) // (1024 * 1024)} MB. Export one chat "
+                    f"at a time; the limit is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
+                )
+            },
+        )
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -156,23 +230,33 @@ async def process(
     raw_text: Optional[str] = Form(None),
     target_date: str = Form("tomorrow"),
     cutoff: str = Form("22:00"),
+    cook_names: Optional[str] = Form(None),
 ):
     session, is_new = open_session(request)
 
+    if cook_names is not None:
+        session.cook_names = [n.strip() for n in cook_names.split(",") if n.strip()]
+
     content = ""
     if chat_file and chat_file.filename:
-        file_bytes = await chat_file.read()
-        content = file_bytes.decode("utf-8", errors="replace")
+        try:
+            content = decode_chat_upload(await chat_file.read(), chat_file.filename)
+        except UploadRejected as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
     elif raw_text:
+        ok, reason = check_paste_size(raw_text)
+        if not ok:
+            raise HTTPException(status_code=413, detail=reason)
         content = raw_text
-    else:
-        content = ""
 
     parsed_msgs = parse_chat_export(content) if content.strip() else []
     extractor = GemmaExtractor()
-    events = extractor.extract_batch(parsed_msgs) if parsed_msgs else []
+    batch = extractor.extract_batch_counted(parsed_msgs) if parsed_msgs else None
+    events = batch.events if batch else []
     label = extractor.model_name
-    used_fallback = not extractor.is_available()
+    model_messages = batch.model_messages if batch else 0
+    fallback_messages = batch.fallback_messages if batch else 0
+    used_fallback = fallback_messages > 0 or not extractor.is_available()
     if used_fallback and not label.endswith("-fallback"):
         label = f"{label}-fallback"
 
@@ -189,6 +273,8 @@ async def process(
         cutoff_t=cutoff_t,
         extractor_label=label,
         used_fallback=used_fallback,
+        model_messages=model_messages,
+        fallback_messages=fallback_messages,
     )
 
     response = templates.TemplateResponse(
@@ -196,6 +282,26 @@ async def process(
         name="prep_sheet.html",
         context=sheet_context(session),
     )
+    return remember_cookie(response, session, is_new)
+
+
+@app.post("/api/late-cancels/accept")
+def accept_late_cancels(request: Request):
+    """One tap on "−N if you accept". Only the cook knows if she has packed."""
+    session, is_new = open_session(request)
+    ensure_empty(session)
+    session.accept_late_cancels = True
+    fill_session(
+        session,
+        events=session.events,
+        target_date=session.sheet.date,
+        cutoff_t=session.cutoff,
+        extractor_label=session.extractor_label,
+        used_fallback=session.used_fallback,
+        model_messages=session.model_messages,
+        fallback_messages=session.fallback_messages,
+    )
+    response = JSONResponse({"status": "accepted", "total_thalis": session.sheet.total_thalis})
     return remember_cookie(response, session, is_new)
 
 
@@ -285,9 +391,36 @@ def apply_correction(session: KitchenSession, payload: CorrectionPayload) -> int
     return applied
 
 
+def corrections_file_for(session: KitchenSession) -> Path:
+    """Where this cook's corrections live.
+
+    They used to share one `data/private/corrections.jsonl`, so every visitor's
+    customers pooled together in one file and one SFT export.
+    """
+    return CORRECTIONS_FILE.parent / f"corrections_{session.sid[:8]}.jsonl"
+
+
 @app.post("/api/corrections")
 def save_correction(request: Request, payload: CorrectionPayload):
-    mgr = ActiveLearningManager(storage_path=CORRECTIONS_FILE)
+    session, is_new = open_session(request)
+    applied = apply_correction(session, payload)
+
+    if demo_mode():
+        return remember_cookie(
+            JSONResponse(
+                {
+                    "status": "saved",
+                    "applied": applied,
+                    "persisted": False,
+                    "note": "Demo mode: the correction is on this sheet but is not "
+                    "written to disk.",
+                }
+            ),
+            session,
+            is_new,
+        )
+
+    mgr = ActiveLearningManager(storage_path=corrections_file_for(session))
     entry = CorrectionEntry(
         customer=payload.customer,
         raw_text=payload.raw_text,
@@ -296,22 +429,39 @@ def save_correction(request: Request, payload: CorrectionPayload):
         corrected_action=payload.corrected_action,
     )
     record = mgr.record_correction(entry)
-    session, is_new = open_session(request)
-    applied = apply_correction(session, payload)
-    response = JSONResponse({"status": "saved", "applied": applied, "record": record})
+    response = JSONResponse(
+        {"status": "saved", "applied": applied, "persisted": True, "record": record}
+    )
     return remember_cookie(response, session, is_new)
 
 
 @app.post("/api/active-learning/export")
-def export_active_learning():
-    """Exports all recorded cook corrections into an SFT JSONL training batch."""
-    mgr = ActiveLearningManager(storage_path=CORRECTIONS_FILE)
+def export_active_learning(request: Request):
+    """Export this cook's corrections into an SFT JSONL training batch.
+
+    This used to take no session and dumped every visitor's corrections into one
+    file. In demo mode it is refused outright.
+    """
+    if demo_mode():
+        raise HTTPException(
+            status_code=403,
+            detail="Active-learning export is disabled on the public demo.",
+        )
+    session, is_new = open_session(request)
+    mgr = ActiveLearningManager(storage_path=corrections_file_for(session))
     count = mgr.export_sft_dataset()
-    return {
-        "status": "exported",
-        "examples_count": count,
-        "export_path": "data/sft/active_learning_batch.jsonl",
-    }
+    response = JSONResponse(
+        {
+            "status": "exported",
+            "examples_count": count,
+            "export_path": "data/sft/active_learning_batch.jsonl",
+        }
+    )
+    return remember_cookie(response, session, is_new)
+
+
+_ALLOWED_AUDIO_SUFFIXES = {".ogg", ".opus", ".m4a", ".mp3"}
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
 
 @app.post("/api/voice-note")
@@ -322,18 +472,32 @@ async def transcribe_voice_note(
     """
     Ingest a WhatsApp voice note (.ogg, .opus, .m4a, .mp3),
     transcribe it into Hinglish text, and return formatted WhatsApp chat entry.
+
+    The client filename is never used to build a path. It previously was, so an
+    upload named "../../x.ogg" wrote outside the upload folder; on Render that
+    can overwrite application files.
     """
     transcriber = VoiceNoteTranscriber()
 
-    # Save audio temporarily
     upload_dir = Path("data/uploads/audio")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     if audio_file and audio_file.filename:
-        filename = audio_file.filename
-        dest_path = upload_dir / filename
-        bytes_data = await audio_file.read()
-        dest_path.write_bytes(bytes_data)
+        suffix = Path(audio_file.filename).suffix.lower()
+        if suffix not in _ALLOWED_AUDIO_SUFFIXES:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Voice notes must be one of {', '.join(sorted(_ALLOWED_AUDIO_SUFFIXES))}.",
+            )
+        audio_bytes = await audio_file.read()
+        if len(audio_bytes) > MAX_AUDIO_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"That note is {len(audio_bytes) // (1024 * 1024)} MB. "
+                "WhatsApp voice notes are much smaller.",
+            )
+        dest_path = upload_dir / f"{uuid.uuid4().hex}{suffix}"
+        dest_path.write_bytes(audio_bytes)
     else:
         # Create a mock voice note for testing
         dest_path = upload_dir / "sample_voice_cancel.ogg"

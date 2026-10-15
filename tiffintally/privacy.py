@@ -1,38 +1,89 @@
-"""Privacy-preserving client-side pseudonymization layer."""
+"""Privacy-preserving pseudonymisation before any text leaves the device.
+
+What this claims and what it does: every display name the extractor has seen,
+every phone number in any Indian spacing, and flat/house/gate numbers are
+replaced with tokens before a message is sent to a hosted model. Anything it does
+not recognise still leaves the device. That boundary is stated in the README
+rather than glossed over as "names are masked".
+"""
 
 import re
 import sqlite3
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from tiffintally.schema import OrderEvent
 
 DEFAULT_DB_PATH = Path("data/privacy_map.db")
 
-# Regex to match 10-digit Indian phone numbers with optional +91 or leading 0
-PHONE_PATTERN = re.compile(r"(?:\+91[\-\s]?)?[6-9]\d{9}\b")
+# Indian mobile numbers in the ways people actually type them:
+# 9876543210, 98765 43210, +91-9876543210, 091-98765 43210, (98765) 43210.
+PHONE_PATTERN = re.compile(r"(?:\+?91[\-\s]?|0)?[\(\s]?[6-9]\d{4}[\)\s\-\.]?\d{5}\b")
+
+# A flat, house, plot or gate number. "flat 402 Shanti Apts" was going to Google
+# intact while the claim in the README said addresses were masked.
+ADDRESS_PATTERN = re.compile(
+    r"\b(flat|house|h\.?\s*no|house\s*no|plot|shop|room|gate|floor|block|sector|building|"
+    r"flatno|house\s*no)\b\.?\s*[-\#]?\s*\d{1,5}[a-zA-Z]?",
+    re.IGNORECASE,
+)
+
+# A street or building name after a number, which the pattern above leaves.
+ADDRESS_TAIL_PATTERN = re.compile(
+    r"\b\d{1,5}\s+[A-Z][a-z]+\s+(?:Apts|Apartments|Society|Complex|Heights|Nagar|Colony|"
+    r"Park|Road|Lane|Block|Flats)\b"
+)
+
+EMAIL_PATTERN = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.]+\b")
+
+# Names shorter than this are too generic to mask safely: "Ravi" is a person,
+# "aunty" and "ji" are not, and masking them would corrupt the message.
+MIN_NAME_LENGTH = 3
 
 
 class Pseudonymizer:
     """
-    Replaces customer names and phone numbers with anonymous tokens (e.g. C001, C002)
-    before sending text to hosted model APIs. Keeps the mapping in a local SQLite database.
+    Replaces customer names, phone numbers and addresses with anonymous tokens
+    (C001, C002) before sending text to a hosted model API.
+
+    The mapping lives in a local SQLite database, keyed by the cook's session so
+    one cook's customers cannot be read out of another's map.
     """
 
-    def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = db_path or DEFAULT_DB_PATH
-        if self.db_path != Path(":memory:"):
+    def __init__(self, db_path: Optional[Path] = None, known_names: Iterable[str] = ()):
+        if db_path is None:
+            self.db_path = DEFAULT_DB_PATH
+        elif str(db_path) == ":memory:":
+            self.db_path = Path(":memory:")
+        else:
+            self.db_path = Path(db_path)
+        if str(self.db_path) != ":memory:":
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
+        self._conn: Optional[sqlite3.Connection] = None
         self._cache: Dict[str, str] = {}
         self._reverse_cache: Dict[str, str] = {}
+        self._init_db()
         self._load_cache()
+        for name in known_names:
+            if name and name.strip():
+                self.register_senders([name])
+
+    def _memory_conn(self) -> Optional[sqlite3.Connection]:
+        """Held-open in-memory database, or None for a file-backed map."""
+        return self._conn
 
     def _get_connection(self) -> sqlite3.Connection:
+        if str(self.db_path) == ":memory:":
+            # Each sqlite3.connect(":memory:") opens a *separate* empty database,
+            # so the table created in _init_db would vanish on the next call.
+            if self._conn is None:
+                self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+            return self._conn
         return sqlite3.connect(str(self.db_path))
 
     def _init_db(self):
-        with self._get_connection() as conn:
+        conn = self._get_connection()
+        try:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS customer_map (
@@ -43,6 +94,9 @@ class Pseudonymizer:
                 """
             )
             conn.commit()
+        finally:
+            if str(self.db_path) != ":memory:":
+                conn.close()
 
     def _load_cache(self):
         with self._get_connection() as conn:
@@ -53,7 +107,7 @@ class Pseudonymizer:
                 self._reverse_cache[pseudo_id.upper()] = real_id
 
     def get_or_create_pseudo_id(self, real_identifier: str) -> str:
-        """Return existing token for identifier or generate a new sequential token (C001, C002...)."""
+        """Return existing token for identifier or generate a new sequential token."""
         clean_id = real_identifier.strip()
         if not clean_id:
             return "C000"
@@ -83,27 +137,74 @@ class Pseudonymizer:
         clean_token = pseudo_id.strip().upper()
         return self._reverse_cache.get(clean_token, pseudo_id)
 
+    def register_senders(self, senders: Iterable[str]) -> None:
+        """Register every display name in an export, so bodies can be masked too.
+
+        The first word is registered as an alias. WhatsApp shows "Asha Kulkarni"
+        in the header but "Asha" in the message body, so masking only the full
+        display name left the bare first name in the clear.
+        """
+        for sender in senders:
+            if not sender or not sender.strip():
+                continue
+            self.get_or_create_pseudo_id(sender)
+            first = sender.strip().split()[0] if sender.strip() else ""
+            if len(first) >= MIN_NAME_LENGTH and first.lower() != sender.strip().lower():
+                self.get_or_create_pseudo_id(first)
+
+    def _known_names(self) -> List[str]:
+        """Cached identifiers that look like a personal name.
+
+        Anything registered through `register_senders` counts. Numbers and
+        addresses are excluded: they are matched by their own patterns.
+        """
+        names = []
+        for real_id in self._cache:
+            if len(real_id) < MIN_NAME_LENGTH:
+                continue
+            if real_id.isdigit():
+                continue
+            if ADDRESS_PATTERN.match(real_id):
+                continue
+            names.append(real_id)
+        return sorted(names, key=len, reverse=True)
+
     def mask_text(self, sender: str, text: str) -> Tuple[str, str]:
         """
-        Mask sender name and any customer names / phone numbers present in the text body.
+        Mask the sender, every known customer name, phone numbers, addresses and
+        emails in the text body.
+
         Returns (pseudo_sender, masked_text).
         """
+        self.register_senders([sender])
         pseudo_sender = self.get_or_create_pseudo_id(sender)
 
-        masked_text = text
-        # Mask phone numbers first
-        for phone_match in PHONE_PATTERN.finditer(text):
-            raw_phone = phone_match.group(0)
-            token = self.get_or_create_pseudo_id(raw_phone)
-            masked_text = masked_text.replace(raw_phone, token)
+        masked = text
 
-        # Mask known customer names that might appear in text (e.g. "Priya ke liye bhi ek")
-        for real_name, token in sorted(self._cache.items(), key=lambda x: len(x[0]), reverse=True):
-            if len(real_name) > 2 and real_name in masked_text.lower():
-                pattern = re.compile(re.escape(real_name), re.IGNORECASE)
-                masked_text = pattern.sub(token, masked_text)
+        # Emails first: they can contain digits that look like a phone number.
+        for match in EMAIL_PATTERN.findall(text):
+            masked = masked.replace(match, self.get_or_create_pseudo_id(match))
 
-        return pseudo_sender, masked_text
+        # Phones next, before names, so "Asha 9876543210" does not become
+        # "C001 C002" and then fail the name pass.
+        for match in PHONE_PATTERN.findall(masked):
+            token = self.get_or_create_pseudo_id(match.strip())
+            masked = masked.replace(match, token)
+
+        for match in ADDRESS_TAIL_PATTERN.findall(masked):
+            masked = masked.replace(match, self.get_or_create_pseudo_id(match.strip()))
+
+        for match in ADDRESS_PATTERN.findall(masked):
+            masked = masked.replace(match, self.get_or_create_pseudo_id(match.strip()))
+
+        # Every registered sender name, wherever it appears in the body. The old
+        # code only masked the sender of the current message, so "roommate Priya"
+        # and "Asha ka order" went out in the clear.
+        for real_name in self._known_names():
+            pattern = re.compile(rf"\b{re.escape(real_name)}\b", re.IGNORECASE)
+            masked = pattern.sub(self.get_or_create_pseudo_id(real_name), masked)
+
+        return pseudo_sender, masked
 
     def depseudonymize_order_event(self, event: OrderEvent) -> OrderEvent:
         """Return a copy of OrderEvent with real customer and secondary_customer restored."""

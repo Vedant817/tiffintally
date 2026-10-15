@@ -4,6 +4,8 @@ Transforms DailyPrepSheet into a warm, natural Hinglish spoken morning summary f
 Caches generated MP3s locally and provides instant text fallback when unkeyed or offline.
 """
 
+import hashlib
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -56,10 +58,36 @@ def generate_briefing_script(sheet: DailyPrepSheet) -> str:
     return " ".join(parts)
 
 
+def sheet_fingerprint(sheet: DailyPrepSheet) -> str:
+    """Stable digest of what the brief actually says.
+
+    The cache used to be keyed by date alone, so cook B heard cook A's plate
+    counts for the same day, and a late cancel did not change the audio at all.
+    """
+    payload = json.dumps(
+        {
+            "date": sheet.date,
+            "lunch": sheet.total_lunch,
+            "dinner": sheet.total_dinner,
+            "mods": [m.model_dump() for m in sheet.special_mods],
+            "cancels": [c.customer for c in sheet.cancellations],
+            "late": len(sheet.late_orders),
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 class VoiceBriefService:
-    def __init__(self, api_key: Optional[str] = None, voice_id: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        voice_id: Optional[str] = None,
+        session_id: str = "shared",
+    ):
         self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
         self.voice_id = voice_id or DEFAULT_VOICE_ID
+        self.session_id = session_id
         BRIEFINGS_DIR.mkdir(parents=True, exist_ok=True)
 
     def is_available(self) -> bool:
@@ -71,9 +99,11 @@ class VoiceBriefService:
         transcript = generate_briefing_script(sheet)
         char_count = len(transcript)
 
-        # Cache file
+        safe_session = "".join(c for c in self.session_id if c.isalnum())[:16] or "shared"
         safe_date = sheet.date.replace(":", "-").replace(" ", "_")
-        cache_file = BRIEFINGS_DIR / f"brief_{safe_date}.mp3"
+        cache_file = BRIEFINGS_DIR / (
+            f"brief_{safe_session}_{safe_date}_{sheet_fingerprint(sheet)}.mp3"
+        )
 
         if cache_file.exists() and not force_refresh:
             return VoiceBriefResult(

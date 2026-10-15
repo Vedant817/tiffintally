@@ -26,3 +26,8 @@ os.environ.setdefault(
 os.environ.pop("GOOGLE_API_KEY", None)
 os.environ.pop("ELEVENLABS_API_KEY", None)
 os.environ.pop("TINKER_API_KEY", None)
+
+# No network from the test suite. The extractor would otherwise try the hosted
+# model three times per batch with a 20s timeout, turning a 2s run into a 12s
+# one and making a passing suite depend on someone else's uptime.
+os.environ["EXTRACTOR_BACKEND"] = "off"

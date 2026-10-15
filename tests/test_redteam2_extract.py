@@ -22,6 +22,14 @@ def all_events(text, sender="Asha"):
 # --- complaints are not orders ------------------------------------------------
 
 
+def test_refund_request_is_a_refund_not_a_cancel():
+    ev = one("refund 160 for yesterday's cancel")
+    assert ev.action == "payment"
+    assert ev.payment_amount == 160.0
+    assert ev.qty == 0
+    assert ev.needs_review
+
+
 def test_refund_complaint_is_not_a_new_lunch():
     ev = one("kal ka lunch nahi aaya, 2 thali ka refund karo")
     assert ev.action == "none"
@@ -32,12 +40,6 @@ def test_refund_complaint_is_not_a_new_lunch():
 def test_feedback_about_yesterdays_lunch_is_not_an_order():
     ev = one("kal lunch bahut teekha tha")
     assert ev.action == "none"
-    assert ev.qty == 0
-
-
-def test_refund_request_is_a_refund_not_a_cancel():
-    ev = one("refund 160 for yesterday's cancel")
-    assert ev.action == "cancel" or ev.action == "payment"
     assert ev.qty == 0
 
 

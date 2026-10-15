@@ -147,10 +147,14 @@ def test_saved_correction_lands_on_the_sheet(tmp_path, monkeypatch):
 
 
 def test_save_correction_api(tmp_path, monkeypatch):
-    test_corr_path = tmp_path / "test_corrections.jsonl"
+    """Corrections are written per session, not into one shared file.
+
+    They used to share `data/private/corrections.jsonl`, so every visitor's
+    customers pooled together in one file and one SFT export.
+    """
     import tiffintally.app as app_module
 
-    monkeypatch.setattr(app_module, "CORRECTIONS_FILE", test_corr_path)
+    monkeypatch.setattr(app_module, "CORRECTIONS_FILE", tmp_path / "corrections.jsonl")
 
     payload = {
         "customer": "Ravi",
@@ -159,13 +163,48 @@ def test_save_correction_api(tmp_path, monkeypatch):
         "corrected_qty": 3,
         "corrected_action": "change",
     }
-    resp = client.post("/api/corrections", json=payload)
+    cook = TestClient(app)
+    resp = cook.post("/api/corrections", json=payload)
     assert resp.status_code == 200
     assert resp.json()["status"] == "saved"
-    assert test_corr_path.exists()
-    content = test_corr_path.read_text(encoding="utf-8")
+
+    written = list(tmp_path.glob("corrections_*.jsonl"))
+    assert len(written) == 1, "a correction must land in exactly one session file"
+    content = written[0].read_text(encoding="utf-8")
     assert "Ravi" in content
     assert '"corrected_qty": 3' in content
+
+
+def test_one_cook_cannot_export_another_cooks_corrections(tmp_path, monkeypatch):
+    import tiffintally.app as app_module
+    import tiffintally.feedback as feedback_module
+
+    monkeypatch.setattr(app_module, "CORRECTIONS_FILE", tmp_path / "corrections.jsonl")
+    monkeypatch.setattr(feedback_module, "ACTIVE_SFT_EXPORT", tmp_path / "batch.jsonl")
+
+    cook_a = TestClient(app)
+    cook_a.post(
+        "/api/corrections",
+        json={
+            "customer": "Asha",
+            "raw_text": "kal lunch 5",
+            "corrected_meal": "lunch",
+            "corrected_qty": 5,
+            "corrected_action": "new",
+        },
+    )
+
+    cook_b = TestClient(app)
+    exported = cook_b.post("/api/active-learning/export")
+    assert exported.status_code == 200
+    assert exported.json()["examples_count"] == 0, "cook B exported cook A's corrections"
+
+
+def test_active_learning_export_is_disabled_in_demo_mode(monkeypatch):
+    monkeypatch.setenv("TIFFINTALLY_DEMO_MODE", "true")
+    demo = TestClient(app)
+    resp = demo.post("/api/active-learning/export")
+    assert resp.status_code == 403
 
 
 def test_active_learning_export_api(tmp_path, monkeypatch):

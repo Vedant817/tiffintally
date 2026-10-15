@@ -53,7 +53,13 @@
         </td>
         <td style="padding: 12px; text-align: center;">
           {% if entry.balance_due > 0 %}
-            <button class="btn btn-primary" onclick="copyReminder('{{ entry.draft_reminder|replace("'", "\\'") }}', this)" style="padding: 4px 10px; font-size: 0.8rem;">
+            {# data-text, not an inline JS string literal. A sender named
+               x\');alert(1);// escaped the old onclick once HTML entities
+               were decoded, and ran in the cook's browser. #}
+            <button class="btn btn-primary"
+                    data-text="{{ entry.draft_reminder }}"
+                    onclick="copyReminder(this)"
+                    style="padding: 4px 10px; font-size: 0.8rem;">
               📋 Copy Draft
             </button>
           {% else %}
@@ -69,7 +75,10 @@
 
 {% block scripts %}
 <script>
-function copyReminder(text, btnElement) {
+// The reminder text arrives as a data attribute, so a customer's name can never
+// become part of a JavaScript string literal.
+function copyReminder(btnElement) {
+  const text = btnElement.dataset.text || "";
   navigator.clipboard.writeText(text).then(() => {
     const originalText = btnElement.innerText;
     btnElement.innerText = "✓ Copied!";
