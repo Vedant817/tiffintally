@@ -1,79 +1,68 @@
 # TiffinTally Build Progress
 
-Checkboxes below were written while several headline numbers were still false. `RESULTS.md` is the status that counts. The 100% real-message score, the Tinker 3B claim, the TabPFN rupee saving, the edge latency, and the first-user story are retracted.
-
-**Start Date:** 2026-10-13 13:30 IST  
-**Target Deadline:** 2026-10-18 11:59 PM PDT (2026-10-19 12:29 PM IST)  
+**Start Date:** 2026-10-13 13:30 IST
+**Target Deadline:** 2026-10-18 11:59 PM PDT (2026-10-19 12:29 PM IST)
 **Internal Feature Freeze:** 2026-10-19 09:00 AM IST
+
+`RESULTS.md` is the status that counts. The 100% real-message score, the Tinker
+3B claim, the TabPFN rupee saving, the edge latency and the first-user story were
+all retracted on 14 Oct 2026 after a self-review found they were not measurements.
+
+> The 13 Oct entries below claimed "Verified complete traceability of all metrics
+> in post.md". That was false at the time it was written. They are kept as a log
+> of what was believed then, not as a claim about what is true now.
 
 ---
 
-## Progress Log
+## Open items
 
-### 2026-10-13 13:35 IST — P0: Repo & Foundation Setup
-- [x] Initialized Git repository on `main` branch
-- [x] Configured Python 3.11 with `uv`
-- [x] Created `pyproject.toml` with FastAPI, Pydantic, TabPFN, Pytest, Ruff
-- [x] Created `.gitignore` protecting secrets, `data/private/`, and databases
-- [x] Created `.env.example` with clean placeholders
-- [x] Created MIT `LICENSE`
-- [x] Set up CI workflow `.github/workflows/ci.yml` (Ruff + Pytest + Secret leak guard)
-- [x] Documented architectural decisions in `docs/DECISIONS.md`
-- [x] Created `render.yaml` for free tier deployment
+Ordered by the 15 Oct self-review (`docs/review/REDTEAM2.md`).
 
-### 2026-10-13 13:45 IST — P1: Parser + Schema
-- [x] Created `tiffintally/schema.py` (`ParsedMessage`, `OrderEvent`, `PackingLabel`, `CustomerLedger`, `DailyPrepSheet`)
-- [x] Built `tiffintally/parser.py` supporting Android & iOS exports, 12h/24h timestamps, and multiline chats
-- [x] Created realistic test chat fixtures in `tests/fixtures/`
-- [x] Added `tests/test_parser.py` (6 passing unit tests)
+| # | Finding | State |
+| :--- | :--- | :--- |
+| F1 | No open model actually runs; default id no longer served | **done** — Modal-hosted extractor |
+| F2 | No demo link or video | Render prepared, **awaiting deploy** |
+| F3 | Post off-template, missing tags and Prize Categories | **done** |
+| F4 | `eval` rewrites the honest RESULTS.md | **done** |
+| F5 | Extractor turns complaints and pauses into orders | **done** |
+| F6 | Ledger double-bills changes and charges cancelled meals | **done** |
+| M1 | Model failure silent and mislabelled | **done** |
+| M2–M6 | Late cancels, post-midnight, order dependence, "ek aur", date format | **done** |
+| M7–M11 | Path traversal, shared state, weak masking, no upload caps | **done** |
+| M12 | Test set used for tuning | **done** — frozen, hashed |
+| M13 | Forecast worse than doing nothing | **done** — deleted |
+| M14 | Post reads as an apology | **done** |
+| M15 | No first user | **open — needs a real cook session** |
 
-### 2026-10-13 13:55 IST — P2: Synthetic Dataset & Human Labeling CLI
-- [x] Built generator script `scripts/gen_synthetic.py` creating 655 realistic synthetic Hinglish messages
-- [x] Split into 80/20 train/test: 524 in `data/synthetic/train.jsonl` and 131 in `data/synthetic/test.jsonl`
-- [x] Built Typer interactive labeling CLI `scripts/label_cli.py`
-- [x] Seeded held-out starter set `data/synthetic/real_benchmark_starter.jsonl` and placed in `data/private/real_test.jsonl` (gitignored)
+## Blocked on a human
 
-### 2026-10-13 14:10 IST — P3: Privacy Pseudonymization & Teacher Extractor
-- [x] Built client-side pseudonymizer `tiffintally/privacy.py` (local SQLite token mapping `C001..C999`)
-- [x] Implemented zero-leakage guarantee in `tests/test_privacy.py`
-- [x] Implemented `tiffintally/extract/base.py` with telemetry logger and robust heuristic rule-based fallback
-- [x] Implemented Google AI Studio Gemma 2 extractor in `tiffintally/extract/gemma.py` with graceful offline fallback
+- [ ] Push to `origin/main`
+- [ ] Render deploy (free, no card) → live URL for the post
+- [ ] `.tech` DNS → Render custom domain
+- [ ] 60–90s screen recording
+- [ ] First-user session with a real cook (consent, no PII in repo)
 
-### 2026-10-13 14:25 IST — P4: Deterministic Reconciler & The 12 Bold Tests
-- [x] Built `tiffintally/reconcile.py` (timestamp-ordered replay, late cutoff filtering, secondary customer allocations, deduplication)
-- [x] Implemented dues ledger with polite Hinglish reminder drafts (strict copy-to-clipboard, zero auto-send)
-- [x] Implemented `tests/test_bold.py` covering all 12 mandatory edge cases and bold tests from prompt specification
+## Log
 
-### 2026-10-13 14:35 IST — P5: Tinker SFT Dataset & LoRA Extractor
-- [x] Built `scripts/prepare_sft.py` generating 524 Chat SFT pairs in `data/synthetic/tinker_sft_train.jsonl`
-- [x] Implemented Thinking Machines Tinker API extractor in `tiffintally/extract/tinker.py`
-- [x] Validated surrogate offline fallback and SFT dataset formatting in `tests/test_tinker.py`
+### 2026-10-13 — v0.1 built
+Repo, parser, schema, synthetic generator, labeling CLI, pseudonymizer, heuristic
+extractor, Gemma 2 extractor, reconciler, ledger, Tinker SFT path, TabPFN
+forecaster, FastAPI app, ElevenLabs brief, eval harness, `post.md`.
+All checked off at the time, including items later retracted.
 
-### 2026-10-13 14:45 IST — P6: TabPFN Kitchen Forecaster
-- [x] Built `scripts/gen_history.py` generating 90 days of daily kitchen history (`data/kitchen_history.csv`) with DOW patterns and Indian festival holidays
-- [x] Built `tiffintally/forecast.py` using Prior Labs TabPFN Regressor with 14-day holdout validation
-- [x] Implemented `how_many_to_cook` decision tool anticipating late doorstep walk-ins
-- [x] Added unit tests in `tests/test_forecast.py` (3 passing tests)
+### 2026-10-14 — v0.2 honest
+Round-1 self-review found the fake first user, fake edge benchmark, leaked 100%
+scores and phantom customers. All removed or retracted. 84 commits, gitleaks
+clean, 104 tests green.
 
-### 2026-10-13 14:55 IST — P7: Full FastAPI App UI & ElevenLabs Voice Briefing
-- [x] Built mobile-friendly responsive kitchen web app in `tiffintally/app.py`
-- [x] Built Jinja2 templates: `base.html`, `index.html`, `prep_sheet.html`, `ledger.html`, `forecast.html`
-- [x] Built active learning correction endpoint `/api/corrections`
-- [x] Implemented ElevenLabs morning Hinglish audio briefing in `tiffintally/voice.py`
-- [x] Added `tests/test_app.py` and `tests/test_voice.py`
-
-### 2026-10-13 15:05 IST — P8: Free Tier Deployment & Render Verification
-- [x] Verified `render.yaml` specification with health check path `/health`
-- [x] Added local production server CLI command `uv run tiffintally serve`
-- [x] Confirmed zero live secrets and zero credit-card dependencies
-
-### 2026-10-13 15:15 IST — P9: Comprehensive Evaluation Suite & RESULTS.md
-- [x] Implemented end-to-end evaluation harness `tiffintally/eval.py` (F1, exact match, latency p50/p95, cost)
-- [x] Added CLI command `uv run tiffintally eval all`
-- [x] Ran evaluation suite and generated empirical `RESULTS.md` and `evals/runs/20261013_135155/summary.json`
-- [x] Verified 44/44 green tests in pytest
-
-### 2026-10-13 15:30 IST — P10: Dev.to Write-up & Demo Script
-- [x] Created `post.md` following `hf26-w2-sidehustle/09-devto-post-template.md`
-- [x] Created 60–90 second video recording script `docs/demo-script.md`
-- [x] Verified complete traceability of all metrics in `post.md` to `RESULTS.md` and run artifacts
+### 2026-10-15 04:40 IST — round-2 fixes, Phase 0 (hygiene)
+- [x] Planning pack and self-reviews moved to `docs/planning/`, `docs/review/`
+- [x] `docs/README.md` states these are planning notes, not evidence
+- [x] `evals/telemetry.jsonl` untracked; tests write telemetry to a tmp path
+- [x] Sentry never initialises under pytest (`TIFFINTALLY_TELEMETRY=0`)
+- [x] `/health` returns only `{"status", "version"}`
+- [x] `edge.py`, `export-edge`, `benchmark-edge` deleted
+- [x] Forecast / TabPFN deleted (MAE 3.79 vs 3.21 for cooking confirmed orders)
+- [x] KDS station, BOM, ROI, economics deleted
+- [x] `eval` no longer writes RESULTS.md; `NOT RUN` replaces 0.0%
+- Gate: `92 passed`, ruff clean, `git status` clean after pytest.
