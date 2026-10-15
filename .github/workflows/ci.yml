@@ -35,7 +35,26 @@ jobs:
         run: uv run pytest -v --durations=10
 
       - name: Verify no secret leakage
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
+          GITLEAKS_ENABLE_COMMENTS: false
+
+  # A passing test suite is not enough: the eval harness must not be able to
+  # rewrite the hand-written RESULTS.md, which is the file judges read.
+  no-results-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      - run: uv python install 3.11
+      - run: uv sync --all-extras --dev
+      - name: `tiffintally eval` must leave RESULTS.md untouched
         run: |
-          if git rev-parse --verify origin/main >/dev/null 2>&1; then
-            ! git diff origin/main...HEAD | grep -iE '(api_key|token|secret).*=.*[a-zA-Z0-9_-]{20,}'
+          uv run tiffintally eval
+          if ! git diff --exit-code -- RESULTS.md; then
+            echo "::error::tiffintally eval rewrote RESULTS.md. That file is hand-written from saved runs."
+            exit 1
           fi

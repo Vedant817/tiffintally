@@ -1,0 +1,22 @@
+# Gitleaks config for TiffinTally.
+#
+# Goal: `gitleaks detect` is a gate that must be green, so a red run cannot be
+# waved through as "probably fine". The only suppression here is for the empty
+# assignment on a placeholder line in .env.example, which the generic-api-key
+# rule reads as a key because of the variable name.
+#
+# Nothing that could hold a real credential is allowlisted. If you add a real key
+# here, this file is the reason CI stayed green while it leaked.
+
+title = "TiffinTally gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Empty placeholder assignment in .env.example, e.g. ELEVENLABS_VOICE_ID="
+path = '''^\.env\.example$'''
+regexTarget = "secret"
+# Anchored on the empty value: a real credential has characters after the `=`,
+# so this cannot mask a leaked key.
+regexes = ['''^[A-Z0-9_]+=$''']
