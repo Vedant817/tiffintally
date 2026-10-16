@@ -33,8 +33,10 @@ text, not a blind human holdout. Frozen legacy files remain untouched. See
 ## Privacy
 
 Sheets and payment confirmations are scoped to a browser session in server memory.
-The current privacy map implementation is under repair; do not rely on an anonymity
-claim for real chat text. There is no authenticated cook account or encrypted
+Each paste uses an in-memory token map: sender display names, first-name aliases,
+names following roommate/friend/dost, and recognized phone, email and numbered-address
+patterns are masked. Other names and addresses can still be transmitted; masking
+is not anonymization. The web app does not read the former shared SQLite map. There is no authenticated cook account or encrypted
 persistent ledger. Unknown personal information can reach a configured hosted
 model. Raw customer exports belong only under ignored `data/private/`.
 

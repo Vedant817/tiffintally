@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-from tiffintally.datasets import load_dataset
+from tiffintally.datasets import load_dataset, reserve_holdout
 from tiffintally.extract.base import SYSTEM_PROMPT, heuristic_extract
 from tiffintally.gpu_budget import GpuBudget
 from tiffintally.model_validation import clean_model_event
@@ -27,13 +27,12 @@ def few_shot_prompt():
     return SYSTEM_PROMPT + "\nTraining examples:\n" + json.dumps(examples, ensure_ascii=False)
 
 
-def run(system, dataset, out, *, execute=False, batch_size=20):
+def run(system, dataset, out, *, execute=False, batch_size=20, human_holdout=False):
     source = Path(dataset)
     samples = load_dataset(source, private="private" in source.parts)
     if "private" in source.parts:
-        raise PermissionError(
-            "Human holdout consumption is not automatic; freeze and approve a separate once-per-system run first"
-        )
+        if not human_holdout:
+            raise PermissionError("Human holdout requires an explicit --human-holdout run")
     prompt = few_shot_prompt() if system == "few_shot_base" else SYSTEM_PROMPT
     status = "measured offline" if system == "regex" else "NOT RUN (needs approval or credentials)"
     out = Path(out)
@@ -51,6 +50,10 @@ def run(system, dataset, out, *, execute=False, batch_size=20):
             raise PermissionError(
                 "NOT RUN: deployed endpoint has no versioned custom-prompt contract"
             )
+    if "private" in source.parts:
+        if system == "hybrid" and not execute:
+            raise PermissionError("Do not consume a holdout with an incomplete hybrid")
+        reserve_holdout(source, system, out)
     rows = []
     llm_rows = 0
     deferred = 0
@@ -170,10 +173,18 @@ def main():
     parser.add_argument("--dataset", type=Path, default=Path("data/synthetic/test.jsonl"))
     parser.add_argument("--out", type=Path, default=Path("evals/final/baselines"))
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--human-holdout", action="store_true")
     args = parser.parse_args()
     print(
         json.dumps(
-            run(args.system, args.dataset, args.out / args.system, execute=args.execute), indent=2
+            run(
+                args.system,
+                args.dataset,
+                args.out / args.system,
+                execute=args.execute,
+                human_holdout=args.human_holdout,
+            ),
+            indent=2,
         )
     )
 

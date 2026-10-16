@@ -1,8 +1,8 @@
 """
 Serve the fine-tuned extractor as a web endpoint on Modal.
 
-This is an experiment, not the product's default extractor. The product default
-is the Gemini API path; see EXTRACTOR_BACKEND in tiffintally/extract/gemma.py.
+The product selects this backend when Modal credentials are configured.
+Otherwise it uses a configured Google backend or local rules. See EXTRACTOR_BACKEND.
 
 LICENCE. Base model: Qwen/Qwen2.5-3B-Instruct. Its Hugging Face metadata reports
 `license: other`, `license_name: qwen-research`, and the licence text is
@@ -32,8 +32,9 @@ one left a paid GPU endpoint reachable by anyone who read the repo.
     MODAL_EXTRACTOR_TOKEN=<same value as the Modal secret>
 
 The endpoint takes pseudonymised text. Names, phone numbers and flat numbers are
-replaced with tokens by tiffintally/privacy.py before a request leaves the
-machine, so customer identities never reach this container.
+replaced where recognized by tiffintally/privacy.py before a request leaves the
+machine. This is partial masking, not an anonymity guarantee; unknown names and
+addresses can still reach this container. See README privacy limits.
 """
 
 import json
@@ -286,7 +287,7 @@ def api(payload: dict, authorization: str = Header(default="")) -> dict:
     for raw in decoded:
         events, fixed = _parse(raw)
         results.append(events)
-        raws.append(raw[:400])
+        raws.append(raw)
         repaired_total += fixed
 
     return {

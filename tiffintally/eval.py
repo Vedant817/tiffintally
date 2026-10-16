@@ -10,7 +10,7 @@ from typing import Any, List
 
 from pydantic import BaseModel
 
-from tiffintally.datasets import load_dataset
+from tiffintally.datasets import load_dataset, reserve_holdout
 from tiffintally.extract.base import SYSTEM_PROMPT, ExtractionResult, heuristic_extract
 from tiffintally.scoring import score_events, summarize
 
@@ -49,6 +49,8 @@ def evaluate_extractor(
     private=False,
 ):
     samples = load_dataset(Path(dataset_path), private=private)
+    if private:
+        reserve_holdout(Path(dataset_path), system, Path(out))
     if max_samples:
         samples = samples[:max_samples]
     rows = []

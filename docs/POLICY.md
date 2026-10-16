@@ -24,3 +24,7 @@ closing balances exported as customer,balance CSV. Import replaces opening
 balances, so repeated imports do not add money twice. Payments from chat are
 claims, not receipts; only eligible payments explicitly confirmed by the cook
 reduce dues. Review or audit flags cannot be overridden by payment confirmation.
+
+An imported opening balance must cover only the period before the messages in the
+new paste. Do not import a closing balance and then paste those already-billed
+messages again. This manual period boundary is not inferred from a CSV amount.

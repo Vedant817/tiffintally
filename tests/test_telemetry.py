@@ -2,6 +2,8 @@
 
 import logging
 
+import pytest
+
 from tiffintally.telemetry import (
     capture_guardrail_incident,
     init_telemetry,
@@ -32,11 +34,9 @@ def test_trace_span_context_manager():
 
 
 def test_trace_span_exception_handling():
-    try:
+    with pytest.raises(ValueError, match="Simulation error"):
         with trace_span("test.error", "Testing error capture"):
             raise ValueError("Simulation error for telemetry testing")
-    except ValueError:
-        pass  # Caught and propagated as expected
 
 
 def test_capture_guardrail_incident(caplog):
@@ -50,7 +50,7 @@ def test_capture_guardrail_incident(caplog):
     assert any("SECURITY GUARDRAIL TRIGGERED" in record.message for record in caplog.records)
 
 
-def test_record_metric():
-    # Verify no crash during metric recording
-    record_metric("extraction.p50_latency", 286.8, unit="millisecond", tags={"tier": "tier1"})
-    record_metric("extraction.accuracy", 100.0, unit="percent", tags={"tier": "tier1"})
+def test_record_metric(caplog):
+    with caplog.at_level(logging.INFO):
+        record_metric("extraction.p50_latency", 286.8, unit="millisecond", tags={"tier": "tier1"})
+    assert "METRIC [extraction.p50_latency]: 286.80 millisecond" in caplog.text

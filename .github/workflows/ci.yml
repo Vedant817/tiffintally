@@ -48,14 +48,25 @@ jobs:
       - name: Registered numerical claims
         run: uv run python scripts/check_claims.py
 
+      - name: Known leakage must not change silently
+        run: uv run python scripts/leakage_report.py --check-known
+
+      - name: Saved predictions must rescore identically
+        run: uv run python scripts/compare.py evals/final/regex/test.jsonl evals/final/regex/test.jsonl
+
+      - name: Daily sheet and ledger invariant
+        run: |
+          for seed in 0 1 42 271; do
+            uv run pytest tests/test_daily_invariants.py --hypothesis-seed="$seed" -q
+          done
+
       - name: Verify no secret leakage
         uses: gitleaks/gitleaks-action@v2
         env:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
           GITLEAKS_ENABLE_COMMENTS: false
 
-  # A passing test suite is not enough: the eval harness must not be able to
-  # rewrite the hand-written RESULTS.md, which is the file judges read.
+  # Routine offline evaluation never rewrites the separately generated public table.
   no-results-drift:
     runs-on: ubuntu-latest
     steps:
@@ -75,8 +86,8 @@ jobs:
           EXTRACTOR_BACKEND: "off"
           TIFFINTALLY_TELEMETRY: "0"
         run: |
-          uv run tiffintally eval
+          uv run tiffintally eval --out evals/final/ci-offline
           if ! git diff --exit-code -- RESULTS.md; then
-            echo "::error::tiffintally eval rewrote RESULTS.md. That file is hand-written from saved runs."
+            echo "::error::tiffintally eval rewrote the published saved-prediction table."
             exit 1
           fi

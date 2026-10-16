@@ -8,7 +8,7 @@
   <p style="color: var(--text-muted); font-size: 0.95rem;">
     Upload an exported WhatsApp chat (<code>.txt</code>) or paste the text below.
     Orders are reconciled in Python for the date you pick. Nothing is added for customers who did not write in.
-    A hosted model is called only when its API key is set. That path swaps names and phone numbers for tokens first. With no key, the rules parser runs on this machine and the chat is not uploaded.
+    A configured Modal endpoint and token or Google key can enable hosted extraction. With extraction off, the rules run locally. The prep sheet reports the backend that actually answered.
   </p>
 </div>
 
@@ -59,7 +59,7 @@
   <h3 style="font-size: 1rem; margin-bottom: 8px;">What this page does and does not do</h3>
   <ul style="font-size: 0.88rem; color: #555; padding-left: 20px; line-height: 1.6;">
     <li><strong>Your sheet stays in this browser session.</strong> Another visitor does not see it. The copy lives in the server process until restart. Do not put a shared deploy online without a login.</li>
-    <li><strong>Hosted models.</strong> If a Gemma or Tinker key is set, names and Indian phone numbers in the outbound text are replaced with tokens such as <code>C001</code>. The map is a SQLite file on the machine running the app. The prep sheet still shows the names you pasted. With no key, no chat text is sent.</li>
+    <li><strong>Partial privacy masking.</strong> Each paste gets an in-memory token map. All sender display names, their first-name aliases, names immediately following roommate/friend/dost, and recognized phones, emails and numbered addresses are masked. Other names and addresses can still reach a configured model. This is not anonymization. Turn hosted extraction off for sensitive exports.</li>
     <li><strong>Reconciler.</strong> Cancels and quantity changes are applied in timestamp order in Python. The language model, when one is used, only proposes events.</li>
     <li><strong>No auto-send.</strong> Payment reminders are drafts you copy. There is no WhatsApp Business API key in this app.</li>
   </ul>

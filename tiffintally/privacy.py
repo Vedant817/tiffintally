@@ -9,16 +9,15 @@ rather than glossed over as "names are masked".
 
 import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from tiffintally.schema import OrderEvent
 
-DEFAULT_DB_PATH = Path("data/privacy_map.db")
-
 # Indian mobile numbers in the ways people actually type them:
 # 9876543210, 98765 43210, +91-9876543210, 091-98765 43210, (98765) 43210.
-PHONE_PATTERN = re.compile(r"(?:\+?91[\-\s]?|0)?[\(\s]?[6-9]\d{4}[\)\s\-\.]?\d{5}\b")
+PHONE_PATTERN = re.compile(r"(?<!\d)(?:\+?91[\s().-]*|0)?[6-9](?:[\s().-]*\d){9}(?!\d)")
 
 # A flat, house, plot or gate number. "flat 402 Shanti Apts" was going to Google
 # intact while the claim in the README said addresses were masked.
@@ -41,18 +40,29 @@ EMAIL_PATTERN = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.]+\b")
 MIN_NAME_LENGTH = 3
 
 
+def normalized_identity(value: str) -> str:
+    text = unicodedata.normalize("NFKC", value)
+    return " ".join(
+        "".join(
+            character
+            for character in text
+            if unicodedata.category(character) not in {"Cf", "Co", "Cs"}
+        ).split()
+    )
+
+
 class Pseudonymizer:
     """
     Replaces customer names, phone numbers and addresses with anonymous tokens
     (C001, C002) before sending text to a hosted model API.
 
-    The mapping lives in a local SQLite database, keyed by the cook's session so
-    one cook's customers cannot be read out of another's map.
+    The default mapping lives only in this instance's memory. File persistence
+    is an explicit library opt-in; the web app never opts in.
     """
 
     def __init__(self, db_path: Optional[Path] = None, known_names: Iterable[str] = ()):
         if db_path is None:
-            self.db_path = DEFAULT_DB_PATH
+            self.db_path = Path(":memory:")
         elif str(db_path) == ":memory:":
             self.db_path = Path(":memory:")
         else:
@@ -103,7 +113,7 @@ class Pseudonymizer:
             cur = conn.cursor()
             cur.execute("SELECT real_identifier, pseudo_id FROM customer_map")
             for real_id, pseudo_id in cur.fetchall():
-                self._cache[real_id.lower()] = pseudo_id
+                self._cache[normalized_identity(real_id).lower()] = pseudo_id
                 self._reverse_cache[pseudo_id.upper()] = real_id
 
     def get_or_create_pseudo_id(self, real_identifier: str) -> str:
@@ -112,7 +122,7 @@ class Pseudonymizer:
         if not clean_id:
             return "C000"
 
-        lookup_key = clean_id.lower()
+        lookup_key = normalized_identity(clean_id).lower()
         if lookup_key in self._cache:
             return self._cache[lookup_key]
 
@@ -179,10 +189,10 @@ class Pseudonymizer:
         self.register_senders([sender])
         pseudo_sender = self.get_or_create_pseudo_id(sender)
 
-        masked = text
+        masked = normalized_identity(text)
 
         # Emails first: they can contain digits that look like a phone number.
-        for match in EMAIL_PATTERN.findall(text):
+        for match in EMAIL_PATTERN.findall(masked):
             masked = masked.replace(match, self.get_or_create_pseudo_id(match))
 
         # Phones next, before names, so "Asha 9876543210" does not become
@@ -194,8 +204,9 @@ class Pseudonymizer:
         for match in ADDRESS_TAIL_PATTERN.findall(masked):
             masked = masked.replace(match, self.get_or_create_pseudo_id(match.strip()))
 
-        for match in ADDRESS_PATTERN.findall(masked):
-            masked = masked.replace(match, self.get_or_create_pseudo_id(match.strip()))
+        for match in list(ADDRESS_PATTERN.finditer(masked)):
+            value = match.group(0)
+            masked = masked.replace(value, self.get_or_create_pseudo_id(value.strip()))
 
         # Every registered sender name, wherever it appears in the body. The old
         # code only masked the sender of the current message, so "roommate Priya"

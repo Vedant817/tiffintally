@@ -16,6 +16,22 @@ def main():
     subprocess.run(
         ["git", "clone", "--local", str(root), str(clone)], check=True, capture_output=True
     )
+    installation = None
+    if phase == "final":
+        installation = subprocess.run(
+            ["uv", "sync", "--frozen", "--all-extras", "--dev", "--link-mode", "hardlink"],
+            cwd=clone,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if installation.returncode:
+            print(installation.stdout + installation.stderr)
+            return installation.returncode
+        executable_directory = clone / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+        python = str(executable_directory / ("python.exe" if os.name == "nt" else "python"))
+        ruff = str(executable_directory / ("ruff.exe" if os.name == "nt" else "ruff"))
     env = dict(
         os.environ,
         EXTRACTOR_BACKEND="off",
@@ -72,6 +88,15 @@ def main():
         "Original auditor probe sources: NOT SUPPLIED. Reconstructed probes are identified in tests/probes/README.md.",
         "",
     ]
+    if installation:
+        lines += [
+            "## PASS: uv sync --frozen --all-extras --dev --link-mode hardlink",
+            "",
+            "```text",
+            installation.stdout + installation.stderr,
+            "```",
+            "",
+        ]
     passed = True
     for command in commands:
         result = subprocess.run(

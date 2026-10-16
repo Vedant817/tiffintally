@@ -14,7 +14,9 @@ Few-shot examples are selected by training ID. The deployed endpoint does not
 support a custom prompt, so the harness refuses to call that an eight-shot run.
 Implement and review that contract before approving the comparison.
 
-Human holdout consumption is explicitly refused by this batch runner until a
-separate frozen, once-per-system protocol is approved. A supplied key alone is
+Human holdout consumption requires an explicit `--human-holdout` run, complete
+provenance, a matching pre-score freeze and private output paths. Each named
+system consumes a durable receipt before scoring; even a failed run stays consumed.
+An incomplete hybrid cannot consume the holdout. A supplied key alone is
 not evidence that a free hosted baseline ran. GPU configuration and adapter SHA
 must be captured by the endpoint before any future result can be called reproducible.

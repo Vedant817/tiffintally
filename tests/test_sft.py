@@ -2,21 +2,15 @@
 
 import json
 
+import pytest
+
 from scripts.prepare_sft import build_sft_dataset
-from tiffintally.extract.tinker import TinkerExtractor
+from tiffintally.extract.gemma import GemmaExtractor
 
 
-def test_tinker_extractor_fallback(monkeypatch):
-    monkeypatch.delenv("TINKER_API_KEY", raising=False)
-    extractor = TinkerExtractor(api_key=None)
-    assert extractor.is_available() is False
-
-    res = extractor.extract_from_text("kal lunch 2 plates", sender="Karan")
-    assert len(res.events) >= 1
-    assert res.used_fallback is True
-    assert res.model_name.endswith("-fallback")
-    assert res.events[0].qty == 2
-    assert res.events[0].meal == "lunch"
+def test_retired_tinker_backend_is_not_a_hidden_fallback():
+    with pytest.raises(ValueError, match="Unsupported extractor backend"):
+        GemmaExtractor(backend="tinker")
 
 
 def test_tinker_sft_dataset_structure(tmp_path, monkeypatch):

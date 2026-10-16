@@ -1,5 +1,6 @@
 """Dataset loading with mandatory human provenance for private held-out files."""
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -35,8 +36,37 @@ def load_dataset(path: Path, *, private=False):
                 )
             if not all(provenance[field] for field in PROVENANCE_FIELDS):
                 raise ValueError("Empty provenance field")
+            if any(
+                isinstance(value, str)
+                and value.strip().lower() in {"pending", "unknown", "not reviewed"}
+                for value in provenance.values()
+            ):
+                raise ValueError("Unfinished provenance cannot qualify a held-out set")
             if provenance["consent"] is not True:
                 raise ValueError("Consent must be explicitly true")
             if provenance["source"] not in {"collected_from_cook", "written_by_vedant_blind"}:
                 raise ValueError("Holdout must be collected or written blind by a human")
     return rows
+
+
+def reserve_holdout(path: Path, system: str, out: Path):
+    """Consume a frozen private holdout once per named system, before inference."""
+    if "private" not in out.parts:
+        raise ValueError("Private per-row predictions must remain under data/private")
+    report = json.loads((path.parent / "real_test.freeze.json").read_text(encoding="utf-8"))
+    digest = hashlib.sha256(path.read_text(encoding="utf-8").encode()).hexdigest()
+    if report.get(path.name, {}).get("sha256") != digest:
+        raise ValueError("Held-out file does not match its pre-score freeze")
+    if not system.replace("_", "").isalnum():
+        raise ValueError("Invalid system identifier")
+    receipts = path.parent / "holdout_consumed"
+    receipts.mkdir(exist_ok=True)
+    with (receipts / f"{system}.json").open("x", encoding="utf-8") as stream:
+        json.dump(
+            dict(
+                system=system,
+                sha256=digest,
+                status="reserved before scoring; failures still consume the run",
+            ),
+            stream,
+        )

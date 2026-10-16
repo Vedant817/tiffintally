@@ -25,6 +25,7 @@ from tiffintally.schema import (
     PackingLabel,
     SpecialMod,
 )
+from tiffintally.security import InputGuardrail
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def payment_is_safe(event: OrderEvent) -> bool:
         and event.confidence >= 0.7
         and event.payment_amount is not None
         and event.payment_amount > 0
+        and not InputGuardrail().sanitize(event.raw_text).flags
     )
 
 
@@ -310,6 +312,13 @@ def _replay_day(
     as_of = parse_timestamp(as_of) if isinstance(as_of, str) else as_of
     as_of = as_of or datetime.now()
     events = [ev.model_copy(deep=True) for ev in events]
+    for event in events:
+        audit = InputGuardrail().sanitize(event.raw_text)
+        if not audit.is_safe or event.qty > 20:
+            event.needs_review = True
+            event.audit_flags.extend(flag for flag in audit.flags if flag not in event.audit_flags)
+            if event.qty > 20:
+                event.audit_flags.append("excessive_quantity_at_replay")
     resolved_target = calendar_day(target_date, as_of)
     sheet_date = resolved_target.isoformat() if resolved_target else target_date
     prep_sheet = DailyPrepSheet(date=sheet_date)
@@ -635,12 +644,17 @@ def reconcile_ledger(
         entry.balance_due += st.qty * price_per_thali
 
     # Payments and refunds credit the balance.
+    seen_payments: Set[str] = set()
     for ev in events:
         cust_key = ev.customer.strip().lower()
         if ev.action != "payment":
             continue
         if not payment_is_safe(ev):
             continue
+        identity = payment_id(ev)
+        if identity in seen_payments:
+            continue
+        seen_payments.add(identity)
         if cust_key not in ledgers:
             opening = prev_bals.get(cust_key, 0.0)
             ledgers[cust_key] = CustomerLedger(
@@ -651,7 +665,7 @@ def reconcile_ledger(
             )
         entry = ledgers[cust_key]
         amount = money(ev.payment_amount or 0)
-        if payment_id(ev) not in (confirmed_payments or set()):
+        if identity not in (confirmed_payments or set()):
             entry.total_claimed += amount
             continue
         is_refund = bool(ev.payment_note and "refund" in ev.payment_note.lower())

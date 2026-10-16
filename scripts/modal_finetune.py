@@ -304,73 +304,13 @@ def run_finetune_job(
             "failures": [],
         }
 
-    # Historical edge diagnostics are not held-out evaluation.
-    test_edge_cases = []
-    # 4. Domain-specific Edge Case Testing
-    print("\nTesting critical domain edge cases...")
-    edge_results = []
-    sys_prompt = synthetic_val_records[0]["messages"][0]["content"] if synthetic_val_records else ""
-    for ec in test_edge_cases:
-        prompt = [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": f"Sender: {ec['sender']}\nMessage: {ec['text']}"},
-        ]
-        in_str = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        inputs = tokenizer(in_str, return_tensors="pt").to(model.device)
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=96,
-                do_sample=False,
-                pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
-        out_tokens = outputs[0][inputs["input_ids"].shape[1] :]
-        out_text = tokenizer.decode(out_tokens, skip_special_tokens=True).strip()
-
-        parsed_ev = {}
-        try:
-            cl = out_text
-            if "```json" in cl:
-                cl = cl.split("```json")[1].split("```")[0].strip()
-            elif "```" in cl:
-                cl = cl.split("```")[1].split("```")[0].strip()
-            parsed_data = json.loads(cl)
-            ev_list = (
-                parsed_data.get("events", [])
-                if isinstance(parsed_data, dict)
-                else (parsed_data if isinstance(parsed_data, list) else [])
-            )
-            parsed_ev = ev_list[0] if ev_list and isinstance(ev_list[0], dict) else {}
-        except Exception:
-            pass
-
-        passed = True
-        for key, exp_val in ec.get("expected", {}).items():
-            if key == "mods":
-                if set(parsed_ev.get("mods") or []) != set(exp_val or []):
-                    passed = False
-                    break
-            elif parsed_ev.get(key) != exp_val:
-                passed = False
-                break
-
-        edge_results.append(
-            {
-                "name": ec.get("name"),
-                "input": ec.get("text"),
-                "expected": ec.get("expected"),
-                "predicted": parsed_ev,
-                "passed": passed,
-                "raw_output": out_text[:180],
-            }
-        )
+    edge_results = []  # No training-text "edge pass" score is emitted.
 
     # Master metrics bundle
     metrics = {
         "iteration": iteration,
         "base_model": base_model_name,
-        "split": "synthetic template-disjoint held-out",
+        "split": "legacy synthetic test with known sibling leakage",
         "real_customer_eval": "not_run",
         "train_loss": final_train_loss,
         "train_duration_sec": round(train_duration, 1),
@@ -476,56 +416,7 @@ def main(
     # data/private/real_test.jsonl overlaps the training text. It is not scored.
     real_val_records = []
 
-    edge_cases = [
-        {
-            "name": "cancellation_with_reason",
-            "sender": "Ravi",
-            "text": "kal lunch cancel aunty, team lunch hai office me",
-            "expected": {"meal": "lunch", "action": "cancel", "qty": 0},
-        },
-        {
-            "name": "dietary_modification",
-            "sender": "Pooja",
-            "text": "bina pyaaz ke do thali bhejo lunch me",
-            "expected": {"meal": "lunch", "qty": 2, "mods": ["no onion"], "action": "new"},
-        },
-        {
-            "name": "lexical_three_with_mods",
-            "sender": "Shreya",
-            "text": "bina pyaaz ke teen thali bhejo lunch me",
-            "expected": {"meal": "lunch", "qty": 3, "mods": ["no onion"], "action": "new"},
-        },
-        {
-            "name": "roommate_order_split",
-            "sender": "Karan",
-            "text": "kal lunch ek plate aur roommate Priya ke liye bhi ek",
-            "expected": {"secondary_customer": "Priya", "meal": "lunch", "qty": 1, "action": "new"},
-        },
-        {
-            "name": "standing_order_pause",
-            "sender": "Sneha",
-            "text": "Sunday off please, going home for weekend",
-            "expected": {"meal": "both", "qty": 0, "action": "pause"},
-        },
-        {
-            "name": "pure_chitchat_compliment",
-            "sender": "Divya",
-            "text": "thank you aunty, khana bahut mast tha!",
-            "expected": {"meal": "unspecified", "qty": 0, "action": "none"},
-        },
-        {
-            "name": "delivery_timing_disambiguation",
-            "sender": "Amitabh",
-            "text": "Send dinner tonight by 8:30 pm sharp, 1 thali less spicy",
-            "expected": {"meal": "dinner", "qty": 1, "action": "new"},
-        },
-        {
-            "name": "devanagari_mixed_order",
-            "sender": "Geeta",
-            "text": "कल दोपहर एक थाली, बिना मिर्ची की",
-            "expected": {"meal": "lunch", "qty": 1, "action": "new"},
-        },
-    ]
+    edge_cases = []  # Retired: these were training diagnostics, not held-out tests.
 
     if target_modules == "attn_only":
         tm_list = ["q_proj", "v_proj"]
@@ -563,7 +454,33 @@ def main(
         hyperparams=hyperparams,
     )
 
-    out_file = repo_root / f"evals/modal_run_iter_{iteration}.json"
+    out_dir = repo_root / "evals/final" / f"training_iteration_{iteration}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    predictions = result["synthetic_predictions"]
+    (out_dir / "test.jsonl").write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in predictions), encoding="utf-8"
+    )
+    import hashlib
+    import subprocess
+    from datetime import datetime, timezone
+
+    metadata = dict(
+        system="adapter",
+        code_sha=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+        prompt_sha256=hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest(),
+        n=len(predictions),
+        adapter_id=f"iteration_{iteration}",
+        adapter_sha=None,
+        max_new_tokens=256,
+        batch_size=1,
+        dtype="recorded in metrics when executed",
+        decoding="greedy",
+        date=datetime.now(timezone.utc).isoformat(),
+        seed=seed,
+        status="adapter digest still required before reproducibility signoff",
+    )
+    (out_dir / "test.meta.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    out_file = out_dir / "training.json"
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
 

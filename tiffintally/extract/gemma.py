@@ -1,23 +1,9 @@
-"""
-Hosted open-weight extractor.
+"""Hosted extraction chosen from Modal credentials, a Google key, or off.
 
-Backends, chosen by EXTRACTOR_BACKEND:
-
-  gemini  the Gemini API. Apache-2.0 weights, one HTTP call, no cold start.
-          This is the product default whenever GOOGLE_API_KEY is set.
-  modal   the fine-tuned Qwen adapter in scripts/modal_serve.py. Opt-in only.
-          Requires MODAL_EXTRACTOR_URL and MODAL_EXTRACTOR_TOKEN from the
-          environment; there is deliberately no default URL, because a
-          hard-coded one left a paid GPU endpoint open to anyone.
-  off     the local rules only. What the test suite and CI run on.
-
-Gemma 2 is no longer served by the Gemini API, so the old default id made every
-call 404 and silently fall back to the rules while the sheet claimed a model had
-answered. The label on the sheet now comes from a response or from nothing.
-
-Licence note: the modal backend serves Qwen2.5-3B weights, which are
-non-commercial (qwen-research). The gemini backend serves Gemma weights. See
-docs/DECISIONS.md.
+Modal is selected when its endpoint and bearer token are configured. Otherwise
+Google credentials select Gemini, and no credentials select local rules. Response
+labels report what actually ran. Neither a configured key nor an endpoint URL
+proves that an extraction succeeded. Qwen research weights are non-commercial.
 """
 
 import json
@@ -127,6 +113,8 @@ class GemmaExtractor:
         self.pseudonymizer = pseudonymizer or Pseudonymizer()
         self.guardrail = InputGuardrail()
         self.backend = (backend or EXTRACTOR_BACKEND).strip().lower()
+        if self.backend not in {"off", "modal", "gemini"}:
+            raise ValueError(f"Unsupported extractor backend: {self.backend}")
         self.served_model: Optional[str] = None
         # Re-read the environment at construction time rather than relying only
         # on the import-time constant. Reading it once at import means a token
@@ -333,6 +321,13 @@ class GemmaExtractor:
         ]
         if not usable:
             return result
+        # Register the entire paste before the first chunk leaves the process.
+        self.pseudonymizer.register_senders(m.sender for _, m in usable)
+        for _, message in usable:
+            referenced = re.findall(
+                r"\b(?:roommate|friend|dost)\s+([A-Za-z]{3,})\b", message.text, re.I
+            )
+            self.pseudonymizer.register_senders(referenced)
 
         reason = self.unavailable_reason()
         if reason:
@@ -479,7 +474,8 @@ class GemmaExtractor:
                                     ev.audit_flags.append("unverified_secondary_customer")
                         events.extend(produced)
 
-                    events = [self.pseudonymizer.depseudonymize_order_event(ev) for ev in events]
+                    # Primary identities were restored from their own source row,
+                    # not by interpreting real display names as possible tokens.
                     log_model_call(
                         ExtractionResult(
                             events=events,

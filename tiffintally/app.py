@@ -14,7 +14,9 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from decimal import Decimal
+from importlib.metadata import version
 from pathlib import Path
+from threading import RLock
 from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
@@ -52,7 +54,7 @@ SESSION_COOKIE = "tt_sid"
 
 # A cook exports once a night. Two hours idle is generous for that.
 SESSION_IDLE_SECONDS = int(os.getenv("SESSION_IDLE_SECONDS", str(2 * 60 * 60)))
-MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "500"))
+MAX_SESSIONS = max(1, int(os.getenv("MAX_SESSIONS", "500")))
 
 
 def demo_mode() -> bool:
@@ -84,6 +86,7 @@ class KitchenSession:
 
 
 SESSIONS: dict[str, KitchenSession] = {}
+SESSION_LOCK = RLock()
 
 
 class CorrectionPayload(BaseModel):
@@ -109,18 +112,25 @@ def _prune_sessions(now: datetime) -> None:
         SESSIONS.pop(sid, None)
 
 
-def open_session(request: Request) -> tuple[KitchenSession, bool]:
+def _open_session(request: Request) -> tuple[KitchenSession, bool]:
     now = datetime.now()
-    if len(SESSIONS) > MAX_SESSIONS:
-        _prune_sessions(now)
+    _prune_sessions(now)
     sid = request.cookies.get(SESSION_COOKIE)
     if sid and sid in SESSIONS:
         SESSIONS[sid].touched = now
         return SESSIONS[sid], False
     sid = uuid.uuid4().hex
+    while len(SESSIONS) >= MAX_SESSIONS:
+        oldest = min(SESSIONS, key=lambda key: SESSIONS[key].touched)
+        SESSIONS.pop(oldest)
     session = KitchenSession(sid=sid, touched=now)
     SESSIONS[sid] = session
     return session, True
+
+
+def open_session(request: Request) -> tuple[KitchenSession, bool]:
+    with SESSION_LOCK:
+        return _open_session(request)
 
 
 def remember_cookie(response, session: KitchenSession, is_new: bool):
@@ -197,7 +207,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="TiffinTally",
     description="Your WhatsApp orders, sorted before the pressure cooker's first whistle.",
-    version="0.2.0",
+    version=version("tiffintally"),
     lifespan=lifespan,
 )
 
