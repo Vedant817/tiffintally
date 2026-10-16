@@ -172,7 +172,13 @@ def evaluate_extractor(
     em_acc = round(exact_matches / n, 4) if n > 0 else 0.0
     mod_hits = sum(1 for g, p in zip(gold_mods, pred_mods) if g == p)
     mods_accuracy = round(mod_hits / n, 4) if n else 0.0
-    if fallback_rows and not str(reported_name).endswith(FALLBACK_SUFFIX):
+    # The suffix is only a fallback label for names that do not already say what
+    # ran. The extractor now reports "rules (regex)" directly, and bolting
+    # "-fallback" onto that produced the nonsense "rules (regex)-fallback".
+    self_describing = any(
+        marker in str(reported_name).lower() for marker in ("regex", "rules", "heuristic")
+    )
+    if fallback_rows and not self_describing and not str(reported_name).endswith(FALLBACK_SUFFIX):
         reported_name = f"{reported_name}{FALLBACK_SUFFIX}"
 
     p50_lat = float(np.percentile(latencies, 50)) if latencies else 0.0
@@ -183,7 +189,10 @@ def evaluate_extractor(
     # Cost is only meaningful when tokens are billed per request. A self-hosted
     # GPU endpoint bills wall-clock time, and this harness holds no GPU billing
     # record, so it reports nothing rather than inventing a per-token figure.
-    is_fallback = str(reported_name).endswith(FALLBACK_SUFFIX)
+    # `fallback_rows` is the real signal; the suffix is presentation only. Deriving
+    # this from the suffix meant a self-describing name could report a fallback
+    # run as a real one.
+    is_fallback = bool(fallback_rows)
     cost_per_1k = None
 
     return ModelEvaluationReport(
