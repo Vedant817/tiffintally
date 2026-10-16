@@ -147,35 +147,61 @@ def _cook_names(cook_names: Optional[List[str]]) -> set[str]:
 
 
 def _conflicting_quantities(events: List[OrderEvent]) -> Set[Tuple[str, str]]:
-    """(customer, meal) pairs whose own orders disagree on the count.
+    """(customer, meal) pairs whose orders contradict each other *within a minute*.
 
-    Two cases, and a `change` is deliberately in neither:
+    Only same-minute pairs are a conflict. Android exports carry minute precision,
+    so two different counts sharing a stamp genuinely cannot be ordered, and the
+    cook has to decide.
 
-    - Two different counts stamped the same minute. Android exports have minute
-      precision, so this is ambiguous rather than a sequence.
-    - Two `new` orders for one display name on one day with different counts.
-      Usually two different people saved under one name.
+    This used to also treat any two different counts for one customer on one day
+    as a conflict, on the theory that it meant two people saved under one display
+    name. That reading also matches an ordinary re-statement, and customers
+    re-state constantly: "kal lunch 2" then "kal lunch 3 kar do" ten minutes
+    later matched, so both rows were withheld and the sheet came up empty for
+    that customer. Re-statements are handled by `_flag_restatements` instead,
+    which applies the later message and surfaces the change.
 
-    A `new` followed by a `change` is a correction, not a contradiction, and an
-    `add` is a delta, so neither is treated as a conflict.
+    A `change` is a correction and an `add` is a delta, so neither is a conflict.
     """
     by_minute: Dict[Tuple[str, str, str], Set[int]] = {}
-    by_day: Dict[Tuple[str, str, str], Set[int]] = {}
     for ev in events:
-        if ev.action not in {"new", "change"} or ev.qty <= 0:
+        if ev.action not in {"new", "change"} or ev.qty <= 0 or not ev.timestamp:
             continue
-        cust = ev.customer.strip().lower()
-        day = (ev.date or "").strip().lower() or (ev.timestamp or "")[:10]
-        if ev.action == "new":
-            by_day.setdefault((cust, ev.meal, day), set()).add(ev.qty)
-        if ev.timestamp:
-            by_minute.setdefault((cust, ev.meal, ev.timestamp[:16]), set()).add(ev.qty)
+        key = (ev.customer.strip().lower(), ev.meal, ev.timestamp[:16])
+        by_minute.setdefault(key, set()).add(ev.qty)
 
-    conflicts = {(cust, meal) for (cust, meal, _day), qtys in by_day.items() if len(qtys) > 1}
-    conflicts |= {
-        (cust, meal) for (cust, meal, _minute), qtys in by_minute.items() if len(qtys) > 1
-    }
-    return conflicts
+    return {(cust, meal) for (cust, meal, _minute), qtys in by_minute.items() if len(qtys) > 1}
+
+
+def _flag_restatements(events: List[OrderEvent]) -> None:
+    """Mark in place any order that a later message re-stated.
+
+    Two different counts from one name for one meal on one day is ambiguous, and
+    the text cannot tell the two readings apart. It is either a customer
+    correcting herself, or two different people saved under one display name.
+
+    Both readings matter before packing, so both are surfaced. The later message
+    is applied, because it is the most recent thing that customer said, and the
+    row is flagged `restated` so it lands in unresolved_reviews instead of
+    silently changing the count. Withholding both rows, as the conflict check
+    used to, is what printed an empty sheet for a customer who simply corrected
+    herself.
+
+    A `change` is a correction and an `add` is a delta, so neither restates.
+
+    `needs_review` is deliberately left alone. That flag means "withhold this
+    row", and withholding a restatement is the bug this replaced.
+    """
+    seen: Dict[Tuple[str, str, str], int] = {}
+    for ev in events:
+        if ev.action != "new" or ev.qty <= 0:
+            continue
+        day = (ev.date or "").strip().lower() or (ev.timestamp or "")[:10]
+        key = (ev.customer.strip().lower(), ev.meal, day)
+        previous = seen.get(key)
+        if previous is not None and previous != ev.qty and "restated" not in ev.audit_flags:
+            ev.audit_flags.append("restated")
+        seen[key] = ev.qty
 
 
 def _sort_key(ev: OrderEvent):
@@ -288,6 +314,10 @@ def reconcile_orders(
     # 2. Stable order: minute-precision stamps tie-break on position in the
     #    export, so the sheet depends on the file and not on dict ordering.
     sorted_events = sorted(deduped_events, key=_sort_key)
+
+    # Flag re-statements before anything is applied, so the change is visible on
+    # the sheet even though the later count is the one that gets used.
+    _flag_restatements(sorted_events)
 
     # 3. Process events chronologically.
     for ev in sorted_events:
@@ -415,10 +445,15 @@ def reconcile_orders(
     prep_sheet.special_mods = special_mods
     prep_sheet.cook_names = sorted(cook_names or [])
     prep_sheet.cook_message_count = cook_message_count
-    pending = sum(1 for ev in prep_sheet.late_cancellations if ev.meal in ("lunch", "both"))
-    for ev in prep_sheet.late_cancellations:
-        pending += sheet_state_qty(state_map, ev)
-    prep_sheet.late_cancellation_total = pending
+
+    # Plates the pending late cancels would remove, summed from the current state.
+    #
+    # This used to start at the *number* of late cancels and then add each one's
+    # plate count on top, so a 2-plate late cancel printed "3 plate(s) you no
+    # longer need", and two customers' cancels still printed 3.
+    prep_sheet.late_cancellation_total = sum(
+        sheet_state_qty(state_map, ev) for ev in prep_sheet.late_cancellations
+    )
 
     return prep_sheet
 
