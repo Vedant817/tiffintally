@@ -99,61 +99,45 @@ def log_model_call(result: ExtractionResult):
 def parse_and_validate_llm_json(
     raw_json_str: str, raw_text: str, sender: str
 ) -> Tuple[List[OrderEvent], Optional[str]]:
-    """Safely parse LLM output JSON, with validation and fallback on malformed JSON."""
+    """Validate each row independently; bind identity to the parsed sender."""
+    from tiffintally.model_validation import clean_model_event
+
     try:
-        cleaned = raw_json_str.strip()
-        # Strip markdown json codeblocks if present
-        if cleaned.startswith("```"):
-            lines = cleaned.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            cleaned = "\n".join(lines).strip()
-
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_json_str.strip())
         data = json.loads(cleaned)
-        events_data = data.get("events", [])
-        events = []
-        for item in events_data:
-            cust = item.get("customer") or sender
-            # Normalize action
-            action = item.get("action", "new")
-            if action not in ["new", "cancel", "change", "pause", "payment", "none"]:
-                action = "new"
-
-            event = OrderEvent(
-                customer=cust,
-                secondary_customer=item.get("secondary_customer"),
-                date=item.get("date") or "unspecified",
-                meal=item.get("meal", "lunch"),
-                qty=int(item.get("qty", 1) if action != "cancel" else 0),
-                items=item.get("items", ["thali"]),
-                mods=item.get("mods", []),
-                action=action,
-                payment_amount=item.get("payment_amount"),
-                payment_note=item.get("payment_note"),
-                confidence=float(item.get("confidence", 0.9)),
-                raw_text=raw_text,
-            )
-            events.append(event)
-
-        if events:
-            return events, None
-
-    except Exception as parse_err:
-        logger.warning(f"LLM JSON parsing failed: {parse_err}")
-
-    # Fallback: Malformed JSON -> route to review with confidence=0.30
-    fallback_event = OrderEvent(
-        customer=sender,
-        date=relative_date_label(raw_text),
-        meal="unspecified",
-        qty=0,
-        action="none",
-        confidence=0.30,
-        raw_text=f"[Review Needed] {raw_text}",
-    )
-    return [fallback_event], "Malformed JSON: routed to human review"
+        rows = data.get("events") if isinstance(data, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError("events must be a list")
+    except (ValueError, TypeError):
+        return [_review_event(sender, raw_text, "malformed_model_json")], "Malformed JSON"
+    events = []
+    errors = []
+    for item in rows:
+        if not isinstance(item, dict):
+            events.append(_review_event(sender, raw_text, "invalid_model_row"))
+            errors.append("invalid_model_row")
+            continue
+        row = clean_model_event(item)
+        if row.get("invalid"):
+            reason = "model_" + ",".join(row["invalid_reasons"])
+            events.append(_review_event(sender, raw_text, reason))
+            errors.append(reason)
+            continue
+        row["customer"] = sender
+        row["date"] = row.get("date") or "unspecified"
+        row["raw_text"] = raw_text
+        try:
+            event = OrderEvent(**row)
+        except (ValueError, TypeError):
+            events.append(_review_event(sender, raw_text, "invalid_model_schema"))
+            errors.append("invalid_model_schema")
+            continue
+        if event.action == "payment" and _future_payment_promise(normalise(raw_text)):
+            event = _review_event(sender, raw_text, "future_payment_promise")
+        events.append(event)
+    if not events:
+        return [_review_event(sender, raw_text, "empty_model_reply")], "Empty model reply"
+    return events, "; ".join(errors) or None
 
 
 # --------------------------------------------------------------------------- #
@@ -480,14 +464,14 @@ def _cancelled_meals(text: str, spans: List[Tuple[int, int, str]]) -> set[str]:
 
 def _future_payment_promise(text: str) -> bool:
     """ "payment kal karunga" is a promise, not money already sent."""
-    if re.search(rf"{_PAY_APPS}", text):
-        return False
     return bool(
         re.search(
             r"\b(?:payment|pay|bhej\s*di)\s+(?:kal|baad|baaki|parso|next\s+\w+|aaj\s+raat)\b",
             text,
         )
-        or re.search(r"\bkar\s*(?:unga|denge|dungi)\b|\bbhej\s*dunga\b", text)
+        or re.search(
+            r"\bkar\s*(?:unga|denge|dungi|dunga)\b|\bbhej(?:unga|\s*dunga)\b|\bwill\s+pay\b", text
+        )
     )
 
 
@@ -717,7 +701,7 @@ def _review_event(
     )
 
 
-def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
+def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
     """
     Deterministic rule-based extractor for common Hinglish order phrases.
 
@@ -1027,3 +1011,19 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         confidence=0.9 if qty else 0.7,
     )
     return [flag(ev)]
+
+
+def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
+    """Retain both intents in a message containing an order and a payment."""
+    events = _heuristic_single(raw_text, sender)
+    lower = normalise(raw_text)
+    if any(
+        event.action == "payment" and not event.needs_review for event in events
+    ) and _meal_spans(lower):
+        order_text = re.sub(_AMOUNT, " ", lower)
+        order_text = re.sub(rf"\b{_PAY_WORD}\b", " ", order_text)
+        orders = _heuristic_single(order_text, sender)
+        for event in orders:
+            event.raw_text = raw_text
+        events = [event for event in orders if event.action not in {"none", "payment"}] + events
+    return events

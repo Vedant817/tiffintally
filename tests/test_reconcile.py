@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from tiffintally.extract.base import heuristic_extract
-from tiffintally.reconcile import calendar_day, reconcile_ledger, reconcile_orders
+from tiffintally.reconcile import calendar_day, payment_id, reconcile_ledger, reconcile_orders
 from tiffintally.schema import OrderEvent
 
 
@@ -49,6 +49,14 @@ def test_reconcile_only_payments():
     assert len(sheet.packing_labels) == 0
 
     ledger = reconcile_ledger(events, price_per_thali=80.0, previous_balances={"ravi": 600.0})
+    assert ledger["ravi"].total_claimed == 500.0
+    assert ledger["ravi"].balance_due == 600.0
+    ledger = reconcile_ledger(
+        events,
+        price_per_thali=80.0,
+        previous_balances={"ravi": 600.0},
+        confirmed_payments={payment_id(events[0])},
+    )
     assert ledger["ravi"].total_paid == 500.0
     assert ledger["ravi"].balance_due == 100.0
 
@@ -77,7 +85,7 @@ def test_reconcile_ledger_reminders_formatting():
     assert "₹360" in entry.draft_reminder
 
 
-def test_payment_in_review_still_reduces_the_balance():
+def test_payment_in_review_does_not_reduce_the_balance():
     events = [
         OrderEvent(
             customer="Ravi",
@@ -92,8 +100,8 @@ def test_payment_in_review_still_reduces_the_balance():
         )
     ]
     ledger = reconcile_ledger(events, price_per_thali=80.0, previous_balances={"ravi": 800.0})
-    assert ledger["ravi"].total_paid == 500.0
-    assert ledger["ravi"].balance_due == 300.0
+    assert ledger["ravi"].total_paid == 0.0
+    assert ledger["ravi"].balance_due == 800.0
 
 
 def test_review_row_is_not_billed():

@@ -163,8 +163,9 @@ def test_bold_7_payment_note_ledger_update():
     # Check ledger: records 500 paid, reduces balance
     previous_balances = {"vikram": 1200.0}
     ledger = reconcile_ledger(events, price_per_thali=80.0, previous_balances=previous_balances)
-    assert ledger["vikram"].total_paid == 500.0
-    assert ledger["vikram"].balance_due == 700.0
+    assert ledger["vikram"].total_claimed == 500.0
+    assert ledger["vikram"].total_paid == 0.0
+    assert ledger["vikram"].balance_due == 1200.0
 
 
 # Bold Test 8: Duplicate forwarded message -> counted once, not twice

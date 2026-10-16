@@ -22,6 +22,7 @@ docs/DECISIONS.md.
 
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -448,6 +449,18 @@ class GemmaExtractor:
                                 ev.audit_flags.append(flag)
                                 ev.needs_review = True
                         self._stamp(produced, index, msg)
+                        for ev in produced:
+                            ev.customer = msg.sender
+                            if ev.secondary_customer:
+                                secondary = self.pseudonymizer.depseudonymize(ev.secondary_customer)
+                                if re.search(
+                                    rf"(?<!\w){re.escape(secondary)}(?!\w)", msg.text, re.I
+                                ):
+                                    ev.secondary_customer = secondary
+                                else:
+                                    ev.secondary_customer = None
+                                    ev.needs_review = True
+                                    ev.audit_flags.append("unverified_secondary_customer")
                         events.extend(produced)
 
                     events = [self.pseudonymizer.depseudonymize_order_event(ev) for ev in events]

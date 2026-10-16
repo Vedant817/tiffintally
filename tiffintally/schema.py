@@ -44,6 +44,7 @@ class OrderEvent(BaseModel):
     secondary_customer: Optional[str] = Field(
         default=None, description="Referenced third-party customer (e.g. 'Priya ke liye')"
     )
+    secondary_qty: int = Field(default=1, ge=0, description="Secondary share of total qty")
     confidence: float = Field(
         default=1.0, ge=0.0, le=1.0, description="Extraction confidence score (0.0 to 1.0)"
     )
@@ -131,6 +132,7 @@ class CustomerLedger(BaseModel):
     price_per_thali: float = 80.0
     total_billed: float = 0.0
     total_paid: float = 0.0
+    total_claimed: float = 0.0
     total_refunded: float = 0.0
     balance_due: float = 0.0
     draft_reminder: str = ""

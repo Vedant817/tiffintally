@@ -10,6 +10,8 @@ Handles:
 - Production security review routing for prompt-injections, excessive quantities, and low confidence
 """
 
+import hashlib
+import json
 import logging
 from datetime import datetime, time, timedelta
 from typing import Dict, List, Optional, Set, Tuple
@@ -24,6 +26,33 @@ from tiffintally.schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def payment_id(event: OrderEvent) -> str:
+    """Stable identity of one source payment; confirmations live only in a session."""
+    identity = {
+        key: getattr(event, key)
+        for key in (
+            "customer",
+            "timestamp",
+            "line_index",
+            "raw_text",
+            "payment_amount",
+            "payment_note",
+        )
+    }
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+
+def payment_is_safe(event: OrderEvent) -> bool:
+    return (
+        event.action == "payment"
+        and not event.needs_review
+        and not event.audit_flags
+        and event.confidence >= 0.7
+        and event.payment_amount is not None
+        and event.payment_amount > 0
+    )
 
 
 class CustomerMealState:
@@ -519,6 +548,7 @@ def reconcile_ledger(
     previous_balances: Optional[Dict[str, float]] = None,
     target_date: str = "any",
     as_of: Optional[datetime] = None,
+    confirmed_payments: Optional[Set[str]] = None,
 ) -> Dict[str, CustomerLedger]:
     """
     Calculate customer financial ledgers and generate polite Hinglish reminders.
@@ -533,7 +563,12 @@ def reconcile_ledger(
 
     states = _final_states(events, target_date, as_of)
 
-    ledgers: Dict[str, CustomerLedger] = {}
+    ledgers: Dict[str, CustomerLedger] = {
+        name.strip().lower(): CustomerLedger(
+            customer=name, price_per_thali=price_per_thali, total_billed=amount, balance_due=amount
+        )
+        for name, amount in prev_bals.items()
+    }
     for (cust_key, _day, _meal), st in sorted(states.items()):
         if cust_key not in ledgers:
             opening = prev_bals.get(cust_key, 0.0)
@@ -546,6 +581,7 @@ def reconcile_ledger(
                 balance_due=opening,
             )
         entry = ledgers[cust_key]
+        entry.customer = st.customer
         entry.total_orders += st.qty
         entry.total_billed += st.qty * price_per_thali
         entry.balance_due += st.qty * price_per_thali
@@ -555,7 +591,7 @@ def reconcile_ledger(
         cust_key = ev.customer.strip().lower()
         if ev.action != "payment":
             continue
-        if ev.needs_review and not ev.payment_amount:
+        if not payment_is_safe(ev):
             continue
         if cust_key not in ledgers:
             opening = prev_bals.get(cust_key, 0.0)
@@ -567,6 +603,9 @@ def reconcile_ledger(
             )
         entry = ledgers[cust_key]
         amount = ev.payment_amount or 0.0
+        if payment_id(ev) not in (confirmed_payments or set()):
+            entry.total_claimed += amount
+            continue
         is_refund = bool(ev.payment_note and "refund" in ev.payment_note.lower())
         if is_refund:
             entry.balance_due += amount

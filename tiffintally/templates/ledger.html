@@ -30,6 +30,15 @@
 </div>
 
 <div class="card">
+  {% for payment in blocked_payments %}
+  <p>{{ payment.customer }}: ₹{{ payment.payment_amount }} payment needs review; not credited.</p>
+  {% endfor %}
+  {% for payment in claimed_payments %}
+  <p>{{ payment.event.customer }}: ₹{{ payment.event.payment_amount }} claimed, not confirmed.
+    <button class="btn btn-secondary" data-payment="{{ payment.id }}"
+      onclick="fetch('/api/payments/'+this.dataset.payment+'/confirm', {method:'POST'}).then(r => {if(r.ok) location.reload()})">Confirm received</button>
+  </p>
+  {% endfor %}
   <table style="width: 100%; border-collapse: collapse; font-size: 0.92rem;">
     <thead>
       <tr style="border-bottom: 2px solid var(--border); text-align: left; background: #fafafa;">

@@ -71,10 +71,10 @@ def test_truncated_output_keeps_the_complete_event():
     assert events[0]["qty"] == 1
 
 
-def test_unknown_action_and_meal_are_coerced_not_crashed():
+def test_unknown_action_and_meal_are_invalid_not_default_orders():
     events, _ = _parse(
         '{"events": [{"customer": "C001", "meal": "brunch", "qty": 1, '
         '"mods": [], "action": "order"}]}'
     )
-    assert events[0]["meal"] == "unspecified"
-    assert events[0]["action"] == "new"
+    assert events[0]["invalid"] is True
+    assert set(events[0]["invalid_reasons"]) == {"invalid_action", "invalid_meal"}

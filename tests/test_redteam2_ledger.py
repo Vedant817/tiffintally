@@ -10,7 +10,7 @@ from datetime import datetime, time
 import pytest
 
 from tiffintally.extract.base import heuristic_extract
-from tiffintally.reconcile import reconcile_ledger, reconcile_orders
+from tiffintally.reconcile import payment_id, reconcile_ledger, reconcile_orders
 from tiffintally.schema import OrderEvent
 
 AS_OF = datetime(2026, 10, 15, 21, 0)
@@ -83,7 +83,9 @@ def test_partial_payment_reduces_the_balance():
         ev(qty=2, timestamp="2026-10-15 20:00:00"),
         ev(qty=0, action="payment", payment_amount=100.0, timestamp="2026-10-15 20:10:00"),
     ]
-    entry = reconcile_ledger(events, price_per_thali=80.0)["asha"]
+    entry = reconcile_ledger(
+        events, price_per_thali=80.0, confirmed_payments={payment_id(events[1])}
+    )["asha"]
     assert entry.total_billed == 160.0
     assert entry.total_paid == 100.0
     assert entry.balance_due == 60.0

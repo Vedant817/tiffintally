@@ -412,23 +412,9 @@ _EVENT_OBJECT = re.compile(r"\{[^{}]*(?:\[[^\[\]]*\][^{}]*)*\}", re.DOTALL)
 
 
 def _clean_event(event) -> dict:
-    action = str(event.get("action", "new"))
-    meal = str(event.get("meal", "lunch"))
-    try:
-        qty = int(event.get("qty", 1))
-    except (TypeError, ValueError):
-        qty = 1
-    mods = event.get("mods")
-    if isinstance(mods, str):
-        mods = [mods] if mods.strip() else []
-    return {
-        "customer": str(event.get("customer") or "Customer"),
-        "date": str(event.get("date") or "unspecified"),
-        "meal": meal if meal in VALID_MEALS else "unspecified",
-        "qty": max(0, qty),
-        "mods": [str(m) for m in (mods or [])],
-        "action": action if action in VALID_ACTIONS else "new",
-    }
+    from tiffintally.model_validation import clean_model_event
+
+    return clean_model_event(event)
 
 
 def _parse(raw: str) -> tuple:
@@ -459,8 +445,6 @@ def _parse(raw: str) -> tuple:
     events = []
     for candidate in (text, _normalise_brackets(text)):
         for block in _EVENT_OBJECT.findall(candidate):
-            if '"customer"' not in block:
-                continue
             try:
                 data = json.loads(block)
             except Exception:

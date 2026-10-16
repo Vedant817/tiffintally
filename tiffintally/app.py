@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from tiffintally.extract.gemma import GemmaExtractor
 from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
 from tiffintally.parser import parse_chat_export
-from tiffintally.reconcile import reconcile_ledger, reconcile_orders
+from tiffintally.reconcile import payment_id, payment_is_safe, reconcile_ledger, reconcile_orders
 from tiffintally.schema import DailyPrepSheet, OrderEvent
 from tiffintally.transcribe import VoiceNoteTranscriber
 from tiffintally.uploads import (
@@ -64,6 +64,7 @@ class KitchenSession:
     fallback_messages: int = 0
     extractor_notes: list = field(default_factory=list)
     accept_late_cancels: bool = False
+    confirmed_payments: set[str] = field(default_factory=set)
     cook_names: list[str] = field(default_factory=list)
     cutoff: time = field(default_factory=lambda: time(22, 0))
     touched: datetime = field(default_factory=datetime.now)
@@ -254,6 +255,8 @@ async def process(
         content = raw_text
 
     parsed_msgs = parse_chat_export(content) if content.strip() else []
+    session.confirmed_payments.clear()
+    session.accept_late_cancels = False
     extractor = GemmaExtractor()
     batch = extractor.extract_batch_counted(parsed_msgs) if parsed_msgs else None
     events = batch.events if batch else []
@@ -337,14 +340,34 @@ def view_ledger(request: Request):
         session.events,
         price_per_thali=80.0,
         previous_balances=None,
+        confirmed_payments=session.confirmed_payments,
     )
 
     response = templates.TemplateResponse(
         request=request,
         name="ledger.html",
-        context={"ledger": ledger},
+        context={
+            "ledger": ledger,
+            "blocked_payments": [
+                ev for ev in session.events if ev.action == "payment" and not payment_is_safe(ev)
+            ],
+            "claimed_payments": [
+                {"id": payment_id(ev), "event": ev}
+                for ev in session.events
+                if payment_is_safe(ev) and payment_id(ev) not in session.confirmed_payments
+            ],
+        },
     )
     return remember_cookie(response, session, is_new)
+
+
+@app.post("/api/payments/{event_id}/confirm")
+def confirm_payment(request: Request, event_id: str):
+    session, is_new = open_session(request)
+    if not any(payment_id(ev) == event_id and payment_is_safe(ev) for ev in session.events):
+        raise HTTPException(status_code=404, detail="No eligible payment in this session")
+    session.confirmed_payments.add(event_id)
+    return remember_cookie(JSONResponse({"status": "confirmed"}), session, is_new)
 
 
 @app.get("/api/audio/morning_brief")
