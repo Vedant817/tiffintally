@@ -3,149 +3,275 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}TiffinTally | Home Kitchen Assistant{% endblock %}</title>
+  <title>{% block title %}TiffinTally | AI Kitchen & Benchmark Lab{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary: #e65100;
-      --primary-light: #fff3e0;
-      --primary-hover: #bf360c;
-      --text: #1a1a1a;
-      --text-muted: #666;
-      --bg: #f8f9fa;
-      --card-bg: #ffffff;
-      --border: #e0e0e0;
-      --success: #2e7d32;
-      --warning: #ed6c02;
-      --warning-bg: #fff8e1;
-      --danger: #d32f2f;
+      --primary: #ea580c;
+      --primary-hover: #c2410c;
+      --primary-light: #fff7ed;
+      --primary-border: #fed7aa;
+      --indigo: #4f46e5;
+      --indigo-hover: #4338ca;
+      --indigo-light: #eef2ff;
+      --indigo-border: #c7d2fe;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --text-light: #94a3b8;
+      --bg-app: #f8fafc;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --border-focus: #fdba74;
+      --success: #16a34a;
+      --success-light: #f0fdf4;
+      --success-border: #bbf7d0;
+      --warning: #d97706;
+      --warning-light: #fffbeb;
+      --warning-border: #fde68a;
+      --danger: #dc2626;
+      --danger-light: #fef2f2;
+      --danger-border: #fecaca;
+      --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+      --shadow-md: 0 6px 12px -2px rgba(15, 23, 42, 0.06), 0 3px 6px -3px rgba(15, 23, 42, 0.04);
+      --shadow-lg: 0 16px 28px -6px rgba(15, 23, 42, 0.09), 0 8px 12px -6px rgba(15, 23, 42, 0.05);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 18px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.5;
-      padding-bottom: 60px;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-app);
+      color: var(--text-main);
+      line-height: 1.55;
+      padding-bottom: 70px;
+      -webkit-font-smoothing: antialiased;
     }
 
     header {
-      background: #ffffff;
-      border-bottom: 2px solid #ffcc80;
-      padding: 14px 20px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
       position: sticky;
       top: 0;
       z-index: 100;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
     }
     .header-inner {
-      max-width: 1000px;
+      max-width: 1100px;
       margin: 0 auto;
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 12px;
     }
     .logo {
       font-size: 1.25rem;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--primary);
       text-decoration: none;
       display: flex;
       align-items: center;
       gap: 8px;
+      letter-spacing: -0.02em;
+    }
+    .logo span {
+      font-size: 1.4rem;
+      filter: drop-shadow(0 2px 4px rgba(234, 88, 12, 0.2));
     }
     nav {
       display: flex;
-      gap: 12px;
+      gap: 8px;
       align-items: center;
     }
     nav a {
-      color: var(--text);
+      color: var(--text-muted);
       text-decoration: none;
-      font-size: 0.9rem;
-      font-weight: 500;
-      padding: 6px 12px;
-      border-radius: 6px;
-      transition: background 0.2s;
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 7px 13px;
+      border-radius: var(--radius-md);
+      transition: all 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
-    nav a:hover, nav a.active {
+    nav a:hover {
+      background: #f1f5f9;
+      color: var(--text-main);
+    }
+    nav a.active {
       background: var(--primary-light);
       color: var(--primary);
+      box-shadow: inset 0 0 0 1px var(--primary-border);
+    }
+    nav a.nav-benchmark {
+      background: var(--indigo-light);
+      color: var(--indigo);
+      border: 1px solid var(--indigo-border);
+    }
+    nav a.nav-benchmark:hover {
+      background: #e0e7ff;
+      transform: translateY(-1px);
     }
 
     .container {
-      max-width: 1000px;
-      margin: 24px auto;
-      padding: 0 16px;
+      max-width: 1100px;
+      margin: 28px auto;
+      padding: 0 20px;
     }
 
     .card {
-      background: var(--card-bg);
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      margin-bottom: 22px;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .card:hover {
+      box-shadow: var(--shadow-md);
     }
 
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-size: 0.9rem;
+      padding: 9px 18px;
+      border-radius: var(--radius-md);
+      font-size: 0.88rem;
       font-weight: 600;
       cursor: pointer;
-      border: none;
-      transition: all 0.2s;
+      border: 1px solid transparent;
+      transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
       text-decoration: none;
-      gap: 6px;
+      gap: 8px;
+      line-height: 1.25;
+    }
+    .btn:active {
+      transform: scale(0.98);
     }
     .btn-primary {
       background: var(--primary);
       color: #fff;
+      box-shadow: 0 2px 4px rgba(234, 88, 12, 0.2);
     }
     .btn-primary:hover {
       background: var(--primary-hover);
+      box-shadow: 0 4px 10px rgba(234, 88, 12, 0.3);
+      transform: translateY(-1px);
+    }
+    .btn-indigo {
+      background: var(--indigo);
+      color: #fff;
+      box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);
+    }
+    .btn-indigo:hover {
+      background: var(--indigo-hover);
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35);
+      transform: translateY(-1px);
     }
     .btn-secondary {
-      background: #e9ecef;
-      color: #333;
+      background: #f1f5f9;
+      color: #334155;
+      border-color: #e2e8f0;
     }
     .btn-secondary:hover {
-      background: #dee2e6;
+      background: #e2e8f0;
+      color: #0f172a;
     }
     .btn-outline {
       background: transparent;
       border: 1px solid var(--border);
-      color: var(--text);
+      color: var(--text-main);
     }
     .btn-outline:hover {
       border-color: var(--primary);
       color: var(--primary);
+      background: var(--primary-light);
     }
+
     .badge {
-      display: inline-block;
-      padding: 3px 8px;
-      border-radius: 12px;
-      font-size: 0.75rem;
-      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
     }
     .badge-warning {
-      background: var(--warning-bg);
-      color: #b76e00;
-      border: 1px solid #ffe082;
+      background: var(--warning-light);
+      color: var(--warning);
+      border: 1px solid var(--warning-border);
     }
     .badge-success {
-      background: #e8f5e9;
+      background: var(--success-light);
       color: var(--success);
-      border: 1px solid #c8e6c9;
+      border: 1px solid var(--success-border);
+    }
+    .badge-danger {
+      background: var(--danger-light);
+      color: var(--danger);
+      border: 1px solid var(--danger-border);
+    }
+    .badge-indigo {
+      background: var(--indigo-light);
+      color: var(--indigo);
+      border: 1px solid var(--indigo-border);
+    }
+
+    /* Modern Table Styling */
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.88rem;
+    }
+    th {
+      background: #f8fafc;
+      color: var(--text-muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 0.74rem;
+      letter-spacing: 0.05em;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tbody tr:hover {
+      background: #fcfcfd;
+    }
+
+    /* Code styling */
+    code, pre {
+      font-family: 'JetBrains Mono', Consolas, monospace;
+      font-size: 0.82rem;
+    }
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 14px;
+      border-radius: var(--radius-md);
+      overflow-x: auto;
     }
 
     @media print {
@@ -161,12 +287,13 @@
   <header>
     <div class="header-inner">
       <a href="/" class="logo">
-        <span>🍲</span> TiffinTally
+        <span>🍱</span> TiffinTally
       </a>
       <nav class="no-print">
         <a href="/">WhatsApp Upload</a>
         <a href="/prep">Daily Prep Sheet</a>
         <a href="/ledger">Dues Ledger</a>
+        <a href="/benchmarks" class="nav-benchmark">⚡ AI Benchmark Lab</a>
       </nav>
     </div>
   </header>
@@ -174,10 +301,8 @@
   <main class="container">
     {% block content %}{% endblock %}
   </main>
-  <footer class="container no-print" style="font-size: .8rem; color: var(--text-muted); padding-bottom: 24px;">
-    Hosted extraction uses partial masking: sender names, explicit roommate/friend/dost references,
-    and recognized phone, email and numbered-address patterns. Unknown personal details may leave
-    the server. Maps are per paste in memory; browser sessions are not authenticated cook accounts.
+  <footer class="container no-print" style="font-size: 0.82rem; color: var(--text-muted); padding-bottom: 28px; text-align: center; border-top: 1px solid var(--border); margin-top: 40px; padding-top: 20px;">
+    Hosted extraction uses partial privacy masking: sender names, explicit roommate/friend/dost references, and recognized contact patterns. Live evaluations run offline-first against ground-truth suites.
   </footer>
 
   {% block scripts %}{% endblock %}

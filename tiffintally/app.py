@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from tiffintally.benchmarks import STANDARD_BENCHMARK_SUITES, evaluate_and_heal_loop
 from tiffintally.db import load_kitchen_events, persist_correction, persist_upload_and_events
 from tiffintally.extract.gemma import GemmaExtractor
 from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
@@ -776,3 +777,93 @@ async def transcribe_voice_note(
         "backend": result.backend_used,
         "confidence": result.confidence,
     }
+
+
+@app.get("/benchmarks", response_class=HTMLResponse)
+def view_benchmarks(request: Request):
+    default_suite = STANDARD_BENCHMARK_SUITES[0]
+    result = evaluate_and_heal_loop(
+        raw_text=default_suite["raw_text"],
+        gold_event=default_suite["gold"],
+        threshold=90.0,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="benchmarks.html",
+        context={
+            "benchmark_suites": STANDARD_BENCHMARK_SUITES,
+            "active_suite_id": default_suite["id"],
+            "active_suite": default_suite,
+            "threshold": 90.0,
+            "inject_flaw": False,
+            "result": result,
+        },
+    )
+
+
+@app.post("/api/benchmarks/run")
+async def run_benchmark_eval(
+    request: Request,
+    suite_id: str = Form("suite_negation_intent"),
+    threshold: float = Form(90.0),
+    max_retries: int = Form(5),
+    inject_flaw: Optional[bool] = Form(False),
+    custom_raw_text: Optional[str] = Form(None),
+    custom_gold_json: Optional[str] = Form(None),
+):
+    selected_suite = next((s for s in STANDARD_BENCHMARK_SUITES if s["id"] == suite_id), None)
+    if suite_id == "custom" and custom_raw_text and custom_gold_json:
+        try:
+            gold_data = json.loads(custom_gold_json)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid custom gold JSON") from exc
+        raw_text = custom_raw_text
+    elif selected_suite:
+        raw_text = selected_suite["raw_text"]
+        gold_data = selected_suite["gold"]
+    else:
+        selected_suite = STANDARD_BENCHMARK_SUITES[0]
+        raw_text = selected_suite["raw_text"]
+        gold_data = selected_suite["gold"]
+
+    initial_pred = None
+    if inject_flaw:
+        initial_pred = [
+            {
+                "customer": gold_data.get("customer", "Customer"),
+                "meal": "lunch",
+                "qty": 1,
+                "action": "cancel" if "cancel" in raw_text.lower() else "new",
+                "mods": [],
+                "secondary_customer": None,
+                "confidence": 0.65,
+            }
+        ]
+
+    result = evaluate_and_heal_loop(
+        raw_text=raw_text,
+        gold_event=gold_data,
+        initial_prediction=initial_pred,
+        threshold=threshold,
+        max_retries=max_retries,
+    )
+
+    if "text/html" in request.headers.get("accept", ""):
+        return templates.TemplateResponse(
+            request=request,
+            name="benchmarks.html",
+            context={
+                "benchmark_suites": STANDARD_BENCHMARK_SUITES,
+                "active_suite_id": suite_id,
+                "active_suite": selected_suite,
+                "threshold": threshold,
+                "inject_flaw": inject_flaw,
+                "result": result,
+            },
+        )
+    return JSONResponse(result.model_dump(mode="json"))
+
+
+@app.get("/api/benchmarks/suites")
+def list_benchmark_suites():
+    return JSONResponse(STANDARD_BENCHMARK_SUITES)
