@@ -1,18 +1,30 @@
 """
-Open-weight extractor, hosted on Modal.
+Hosted open-weight extractor.
 
-The model is served by `scripts/modal_serve.py` (see evals/modal_run_iter_31.json
-for the fine-tuned checkpoint this replaces). Gemma 2 is no longer served by the
-Gemini API, so the old default id made every call 404 and silently fall back to
-the regex. The model id and the endpoint are both configurable, and the sheet
-always says which one actually ran.
+Backends, chosen by EXTRACTOR_BACKEND:
+
+  gemini  the Gemini API. Apache-2.0 weights, one HTTP call, no cold start.
+          This is the product default whenever GOOGLE_API_KEY is set.
+  modal   the fine-tuned Qwen adapter in scripts/modal_serve.py. Opt-in only.
+          Requires MODAL_EXTRACTOR_URL and MODAL_EXTRACTOR_TOKEN from the
+          environment; there is deliberately no default URL, because a
+          hard-coded one left a paid GPU endpoint open to anyone.
+  off     the local rules only. What the test suite and CI run on.
+
+Gemma 2 is no longer served by the Gemini API, so the old default id made every
+call 404 and silently fall back to the rules while the sheet claimed a model had
+answered. The label on the sheet now comes from a response or from nothing.
+
+Licence note: the modal backend serves Qwen2.5-3B weights, which are
+non-commercial (qwen-research). The gemini backend serves Gemma weights. See
+docs/DECISIONS.md.
 """
 
 import json
 import os
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 
@@ -27,30 +39,49 @@ from tiffintally.privacy import Pseudonymizer
 from tiffintally.schema import OrderEvent
 from tiffintally.security import InputGuardrail, enforce_business_bounds
 
-# Served by scripts/modal_serve.py. Recorded in docs/DECISIONS.md.
+# Default model id for the Gemini path.
 #
-# The web endpoint Modal prints ends in "-api.<region>.modal.run". The app URL
-# without that suffix 404s, which looks exactly like a model failure.
+# There is deliberately no default URL for the Modal path. An earlier revision
+# hard-coded one, which left a paid GPU endpoint reachable, unauthenticated, by
+# anyone who read the repo. Both MODAL_EXTRACTOR_URL and MODAL_EXTRACTOR_TOKEN
+# must come from the environment or the backend is unavailable.
 DEFAULT_GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-4-26b-a4b-it")
-DEFAULT_MODAL_URL = os.getenv(
-    "MODAL_EXTRACTOR_URL",
-    "https://vedantmahajan271--tiffintally-extract-api.us-east.modal.run",
-)
+DEFAULT_MODAL_URL = os.getenv("MODAL_EXTRACTOR_URL", "").strip()
+MODAL_EXTRACTOR_TOKEN = os.getenv("MODAL_EXTRACTOR_TOKEN", "").strip()
 GEMMA_API_ENDPOINT = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{DEFAULT_GEMMA_MODEL}:generateContent"
 )
 
-# Which hosted model answers. "modal" is the default because that is where the
-# fine-tuned checkpoint is served. "gemini" uses AI Studio. "off" forces the
-# local regex, which is what the test suite runs on so no test can make a
-# network call.
-EXTRACTOR_BACKEND = os.getenv("EXTRACTOR_BACKEND", "modal").strip().lower()
+# Which hosted model answers.
+#
+#   modal  - the fine-tuned Qwen adapter in scripts/modal_serve.py. This is the
+#            project's chosen backend: it is the model that was actually
+#            fine-tuned and measured against the regex.
+#   gemini - the Gemini API. Apache-2.0 weights, one HTTP call, no cold start.
+#            A fallback for when the Modal endpoint is not configured.
+#   off    - the local rules only. What the test suite and CI run on.
+#
+# Auto-selection is by what is actually configured, most-specific first:
+# modal when both its URL and token are present, else gemini when a key is,
+# else off. Nothing here reaches a GPU endpoint by accident: modal only arms
+# itself when someone has deliberately exported both variables.
+EXTRACTOR_BACKEND = os.getenv("EXTRACTOR_BACKEND", "").strip().lower()
+if EXTRACTOR_BACKEND not in {"gemini", "modal", "off"}:
+    if DEFAULT_MODAL_URL and MODAL_EXTRACTOR_TOKEN:
+        EXTRACTOR_BACKEND = "modal"
+    elif os.getenv("GOOGLE_API_KEY"):
+        EXTRACTOR_BACKEND = "gemini"
+    else:
+        EXTRACTOR_BACKEND = "off"
 
 # One request per this many messages. 200 messages at 3 sequential attempts of
 # up to 15s each was 7-100 minutes for one paste, which Render's request
 # timeout does not survive.
 BATCH_SIZE = int(os.getenv("EXTRACT_BATCH_SIZE", "40"))
-REQUEST_TIMEOUT = float(os.getenv("EXTRACT_TIMEOUT", "20"))
+# A cold GPU start takes about 40 s, so a 20 s budget meant every attempt failed
+# and the paste silently came back as rules.
+REQUEST_TIMEOUT = float(os.getenv("EXTRACT_TIMEOUT", "30"))
+MAX_ATTEMPTS = 2
 
 # Retrying these cannot help: the key is wrong, the model id is gone, or the
 # path is wrong. Retrying a 429 on every message is what turned one bad key into
@@ -87,13 +118,25 @@ class GemmaExtractor:
         pseudonymizer: Optional[Pseudonymizer] = None,
         endpoint: Optional[str] = None,
         api_key_header: str = "x-goog-api-key",
+        token: Optional[str] = None,
+        backend: Optional[str] = None,
     ):
         self.api_key = api_key if api_key is not None else os.getenv("GOOGLE_API_KEY")
         self.model_name = model_name or DEFAULT_GEMMA_MODEL
         self.pseudonymizer = pseudonymizer or Pseudonymizer()
         self.guardrail = InputGuardrail()
-        self.backend = EXTRACTOR_BACKEND
+        self.backend = (backend or EXTRACTOR_BACKEND).strip().lower()
         self.served_model: Optional[str] = None
+        # Re-read the environment at construction time rather than relying only
+        # on the import-time constant. Reading it once at import means a token
+        # exported after import is invisible, which is exactly what happens in
+        # tests and is a needless trap in any embedded use.
+        self.token = (
+            token
+            if token is not None
+            else (MODAL_EXTRACTOR_TOKEN or os.getenv("MODAL_EXTRACTOR_TOKEN", "").strip())
+        )
+
         if endpoint:
             self.endpoint = endpoint
         elif self.backend == "gemini":
@@ -101,8 +144,28 @@ class GemmaExtractor:
         elif self.backend == "off":
             self.endpoint = ""
         else:
-            self.endpoint = DEFAULT_MODAL_URL
+            self.endpoint = DEFAULT_MODAL_URL or os.getenv("MODAL_EXTRACTOR_URL", "").strip()
         self.api_key_header = api_key_header
+
+    def unavailable_reason(self) -> Optional[str]:
+        """Why this extractor cannot run, or None when it can.
+
+        Surfaced to the cook instead of a silent fallback, so "rules only" is
+        a stated fact rather than something the cook has to infer.
+        """
+        if self.backend == "off":
+            return "EXTRACTOR_BACKEND=off, rules only"
+        if self.backend == "gemini":
+            if not self.endpoint:
+                return "no Gemini endpoint configured"
+            if not (self.api_key and len(self.api_key.strip()) > 5):
+                return "GOOGLE_API_KEY is not set"
+            return None
+        if not self.endpoint:
+            return "MODAL_EXTRACTOR_URL is not set"
+        if not self.token:
+            return "MODAL_EXTRACTOR_TOKEN is not set"
+        return None
 
     def is_available(self) -> bool:
         """True when this extractor has somewhere to send a message.
@@ -111,19 +174,18 @@ class GemmaExtractor:
         `BatchResult.fallback_messages` for that: a key can be present and every
         call can still 404 or 429.
         """
-        if not self.endpoint:
-            return False
-        if "generativelanguage.googleapis.com" in self.endpoint:
-            return bool(self.api_key and len(self.api_key.strip()) > 5)
-        return True
+        return self.unavailable_reason() is None
 
     # -- internals ---------------------------------------------------------
 
     def _post(self, payload: dict) -> httpx.Response:
         headers = {"Content-Type": "application/json"}
-        # Keys go in a header, never a URL, so they stay out of access logs.
-        if self.api_key and self.endpoint.startswith("https://generativelanguage"):
+        # Keys and tokens go in a header, never a URL, so they stay out of
+        # access logs and browser history.
+        if self.api_key and "generativelanguage.googleapis.com" in self.endpoint:
             headers[self.api_key_header] = self.api_key
+        if self.backend == "modal" and self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
         with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
             return client.post(self.endpoint, json=payload, headers=headers)
 
@@ -131,49 +193,100 @@ class GemmaExtractor:
         return "modal.run" in self.endpoint or "modal.host" in self.endpoint
 
     def _request_payload(self, messages: List[dict]) -> dict:
-        lines = [f"Sender: {m['sender']}\nMessage: {m['text']}" for m in messages]
         if self._is_modal_endpoint():
             return {
                 "model": self.model_name,
                 "messages": [{"sender": m["sender"], "text": m["text"]} for m in messages],
             }
+        # Numbered, and asked for an indexed reply.
+        #
+        # Asking for one flat "events" list and re-parsing it once per message
+        # emitted N events for N messages: an "add" or a payment was multiplied
+        # by the batch size. The reply now carries the message index, so results
+        # are matched by index and never by position.
+        blocks = [
+            f"### {i}\nSender: {m['sender']}\nMessage: {m['text']}" for i, m in enumerate(messages)
+        ]
         return {
             "contents": [
                 {
                     "role": "user",
-                    "parts": [{"text": f"{SYSTEM_PROMPT}\n\n" + "\n\n".join(lines)}],
+                    "parts": [
+                        {
+                            "text": (
+                                f"{SYSTEM_PROMPT}\n\n"
+                                "Answer for every message above. Reply with JSON shaped as\n"
+                                '{"results": [{"i": <the ### number>, "events": [ ... ]}]}\n'
+                                "and include one entry per message, including messages that "
+                                "contain no order (use an empty events list).\n\n"
+                                + "\n\n".join(blocks)
+                            )
+                        }
+                    ],
                 }
             ],
-            "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+            "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
         }
 
     def _parse_response(
         self, resp: httpx.Response, sent: List[dict], source: List[tuple]
-    ) -> List[OrderEvent]:
+    ) -> Tuple[Dict[int, List[OrderEvent]], List[int]]:
+        """Model reply to (events keyed by message index, dropped indices).
+
+        Missing indices are reported rather than shifted. A short reply used to
+        be zipped against the messages, so when the model returned one row for
+        three messages two customers vanished with no flag at all.
+        """
         body = resp.json()
-        events: List[OrderEvent] = []
+        by_index: Dict[int, List[OrderEvent]] = {}
+        count = len(sent)
+
         if self._is_modal_endpoint():
             rows = body.get("results") or body.get("events") or []
-            for item, expected, (index, msg) in zip(rows, sent, source):
+            for offset, item in enumerate(rows):
+                if offset >= count:
+                    continue
                 payload = item if isinstance(item, list) else [item]
-                raw = json.dumps({"events": payload}, ensure_ascii=False)
+                expected = sent[offset]
                 parsed, _err = parse_and_validate_llm_json(
-                    raw, raw_text=expected["raw_text"], sender=expected["sender"]
+                    json.dumps({"events": payload}, ensure_ascii=False),
+                    raw_text=expected["raw_text"],
+                    sender=expected["sender"],
                 )
-                self._stamp(parsed, index, msg)
-                events.extend(parsed)
-            return events
+                by_index[offset] = parsed
+            return by_index, [i for i in range(count) if i not in by_index]
 
         candidates = body.get("candidates", [])
         parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
         raw_out = parts[0].get("text", "") if parts else ""
-        for expected, (index, msg) in zip(sent, source):
+        try:
+            doc = json.loads(raw_out) if raw_out.strip() else {}
+        except Exception:
+            doc = {}
+        rows = doc.get("results") if isinstance(doc, dict) else None
+
+        seen = set()
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            try:
+                index = int(row.get("i"))
+            except (TypeError, ValueError):
+                continue
+            # Out of range or repeated: ignore it rather than let one reply be
+            # applied to the wrong message.
+            if not 0 <= index < count or index in seen:
+                continue
+            seen.add(index)
+            expected = sent[index]
             parsed, _err = parse_and_validate_llm_json(
-                raw_out, raw_text=expected["raw_text"], sender=expected["sender"]
+                json.dumps({"events": row.get("events") or []}, ensure_ascii=False),
+                raw_text=expected["raw_text"],
+                sender=expected["sender"],
             )
-            self._stamp(parsed, index, msg)
-            events.extend(parsed)
-        return events
+            by_index[index] = parsed
+
+        return by_index, [i for i in range(count) if i not in by_index]
 
     def _fallback_for(
         self, messages: List[dict], source: List[tuple], error: str
@@ -209,7 +322,7 @@ class GemmaExtractor:
 
     def extract_batch_counted(self, messages: list) -> BatchResult:
         """Extract every message, reporting how many really used the model."""
-        result = BatchResult(model_name=self.model_name)
+        result = BatchResult(model_name="rules (regex)")
         usable = [
             (index, m)
             for index, m in enumerate(messages)
@@ -220,49 +333,54 @@ class GemmaExtractor:
         if not usable:
             return result
 
-        if not self.is_available():
+        reason = self.unavailable_reason()
+        if reason:
             prepared = [self._prepare(m) for _, m in usable]
-            result.events = self._fallback_for(
-                prepared, usable, "no extractor endpoint or key configured"
-            )
+            result.events = self._fallback_for(prepared, usable, reason)
             result.fallback_messages = len(usable)
-            result.model_name = f"{self.model_name}-fallback"
+            result.errors.append(reason)
             return result
 
         for start in range(0, len(usable), BATCH_SIZE):
             chunk = usable[start : start + BATCH_SIZE]
             prepared = [self._prepare(m) for _, m in chunk]
-            events, used_model, error = self._extract_chunk(prepared, chunk)
+            events, model_rows, dropped_rows, error = self._extract_chunk(prepared, chunk)
             result.events.extend(events)
-            if used_model:
-                result.model_messages += len(chunk)
-            else:
-                result.fallback_messages += len(chunk)
-                if error:
-                    result.errors.append(error)
-                # A terminal status will fail on every chunk. Stop rather than
-                # burn the request timeout once per message.
-                if error and any(f"HTTP {code}" in error for code in TERMINAL_STATUSES):
-                    rest = usable[start + len(chunk) :]
-                    if rest:
-                        prepared_rest = [self._prepare(m) for _, m in rest]
-                        result.events.extend(
-                            self._fallback_for(
-                                prepared_rest,
-                                rest,
-                                f"stopped after a terminal error: {error}",
-                            )
+            result.model_messages += len(model_rows)
+            result.fallback_messages += len(dropped_rows)
+            if dropped_rows:
+                # A row the model skipped is a fallback row, not a model row.
+                # Before this, a short reply silently lost whole customers.
+                result.errors.append(
+                    f"{len(dropped_rows)} of {len(chunk)} message(s) not answered by "
+                    f"the model: {(error or 'row missing from the reply')[:80]}"
+                )
+            if not model_rows:
+                # Nothing in this chunk came from the model. Stop rather than
+                # burn the request timeout once per chunk.
+                rest = usable[start + len(chunk) :]
+                if rest:
+                    prepared_rest = [self._prepare(m) for _, m in rest]
+                    result.events.extend(
+                        self._fallback_for(
+                            prepared_rest,
+                            rest,
+                            f"stopped after a failed chunk: {error}",
                         )
-                    result.fallback_messages += len(rest)
-                    break
+                    )
+                result.fallback_messages += len(rest)
+                break
 
-        if result.fallback_messages:
-            result.model_name = f"{self.model_name}-fallback"
-        elif self.served_model:
-            # Trust the endpoint over the configured label. The app defaulted to
-            # gemma-4-26b-a4b-it while Modal served a Qwen adapter, and the
-            # generated report named the wrong model.
+        # The label comes from a response or from nothing.
+        #
+        # A partial run is the dangerous case: one batch answered and another
+        # fell back. Naming the configured default there told the cook a model
+        # read every message when it read none, which is how a banner ended up
+        # claiming Gemma on a sheet produced entirely by the regex.
+        if self.served_model and result.model_messages:
             result.model_name = self.served_model
+        else:
+            result.model_name = "rules (regex)"
         result.served_model = self.served_model
         result.latency_ms = 0.0
         return result
@@ -297,46 +415,71 @@ class GemmaExtractor:
         }
 
     def _extract_chunk(self, prepared: List[dict], source: List[tuple]):
+        """Returns (events, model_message_indices, fallback_message_indices, error)."""
         start = time.perf_counter()
         last_error = None
-        for attempt in range(3):
+        for attempt in range(MAX_ATTEMPTS):
             try:
                 resp = self._post(self._request_payload(prepared))
                 if resp.status_code == 200:
                     body = resp.json()
-                    events = self._parse_response(resp, prepared, source)
+                    by_index, dropped = self._parse_response(resp, prepared, source)
                     self.served_model = body.get("model") or self.served_model
                     latency = (time.perf_counter() - start) * 1000
-                    for ev in events:
-                        ev.audit_flags.extend(f for p in prepared for f in p["flags"])
-                        if any(not p["is_safe"] for p in prepared):
-                            ev.needs_review = True
-                        bounded, flag = enforce_business_bounds(ev.qty)
-                        if flag:
-                            ev.qty = bounded
-                            ev.audit_flags.append(flag)
-                            ev.needs_review = True
+
+                    events: List[OrderEvent] = []
+                    for offset, (index, msg) in enumerate(source):
+                        expected = prepared[offset]
+                        produced = by_index.get(offset)
+                        if produced is None:
+                            # The model answered, but not for this message. The
+                            # rules cover it rather than the customer vanishing.
+                            produced = self._rules_events_for(expected)
+                            for ev in produced:
+                                ev.audit_flags.append("model_dropped_message")
+                                ev.needs_review = True
+                        for ev in produced:
+                            ev.audit_flags.extend(expected["flags"])
+                            if not expected["is_safe"]:
+                                ev.needs_review = True
+                            bounded, flag = enforce_business_bounds(ev.qty)
+                            if flag:
+                                ev.qty = bounded
+                                ev.audit_flags.append(flag)
+                                ev.needs_review = True
+                        self._stamp(produced, index, msg)
+                        events.extend(produced)
+
                     events = [self.pseudonymizer.depseudonymize_order_event(ev) for ev in events]
                     log_model_call(
                         ExtractionResult(
                             events=events,
-                            model_name=self.model_name,
+                            model_name=self.served_model or self.model_name,
                             latency_ms=latency,
                             input_tokens=sum(len(p["text"].split()) for p in prepared),
                         )
                     )
-                    return events, True, None
+                    model_rows = [i for i in range(len(source)) if i not in set(dropped)]
+                    return events, model_rows, dropped, None
+
                 last_error = f"HTTP {resp.status_code}: {resp.text[:150]}"
                 if resp.status_code in TERMINAL_STATUSES:
                     break
+                if resp.status_code == 429:
+                    # One backoff, then give up on the model for this paste.
+                    time.sleep(1.0)
             except Exception as exc:  # network, timeout, bad JSON
                 last_error = str(exc)
-            time.sleep(0.4 * (attempt + 1))
-        return (
-            self._fallback_for(prepared, source, last_error or "model call failed"),
-            False,
-            last_error,
-        )
+            if attempt + 1 < MAX_ATTEMPTS:
+                time.sleep(0.4 * (attempt + 1))
+
+        fallback = self._fallback_for(prepared, source, last_error or "model call failed")
+        return fallback, [], list(range(len(source))), last_error
+
+    def _rules_events_for(self, prepared: dict) -> List[OrderEvent]:
+        """The rules result for one message, used when the model skipped it."""
+        audit = self.guardrail.sanitize(prepared["raw_text"])
+        return heuristic_extract(audit.clean_text, prepared["real_sender"])
 
     def extract_from_text(self, raw_text: str, sender: str = "Customer") -> ExtractionResult:
         """Single-message convenience wrapper kept for the eval harness."""
@@ -364,29 +507,7 @@ class GemmaExtractor:
             error=batch.errors[0] if batch.errors else None,
         )
 
-    def extract_batch(self, messages: list) -> list[OrderEvent]:
-        """Process a list of ParsedMessage objects into OrderEvents.
-
-        Each event carries the message's position in the export as `line_index`.
-        WhatsApp stamps have minute precision, so two messages can share one;
-        without a position the reconciler would have to break the tie by whichever
-        line happened to be processed first.
-        """
-        all_events: List[OrderEvent] = []
-        for index, msg in enumerate(messages):
-            if getattr(msg, "is_system", False) or getattr(msg, "is_media", False):
-                continue
-            if not getattr(msg, "text", ""):
-                continue
-            res = self.extract_from_text(msg.text, sender=msg.sender)
-            for ev in res.events:
-                ev.line_index = index
-                if getattr(msg, "timestamp_unparsed", False) or msg.timestamp is None:
-                    ev.timestamp = None
-                    ev.needs_review = True
-                    if "unparsed_timestamp" not in ev.audit_flags:
-                        ev.audit_flags.append("unparsed_timestamp")
-                else:
-                    ev.timestamp = msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                all_events.append(ev)
-        return all_events
+    # `extract_batch` used to live here. It was never called: it wrapped
+    # `extract_from_text` and then stamped every event `unparsed_timestamp`,
+    # because the `_Msg` shim it built carried no timestamp. Nothing depended on
+    # the result, so it only ever produced events that all went to review.
