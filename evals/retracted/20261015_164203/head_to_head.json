@@ -1,0 +1,680 @@
+{
+  "run_timestamp": "20261015_164203",
+  "date_ist": "2026-10-15 16:42 03 IST",
+  "dataset": "data/synthetic/test.jsonl",
+  "dataset_rows": 50,
+  "model_endpoint": "https://vedantmahajan271--tiffintally-extract-api.us-east.modal.run",
+  "model": "Qwen/Qwen2.5-3B-Instruct+lora-iteration_31",
+  "gpu": "NVIDIA A10G",
+  "model_calls_ms": [
+    59473.0,
+    120370.6,
+    44851.2
+  ],
+  "model_repaired_blocks": 1,
+  "model_empty_results": 0,
+  "regex": {
+    "n": 50,
+    "per_field": {
+      "meal": 0.94,
+      "qty": 1.0,
+      "action": 0.98,
+      "mods": 0.84
+    },
+    "exact_match": 0.78
+  },
+  "open_model": {
+    "n": 50,
+    "per_field": {
+      "meal": 0.38,
+      "qty": 0.72,
+      "action": 0.8,
+      "mods": 0.6
+    },
+    "exact_match": 0.24
+  },
+  "delta_exact_match": -0.54,
+  "disagreements": [
+    {
+      "text": "going home for Diwali, Sunday se next Thursday tak band rakhna",
+      "gold": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "regex": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "tomorrow lunch ek please",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "tomorrow lunch do please",
+      "gold": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "lunch 1 plate, deliver at gate number 3",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "plate"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "going out of town from tomorrow till Friday, pause please",
+      "gold": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "regex": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "paid 1500 via PhonePe for this week",
+      "gold": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "payment",
+        "mods": []
+      },
+      "regex": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "payment",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "shaak rotli 2 dabba please lunch",
+      "gold": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "dabba"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "dinner 2 thali, doorbell mat bajana baby so raha hai",
+      "gold": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "doorbell mat bajana baby so raha hai"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "out of station for 4 days, stop tiffin",
+      "gold": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "regex": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "कल दोपहर का खाना एक प्लेट",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "दोपहर का खाना 2 डब्बा",
+      "gold": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "1 thali lunch, replace curd with extra sabzi",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no curd",
+          "extra sabzi"
+        ]
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no curd",
+          "extra sabzi"
+        ]
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "replace curd with extra sabzi"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "dinner 2 thali tonight around 9 pm",
+      "gold": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "dinr 1 no spic",
+      "gold": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "do lunch aur ek dinner",
+      "gold": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "no tiffin for next 3 days, project submission chal raha hai",
+      "gold": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "regex": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "lunch at 12:30 pm sharp, 1 dabba",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "aunty ekdum kadak roti bhejna 1 thali dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "kadak roti"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "kadak roti"
+        ]
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "thali"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "Aunty ₹2100 transfer kiya GPay pe, last 2 weeks ka",
+      "gold": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "payment",
+        "mods": []
+      },
+      "regex": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "payment",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "Diwali vacation tak tiffin off please",
+      "gold": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "regex": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "new",
+        "mods": [
+          "off"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "खाना बहुत स्वादिष्ट था धन्यवाद",
+      "gold": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "none",
+        "mods": []
+      },
+      "regex": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "none",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "Gulab jamun was so sweet thank you aunty",
+      "gold": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "none",
+        "mods": []
+      },
+      "regex": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "none",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "sweet"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "rotli vadhare aapjo ek thali sathe",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "extra roti"
+        ]
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "extra roti"
+        ]
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "thali"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "kam teekha do thali lunch me",
+      "gold": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "kam teekha"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "pause tiffin for weekend Saturday and Sunday",
+      "gold": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "regex": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "new",
+        "mods": [
+          "pause"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "please pack 2 thali for lunch",
+      "gold": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "please pack 1 thali for lunch",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "unspecified",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    }
+  ],
+  "winner_counts": {
+    "regex": 27
+  }
+}
