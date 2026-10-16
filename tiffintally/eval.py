@@ -28,6 +28,16 @@ EVALS_DIR = Path("evals/runs")
 FALLBACK_SUFFIX = "-fallback"
 REGEX_DISPLAY = "regex (fallback)"
 
+# Only this marker makes a held-out set eligible to be called real. The file that
+# shipped in data/private/ claimed `is_synthetic: false` while every line of it
+# came out of scripts/gen_synthetic.py. Reporting 88% on it as "real cook
+# messages" would be the round-1 mistake in a new place.
+REAL_PROVENANCE = "collected_from_cook"
+
+# Exact match counts every field the product depends on. Leaving `mods` out
+# inflated the model by ten points and made two saved reports contradict.
+EXACT_MATCH_FIELDS = ("meal", "qty", "action", "mods")
+
 # Blended list price for a hosted open-weight model, USD per million tokens.
 # Only applied when a real API call ran. Override when the backend changes.
 HOSTED_MODEL_USD_PER_MTOK = float(os.getenv("HOSTED_MODEL_USD_PER_MTOK", "0.20"))
@@ -145,8 +155,14 @@ def evaluate_extractor(
         gold_mods.append(tuple(gold.get("mods") or []))
         pred_mods.append(tuple(pred_ev.mods) if pred_ev else tuple())
 
-        # Check exact match across meal, qty, action
-        if p_meal == g_meal and p_qty == g_qty and p_action == g_action:
+        predicted = {
+            "meal": p_meal,
+            "qty": p_qty,
+            "action": p_action,
+            "mods": tuple(pred_ev.mods) if pred_ev else tuple(),
+        }
+        expected = {"meal": g_meal, "qty": g_qty, "action": g_action, "mods": gold_mods[-1]}
+        if all(predicted[field] == expected[field] for field in EXACT_MATCH_FIELDS):
             exact_matches += 1
 
     n = len(samples)
@@ -164,15 +180,11 @@ def evaluate_extractor(
     avg_in = float(np.mean(in_tokens)) if in_tokens else 0.0
     avg_out = float(np.mean(out_tokens)) if out_tokens else 0.0
 
-    # Cost is only meaningful for a real API call. The regex costs nothing to run,
-    # so a $/1k figure beside it would be arithmetic against a token count the
-    # regex never produced.
+    # Cost is only meaningful when tokens are billed per request. A self-hosted
+    # GPU endpoint bills wall-clock time, and this harness holds no GPU billing
+    # record, so it reports nothing rather than inventing a per-token figure.
     is_fallback = str(reported_name).endswith(FALLBACK_SUFFIX)
-    if is_fallback:
-        cost_per_1k = None
-    else:
-        total_tokens_per_1k = (avg_in + avg_out) * 1000
-        cost_per_1k = (total_tokens_per_1k / 1_000_000.0) * GEMMA_INPUT_OUTPUT_USD_PER_MTOK
+    cost_per_1k = None
 
     return ModelEvaluationReport(
         model_name=reported_name,
@@ -249,27 +261,38 @@ def run_full_evaluation_suite() -> Dict[str, Any]:
     results["extractors"]["gemma_synthetic"] = rep_gemma_syn.model_dump()
     results["extractors"]["tinker_synthetic"] = rep_tinker_syn.model_dump()
 
-    # 2. Extractor benchmarks on held-out real data
+    # 2. Held-out cook messages. Only a set carrying a real provenance marker is
+    #    eligible to be scored as real. The file in data/private/ claimed
+    #    `is_synthetic: false` while every line came out of the generator, and
+    #    reporting 88% on it as "real cook messages" is the round-1 mistake in a
+    #    new place.
     real_test_path = Path("data/private/real_test.jsonl")
-    real_rows = 0
+    real_rows = []
     if real_test_path.exists():
         with open(real_test_path, "r", encoding="utf-8") as f:
-            real_rows = sum(1 for line in f if line.strip())
+            real_rows = [json.loads(line) for line in f if line.strip()]
 
-    if real_rows > 0:
-        rep_gemma_real = evaluate_extractor(gemma_ext, real_test_path, "real_heldout_cook_messages")
-        rep_tinker_real = evaluate_extractor(
-            tinker_ext, real_test_path, "real_heldout_cook_messages"
-        )
+    provenance = real_rows[0].get("provenance") if real_rows else None
+    if real_rows and provenance == REAL_PROVENANCE:
+        rep_gemma_real = evaluate_extractor(gemma_ext, real_test_path, "real_cook_messages")
+        rep_tinker_real = evaluate_extractor(tinker_ext, real_test_path, "real_cook_messages")
         results["extractors"]["gemma_real"] = rep_gemma_real.model_dump()
         results["extractors"]["tinker_real"] = rep_tinker_real.model_dump()
     else:
-        reason = (
-            "data/private/real_test.jsonl holds no labelled rows. No cook has "
-            "supplied real messages yet, so there is nothing to score."
-        )
-        results["extractors"]["gemma_real"] = not_run_report("real_heldout_cook_messages", reason)
-        results["extractors"]["tinker_real"] = not_run_report("real_heldout_cook_messages", reason)
+        if not real_rows:
+            reason = (
+                "data/private/real_test.jsonl holds no labelled rows. No cook has "
+                "supplied real messages yet, so there is nothing to score."
+            )
+        else:
+            reason = (
+                f"data/private/real_test.jsonl has {len(real_rows)} labelled rows but no "
+                f'provenance marker of "{REAL_PROVENANCE}", so it is not a collected set '
+                "of cook messages and is not scored as one."
+            )
+        results["extractors"]["real_heldout_status"] = reason
+        results["extractors"]["gemma_real"] = not_run_report("real_cook_messages", reason)
+        results["extractors"]["tinker_real"] = not_run_report("real_cook_messages", reason)
 
     # Save run artifacts. Nothing outside this directory is written.
     summary_path = run_dir / "summary.json"
@@ -314,7 +337,7 @@ def _row(rep: Dict[str, Any]) -> Dict[str, str]:
         "action_f1": f"{rep['action_f1']:.3f}",
         "mods_f1": f"{rep['mods_f1']:.3f}",
         "latency": f"{rep['latency_p50_ms']:.0f} / {rep['latency_p95_ms']:.0f} ms",
-        "cost": f"${cost:.4f}" if cost is not None else "n/a",
+        "cost": f"${cost:.4f}" if cost is not None else "not metered here",
         "note": "regex heuristic, no model call" if rep.get("used_fallback") else "model call",
     }
 
@@ -365,11 +388,11 @@ extractor fell back to the regex heuristic, usually because no API key was set o
 the call failed. Its cost is `n/a` because no tokens were billed. A row reading
 `NOT RUN` means that dataset was not measured at all; it is not a 0.0% score.
 
-## 1. Real held-out cook messages
+## 1. Real held-out cook messages (collected from a cook, not generated)
 
-{"No cook messages have been collected yet, so this table is empty by design." if not_run else ""}
+{"No cook has supplied real messages yet, so this table is empty by design." if not_run else ""}
 
-{_table(real_rows) if real_rows else "_No real-message runs in this artifact._"}
+{_table(real_rows) if real_rows else "_No collected cook messages in this artifact._"}
 
 ## 2. Frozen synthetic test split
 
