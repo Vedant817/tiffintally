@@ -129,6 +129,19 @@ def test_gemma_sends_the_key_in_a_header(monkeypatch):
     assert seen["headers"]["x-goog-api-key"] == "test-key-12345"
 
 
+def test_default_modal_url_is_the_web_endpoint():
+    """The app URL must be the `-api.<region>` one Modal prints.
+
+    The app URL without that suffix answers 404 "invalid function call", which
+    is indistinguishable from a dead model and silently drops every message to
+    the regex.
+    """
+    from tiffintally.extract.gemma import DEFAULT_MODAL_URL
+
+    assert "-api." in DEFAULT_MODAL_URL, DEFAULT_MODAL_URL
+    assert DEFAULT_MODAL_URL.startswith("https://")
+
+
 def test_modal_backend_sends_no_google_key(monkeypatch):
     """The Modal backend is unauthenticated, so no key is attached to it."""
     import httpx

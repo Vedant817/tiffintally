@@ -253,7 +253,9 @@ async def process(
     extractor = GemmaExtractor()
     batch = extractor.extract_batch_counted(parsed_msgs) if parsed_msgs else None
     events = batch.events if batch else []
-    label = extractor.model_name
+    # What served, not what was configured. The configured label defaulted to a
+    # Gemma id while Modal served a Qwen adapter.
+    label = batch.model_name if batch and batch.model_name else extractor.model_name
     model_messages = batch.model_messages if batch else 0
     fallback_messages = batch.fallback_messages if batch else 0
     used_fallback = fallback_messages > 0 or not extractor.is_available()

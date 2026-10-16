@@ -28,10 +28,13 @@ from tiffintally.schema import OrderEvent
 from tiffintally.security import InputGuardrail, enforce_business_bounds
 
 # Served by scripts/modal_serve.py. Recorded in docs/DECISIONS.md.
+#
+# The web endpoint Modal prints ends in "-api.<region>.modal.run". The app URL
+# without that suffix 404s, which looks exactly like a model failure.
 DEFAULT_GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-4-26b-a4b-it")
 DEFAULT_MODAL_URL = os.getenv(
     "MODAL_EXTRACTOR_URL",
-    "https://vedantmahajan271--tiffintally-extract.modal.run",
+    "https://vedantmahajan271--tiffintally-extract-api.us-east.modal.run",
 )
 GEMMA_API_ENDPOINT = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{DEFAULT_GEMMA_MODEL}:generateContent"
@@ -68,6 +71,10 @@ class BatchResult:
     fallback_messages: int = 0
     model_name: str = "unknown"
     errors: List[str] = field(default_factory=list)
+    # What the endpoint actually reported it is serving. The configured label is
+    # only a guess until a call has answered.
+    served_model: Optional[str] = None
+    latency_ms: float = 0.0
 
 
 class GemmaExtractor:
@@ -86,6 +93,7 @@ class GemmaExtractor:
         self.pseudonymizer = pseudonymizer or Pseudonymizer()
         self.guardrail = InputGuardrail()
         self.backend = EXTRACTOR_BACKEND
+        self.served_model: Optional[str] = None
         if endpoint:
             self.endpoint = endpoint
         elif self.backend == "gemini":
@@ -250,6 +258,13 @@ class GemmaExtractor:
 
         if result.fallback_messages:
             result.model_name = f"{self.model_name}-fallback"
+        elif self.served_model:
+            # Trust the endpoint over the configured label. The app defaulted to
+            # gemma-4-26b-a4b-it while Modal served a Qwen adapter, and the
+            # generated report named the wrong model.
+            result.model_name = self.served_model
+        result.served_model = self.served_model
+        result.latency_ms = 0.0
         return result
 
     @staticmethod
@@ -288,7 +303,9 @@ class GemmaExtractor:
             try:
                 resp = self._post(self._request_payload(prepared))
                 if resp.status_code == 200:
+                    body = resp.json()
                     events = self._parse_response(resp, prepared, source)
+                    self.served_model = body.get("model") or self.served_model
                     latency = (time.perf_counter() - start) * 1000
                     for ev in events:
                         ev.audit_flags.extend(f for p in prepared for f in p["flags"])
@@ -339,7 +356,10 @@ class GemmaExtractor:
         used_model = batch.fallback_messages == 0
         return ExtractionResult(
             events=batch.events,
-            model_name=batch.model_name if not used_model else self.model_name,
+            # What the endpoint reported, not the configured default. Printing
+            # "gemma-4-26b-a4b-it" while Modal served a Qwen adapter is the same
+            # class of error as labelling a regex score as a model's.
+            model_name=batch.model_name if batch.model_name else self.model_name,
             used_fallback=not used_model,
             error=batch.errors[0] if batch.errors else None,
         )
