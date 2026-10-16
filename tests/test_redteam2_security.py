@@ -262,7 +262,9 @@ def test_bad_key_marks_every_message_as_fallback(monkeypatch):
     batch = extractor.extract_batch_counted(parse_chat_export(raw))
     assert batch.fallback_messages == 2
     assert batch.model_messages == 0
-    assert batch.model_name.endswith("-fallback")
+    # A rejected key means no model answered, so no model may be named.
+    assert batch.model_name == "rules (regex)"
+    assert batch.errors, "the cook should be told the key was rejected"
 
 
 def test_quota_error_stops_early_instead_of_retrying_every_chunk():
@@ -290,7 +292,12 @@ def test_quota_error_stops_early_instead_of_retrying_every_chunk():
             return FakeResponse()
 
     monkeypatch = __import__("pytest").MonkeyPatch()
-    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "modal")
+    # The gemini backend, not modal. The Modal backend refuses to run without
+    # MODAL_EXTRACTOR_URL and MODAL_EXTRACTOR_TOKEN, so with it pinned here the
+    # test never called anything and passed on `calls["n"] == 0` -- a green that
+    # proved nothing about retries. This one has to actually reach the 429.
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "gemini")
+    monkeypatch.setenv("GOOGLE_API_KEY", "a-key-of-plausible-length")
     monkeypatch.setattr("tiffintally.extract.gemma.httpx.Client", FakeClient)
     monkeypatch.setattr("tiffintally.extract.gemma.time.sleep", lambda *_: None)
 
@@ -309,8 +316,9 @@ def test_quota_error_stops_early_instead_of_retrying_every_chunk():
     finally:
         monkeypatch.undo()
 
-    # 60 messages at 40 per batch is 2 batches; a terminal status must not
-    # produce 60 attempts.
+    # 60 messages at 40 per batch is 2 batches; a retry budget must not turn
+    # into 60 attempts. The bound is MAX_ATTEMPTS (2) per attempted chunk.
+    assert calls["n"] > 0, "the test never reached the endpoint, so it proved nothing"
     assert calls["n"] <= 6, f"{calls['n']} upstream calls for 60 messages"
     assert batch.fallback_messages == 60
 

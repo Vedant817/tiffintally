@@ -224,7 +224,10 @@ def test_bold_10_missing_api_key_graceful_fallback(monkeypatch):
 
     res = extractor.extract_from_text("kal lunch 1 plate", sender="Rohit")
     assert res.used_fallback is True
-    assert res.model_name.endswith("-fallback")
+    # Not "<model>-fallback". Naming the configured model and bolting a suffix
+    # on it is what let a sheet read "gemma-4-26b-a4b-it-fallback" while Gemma
+    # had never been called. The label now names the thing that actually ran.
+    assert res.model_name == "rules (regex)"
     assert len(res.events) >= 1
     assert res.events[0].qty == 1
     assert res.events[0].meal == "lunch"
