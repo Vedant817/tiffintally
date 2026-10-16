@@ -1,0 +1,14 @@
+{
+  "system": "regex",
+  "code_sha": "1c421c72a6c3ad1d7c53f725c516b30a954f28c1",
+  "prompt_sha256": "7e9e1c1ec8d9e6535abedb695bef6dccfc0d65906b77e308f8ab6b6669aeed42",
+  "dataset_sha256": "025922df9d78e1ab3344170485898cb4ebd3e40d9c13715f17ae4dbd0f3ff248",
+  "adapter_id": null,
+  "adapter_sha": null,
+  "max_new_tokens": null,
+  "batch_size": 1,
+  "dtype": null,
+  "decoding": "deterministic rules",
+  "n": 60,
+  "date": "2026-10-16T11:09:21.248450+00:00"
+}
