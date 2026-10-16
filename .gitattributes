@@ -1,0 +1,27 @@
+# Line endings are pinned so a fresh clone on any platform produces the same bytes.
+#
+# This matters for data/synthetic/*.jsonl specifically: the frozen-split guard
+# hashes those files, and a CRLF checkout on Windows versus an LF checkout on
+# Linux produced different digests for identical content. The test now
+# canonicalises line endings before hashing, and this file stops the difference
+# from arising in the first place.
+* text=auto
+
+*.jsonl text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.html text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mp3 binary
+*.ogg binary
+*.opus binary
+*.safetensors binary

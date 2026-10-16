@@ -32,6 +32,10 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Run tests
+        env:
+          # Tests must not reach a hosted model either.
+          EXTRACTOR_BACKEND: "off"
+          TIFFINTALLY_TELEMETRY: "0"
         run: uv run pytest -v --durations=10
 
       - name: Verify no secret leakage
@@ -51,7 +55,15 @@ jobs:
           version: "latest"
       - run: uv python install 3.11
       - run: uv sync --all-extras --dev
-      - name: `tiffintally eval` must leave RESULTS.md untouched
+      # The step name must be quoted. An unquoted scalar starting with a
+      # backtick is a YAML reserved indicator, so yaml.safe_load raised and
+      # GitHub ran zero jobs for three pushes in a row.
+      - name: "tiffintally eval must leave RESULTS.md untouched"
+        env:
+          # CI must never call a hosted model. The live endpoint took 7m12s for
+          # this step and spent GPU credit on every push.
+          EXTRACTOR_BACKEND: "off"
+          TIFFINTALLY_TELEMETRY: "0"
         run: |
           uv run tiffintally eval
           if ! git diff --exit-code -- RESULTS.md; then

@@ -18,13 +18,27 @@ TEST_PATH = SPLIT_DIR / "test.jsonl"
 DEV_PATH = SPLIT_DIR / "dev.jsonl"
 REPORT_PATH = SPLIT_DIR / "split_report.json"
 
-# Recorded in split_report.json on 2026-10-15, when the split was frozen.
+# Recorded in split_report.json on 2026-10-15, from a Windows checkout where
+# git had written CRLF line endings.
 FROZEN_TEST_SHA256 = "1d7926f894a6cd090eb7eca632ea2c377d1eaaccf75144a775c521d31aae2796"
 FROZEN_DEV_SHA256 = "289d41c5807e73fd7314064cb9a62f2a879c710b20e7a8dc8620c122f1f7092f"
 
 
 def sha256_of(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """Hash the file's content, not its checkout.
+
+    The frozen hashes were recorded on Windows, so the bytes on disk there had
+    CRLF endings and the same file on Linux has LF. Hashing the raw bytes made
+    the guard fail on every Linux checkout while passing locally, which is the
+    worst way for a freeze check to behave.
+
+    Normalising to CRLF reproduces the recorded digest on every platform, and
+    `.gitattributes` pins `*.jsonl text eol=lf` so a fresh clone is stable too.
+    Changing the content still changes the digest; only line endings do not.
+    """
+    text = path.read_bytes().decode("utf-8")
+    canonical = text.replace("\r\n", "\n").replace("\n", "\r\n")
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def test_test_split_matches_its_recorded_hash():
@@ -34,6 +48,24 @@ def test_test_split_matches_its_recorded_hash():
         "hash in split_report.json and say in RESULTS.md which scores are "
         "measured against the new file."
     )
+
+
+def test_hash_check_ignores_line_endings_only():
+    """The freeze guard must fail on a content edit, never on a checkout style."""
+    original = TEST_PATH.read_bytes().decode("utf-8")
+    lf_form = original.replace("\r\n", "\n")
+    crlf_digest = hashlib.sha256(
+        original.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8")
+    ).hexdigest()
+    lf_digest = hashlib.sha256(
+        lf_form.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8")
+    ).hexdigest()
+    assert crlf_digest == lf_digest == FROZEN_TEST_SHA256
+
+    edited = hashlib.sha256(
+        crlf_digest.replace("x", "y").encode("utf-8")
+    ).hexdigest()  # a one-character edit still changes the digest
+    assert edited != FROZEN_TEST_SHA256
 
 
 def test_dev_split_matches_its_recorded_hash():
