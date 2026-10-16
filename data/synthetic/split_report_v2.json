@@ -1,0 +1,7 @@
+{
+  "dev_in_train": true,
+  "dev2_rows": 60,
+  "dev2_templates": 20,
+  "dev2_sha256": "0faddcd0f6826b88600b93deb4fb8a485422f854d6c9ba088ec7f5c1606aa9f5",
+  "rule": "Agent-authored synthetic tuning only; not a real or blind holdout. Frozen legacy files untouched."
+}

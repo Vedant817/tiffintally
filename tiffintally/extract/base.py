@@ -1,8 +1,8 @@
 """
 Base extractor interfaces, telemetry, and the deterministic rule-based extractor.
 
-The rules here were written against `data/synthetic/dev.jsonl` and the messages in
-`tests/test_redteam2_extract.py`, never against `data/synthetic/test.jsonl`.
+Legacy rules included test-fitted literals (AUDIT4). Round four removes them.
+New development uses train and dev2; the legacy dev split is contaminated.
 """
 
 import json
@@ -372,7 +372,7 @@ def _meal_spans(text: str) -> List[Tuple[int, int, str]]:
     """(start, end, meal) for every lunch/dinner mention, Roman or Devanagari."""
     pattern = re.compile(
         r"\b(lunch|dinner|dopahar|dopahar\s*ka\s*khana|raat|raat\s*ka\s*khana)\b"
-        r"|दोपहर"
+        r"|दोपहर|लंच"
         r"|रात",
         re.IGNORECASE,
     )
@@ -526,6 +526,9 @@ def _detect_pause(text: str) -> Optional[Tuple[Optional[str], Optional[str], boo
     )
     if range_match:
         return range_match.group(1), range_match.group(2), True
+    single = re.search(rf"\b({_WEEKDAY_PATTERN})\s+(?:ko\s+)?off\b", text)
+    if single:
+        return single.group(1), None, False
 
     for pattern in _PAUSE_PATTERNS:
         if re.search(pattern, text):
@@ -577,45 +580,17 @@ def _find_delta(text: str) -> Optional[Tuple[Optional[str], Tuple[int, int]]]:
 
 
 def _canonical_mods(text: str) -> List[str]:
-    mods: List[str] = []
-    if any(
-        phrase in text
-        for phrase in ("no onion", "bina pyaaz", "bina pyaj", "बिना प्याज", "प्याज नहीं", "jain")
-    ):
+    patterns_path = Path(__file__).resolve().parents[2] / "data/vocab/mod_patterns.json"
+    patterns = json.loads(patterns_path.read_text(encoding="utf-8"))
+    mods = [
+        canonical
+        for canonical, phrases in patterns.items()
+        if any(phrase in text for phrase in phrases)
+    ]
+    # Compositional grammar using food/negation tokens evidenced in training.
+    if re.search(r"प्याज\s+नहीं", text) and "no onion" not in mods:
         mods.append("no onion")
-    if any(phrase in text for phrase in ("roti nahi rice", "no rice", "only roti", "4 roti")):
-        mods.append("roti nahi rice")
-    if any(
-        phrase in text
-        for phrase in (
-            "kam teekha",
-            "less spicy",
-            "less spic",
-            "bina mirchi",
-            "no spic",
-            "no spice",
-        )
-    ):
-        mods.append("less spicy")
-    if any(phrase in text for phrase in ("no curd", "replace curd", "bina dahi")):
-        mods.append("no curd")
-    if "extra sabzi" in text:
-        mods.append("extra sabzi")
-    if re.search(r"\bkadak\s+(roti|rotli)\b", text):
-        mods.append("kadak roti")
-    if "extra roti" in text or re.search(
-        r"\b(roti|rotli)\s+vadhare\b|\bvadhare\s+(roti|rotli)\b", text
-    ):
-        mods.append("extra roti")
-
-    # "2 roti extra" is a side request, not a second plate.
-    extra = re.search(rf"\b(\d{{1,2}}|{_NUMBER_ALT})\s+(roti|rotli)\s+extra\b", text, re.IGNORECASE)
-    if extra:
-        count = _match_number(extra.group(1))
-        mod = f"extra {extra.group(2)} x{count}" if count else f"extra {extra.group(2)}"
-        if mod not in mods:
-            mods.append(mod)
-    elif "roti extra" in text and "extra roti" not in mods:
+    if re.search(r"\broti\s+extra\b", text) and "extra roti" not in mods:
         mods.append("extra roti")
     return mods
 
@@ -728,8 +703,18 @@ def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
         ]
 
     lower = normalise(body)
+    lower = re.sub(
+        r"\bcancel\s+(?:mat|nahi)\s+karna\b|\bdon['’]?t\s+cancel\b|\bdo\s+not\s+cancel\b",
+        " ",
+        lower,
+    )
     events: List[OrderEvent] = []
     spoken_date = relative_date_label(lower)
+    if spoken_date == "ambiguous":
+        for clause in re.split(r"[,;.!]", lower):
+            if _meal_spans(clause) or _has_plate_word(clause):
+                spoken_date = relative_date_label(clause)
+                break
 
     def flag(ev: OrderEvent) -> OrderEvent:
         ev.audit_flags.extend(noise_flags)
@@ -737,6 +722,9 @@ def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
 
     def review(reason: str, confidence: float = 0.5) -> List[OrderEvent]:
         return [flag(_review_event(sender, raw_text, reason, spoken_date, confidence))]
+
+    if re.search(r"\b\d+\s+(?:ya|or)\s+\d+\b|\bpata\s+nahi\b|\bnot\s+sure\b", lower):
+        return review("uncertain_quantity")
 
     # 1. Multi-day shorthand: "Mon lunch 2, Tue lunch 1, Wed off".
     dated = _dated_meal_events(lower, sender, raw_text)
@@ -860,20 +848,7 @@ def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
     if not meal_spans and not _has_plate_word(lower) and not has_cancel:
         if devanagari_nahin:
             return review("devanagari_mod_only")
-        return [
-            flag(
-                OrderEvent(
-                    customer=sender,
-                    date=spoken_date,
-                    meal="unspecified",
-                    qty=0,
-                    items=[],
-                    action="none",
-                    raw_text=raw_text,
-                    confidence=0.99,
-                )
-            )
-        ]
+        return review("unparsed_message")
 
     mods = _canonical_mods(lower)
 
@@ -1026,4 +1001,15 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         for event in orders:
             event.raw_text = raw_text
         events = [event for event in orders if event.action not in {"none", "payment"}] + events
+    for event in events:
+        if (
+            event.action == "none"
+            and not event.needs_review
+            and (re.search(r"\d", lower) or _meal_spans(lower))
+        ):
+            event.needs_review = True
+            event.audit_flags.append("unparsed_order_candidate")
+        if event.action in {"new", "change", "add"} and (event.qty == 0 or event.qty > 20):
+            event.needs_review = True
+            event.audit_flags.append("invalid_order_quantity")
     return events

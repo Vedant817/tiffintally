@@ -1,5 +1,7 @@
 """Rules parser coverage for the eight misses in modal run 31."""
 
+import pytest
+
 from tiffintally.extract.base import heuristic_extract
 
 
@@ -24,6 +26,7 @@ def test_gujarati_lunch_does_not_invent_a_mod():
     assert events[0].mods == []
 
 
+@pytest.mark.xfail(strict=True, reason="T4-002 intentionally removed test-fitted dietary literals")
 def test_curd_swap_keeps_both_mods():
     events = heuristic_extract("1 thali lunch, replace curd with extra sabzi", "Ravi")
     assert events[0].meal == "lunch"
@@ -40,6 +43,7 @@ def test_typo_dinner_cancel_is_tomorrow():
     assert events[0].qty == 0
 
 
+@pytest.mark.xfail(strict=True, reason="T4-002 intentionally removed test-fitted dietary literal")
 def test_typo_less_spicy():
     events = heuristic_extract("dinr 1 no spic", "Karan")
     assert events[0].meal == "dinner"
@@ -56,12 +60,14 @@ def test_lunch_and_dinner_stay_separate():
     ]
 
 
+@pytest.mark.xfail(strict=True, reason="T4-002 intentionally removed test-fitted dietary literal")
 def test_kadak_roti_stays_one_mod():
     events = heuristic_extract("aunty ekdum kadak roti bhejna 1 thali dinner", "Pooja")
     assert events[0].meal == "dinner"
     assert events[0].mods == ["kadak roti"]
 
 
+@pytest.mark.xfail(strict=True, reason="T4-002 intentionally removed test-fitted dietary literal")
 def test_gujarati_extra_roti():
     events = heuristic_extract("rotli vadhare aapjo ek thali sathe", "Sneha")
     assert events[0].mods == ["extra roti"]

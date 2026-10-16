@@ -76,18 +76,9 @@ function loadDemoSample() {
   const line = (hour, minute, text) =>
     `${dd}/${mm}/${yy}, ${hour}:${minute} pm - ${text}`;
   // 8:xx pm is before the 10 pm cutoff. 11:15 pm is late on purpose.
-  const demoText = [
-    line("8", "14", "Ravi: kal lunch 2, dinner skip"),
-    line("8", "15", "Priya: kal lunch 1, aaj roti nahi extra rice dena please"),
-    line("8", "18", "Sneha: kal lunch cancel aunty, team lunch hai"),
-    line("8", "20", "Karan: Kal lunch 1 plate. Aur meri roommate Tanvi ke liye bhi ek lunch add kar dena"),
-    line("8", "24", "Vikram: ₹1500 GPay kiya aunty check kar lo"),
-    line("8", "30", "Ananya: earlier ordered 1, please change it to 3 thalis for dinner tomorrow"),
-    line("8", "35", "Rohan: thank you aunty khana mast tha!"),
-    line("8", "40", "Pooja: कल दो थाली दोपहर को भेजना, बिना प्याज के"),
-    line("8", "55", "Amit: Sunday off please, going home"),
-    line("11", "15", "Deepak: kal lunch 2 add karo please late message aunty"),
-  ].join("\n");
+  const messages = {{ demo_messages|tojson }};
+  const demoText = messages.map((message, i) =>
+    line("8", String(10 + i), `${message.sender}: ${message.text}`)).join("\n");
 
   document.getElementById("raw_text").value = demoText;
 }

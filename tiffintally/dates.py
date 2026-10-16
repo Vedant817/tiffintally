@@ -24,6 +24,11 @@ def relative_date_label(text: str) -> str:
     """Return today, tomorrow, ambiguous, or unspecified. Never invent a day."""
     if not text:
         return "unspecified"
+    iso = re.search(r"\b\d{4}-\d{2}-\d{2}\b", text)
+    if iso:
+        return iso.group()
+    if re.search(r"\bparso\b|परसों", text, re.I):
+        return "day_after_tomorrow"
     has_today = _TODAY.search(text) is not None
     has_tomorrow = _TOMORROW.search(text) is not None
     if has_today and not has_tomorrow:
@@ -32,7 +37,8 @@ def relative_date_label(text: str) -> str:
         return "tomorrow"
     if has_today and has_tomorrow:
         return "ambiguous"
-    return "unspecified"
+    weekdays = [word for word in _WEEKDAYS if re.search(rf"\b{word}\b", text, re.I)]
+    return weekdays[0] if len(weekdays) == 1 else "ambiguous" if weekdays else "unspecified"
 
 
 def resolve_day_label(label: str, reference: datetime):
@@ -42,8 +48,13 @@ def resolve_day_label(label: str, reference: datetime):
         return reference.date()
     if raw in _TOMORROW_LABELS:
         return (reference + timedelta(days=1)).date()
+    if raw in {"parso", "day_after_tomorrow"}:
+        return (reference + timedelta(days=2)).date()
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
-        return datetime.strptime(raw, "%Y-%m-%d").date()
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            return None
     if raw in _WEEKDAYS:
         delta = (_WEEKDAYS[raw] - reference.weekday()) % 7
         return (reference + timedelta(days=delta)).date()

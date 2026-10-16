@@ -6,6 +6,7 @@ voice briefs, and the active-learning correction flywheel.
 
 import csv
 import io
+import json
 import logging
 import os
 import uuid
@@ -236,7 +237,12 @@ def index_view(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"default_cutoff": "22:00"},
+        context={
+            "default_cutoff": "22:00",
+            "demo_messages": json.loads(
+                (BASE_DIR / "demo_sample.json").read_text(encoding="utf-8")
+            ),
+        },
     )
 
 

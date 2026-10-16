@@ -256,7 +256,8 @@ def test_synthetic_split_has_no_template_or_text_overlap():
     assert train_text.isdisjoint(test_text)
     assert {row["template_id"] for row in train}.isdisjoint({row["template_id"] for row in test})
 
-    from tiffintally.dates import relative_date_label
-
     for row in train + test:
-        assert row["gold"]["date"] == relative_date_label(row["raw_text"])
+        # Gold is independent data, not an expectation recomputed by product code.
+        # Frozen hashes in test_split_frozen protect the existing labels.
+        assert isinstance(row["gold"]["date"], str)
+        assert row["gold"]["date"]

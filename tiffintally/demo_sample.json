@@ -1,0 +1,7 @@
+[
+  {"sender":"Ravi","text":"Aunty, tomorrow lunch 2 for our desk; pack the bag together.","gold":{"meal":"lunch","qty":2,"action":"new","date":"tomorrow"}},
+  {"sender":"Priya","text":"For tomorrow please keep lunch 1, aaj roti nahi rice in that box.","gold":{"meal":"lunch","qty":1,"action":"new","date":"tomorrow","mods":["roti nahi rice"]}},
+  {"sender":"Karan","text":"Tomorrow lunch 2 plates in total, roommate Tanvi ke liye ek in that bag.","gold":{"meal":"lunch","qty":2,"action":"new","date":"tomorrow","secondary_customer":"Tanvi","secondary_qty":1}},
+  {"sender":"Pooja","text":"Tomorrow lunch 2 in the blue carrier, no onion please.","gold":{"meal":"lunch","qty":2,"action":"new","date":"tomorrow","mods":["no onion"]}},
+  {"sender":"Vikram","text":"Week ka hisaab: ₹1,500 paid through GPay, receipt bheja.","gold":{"meal":"unspecified","qty":0,"action":"payment","date":"today","payment_amount":1500,"payment_note":"claimed"}}
+]

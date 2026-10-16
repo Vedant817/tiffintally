@@ -2,7 +2,7 @@
 
 import json
 
-from scripts.prepare_sft import OUTPUT_SFT, build_sft_dataset
+from scripts.prepare_sft import build_sft_dataset
 from tiffintally.extract.tinker import TinkerExtractor
 
 
@@ -19,11 +19,15 @@ def test_tinker_extractor_fallback(monkeypatch):
     assert res.events[0].meal == "lunch"
 
 
-def test_tinker_sft_dataset_structure():
-    build_sft_dataset()
-    assert OUTPUT_SFT.exists()
+def test_tinker_sft_dataset_structure(tmp_path, monkeypatch):
+    import scripts.prepare_sft as sft
 
-    with open(OUTPUT_SFT, "r", encoding="utf-8") as f:
+    output = tmp_path / "sft.jsonl"
+    monkeypatch.setattr(sft, "OUTPUT_SFT", output)
+    build_sft_dataset()
+    assert output.exists()
+
+    with open(output, "r", encoding="utf-8") as f:
         first_line = f.readline()
         data = json.loads(first_line)
 
