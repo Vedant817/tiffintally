@@ -1,19 +1,35 @@
 """
 Serve the fine-tuned extractor as a web endpoint on Modal.
 
-This is the "open model at the core" piece. Without it the app is a regex, and
-the regex scored 88% on the frozen test split against the adapter's 84% - so
-without a served model the contest rule about open-weight AI at the core is not
-met and the post's "why open matters" section has nothing behind it.
+This is an experiment, not the product's default extractor. The product default
+is the Gemini API path; see EXTRACTOR_BACKEND in tiffintally/extract/gemma.py.
 
-Base model: Qwen2.5-3B-Instruct (Apache-2.0 weights)
+LICENCE. Base model: Qwen/Qwen2.5-3B-Instruct. Its Hugging Face metadata reports
+`license: other`, `license_name: qwen-research`, and the licence text is
+"FOR NON-COMMERCIAL PURPOSES ONLY", with a duty to display "Built with Qwen" on
+derived models. An earlier version of this file called the weights Apache-2.0;
+that was wrong. Do not put this adapter on a paid product without a commercial
+licence from Alibaba, and keep the "Built with Qwen" notice wherever the adapter
+is described.
+
 Adapter:    /vol/checkpoints/iteration_N, trained on data/synthetic/train.jsonl
+            Held on a private Modal volume. It is not published anywhere a judge
+            can fetch it, so "reproducible" is not a claim this repo makes yet.
+
+Built with Qwen.
 
 Deploy:
+    modal secret create tiffintally-extract-token   # one-time, interactive
     modal deploy scripts/modal_serve.py
 
-Then point the app at the printed URL:
-    MODAL_EXTRACTOR_URL=https://<app>--tiffintally-extract.modal.run
+The endpoint requires `Authorization: Bearer <token>` on every call and answers
+401 without it. The token lives in a Modal secret; it is never in this file.
+
+Then point the app at the printed URL and the same token, both from the
+environment only. There is no default URL in the code on purpose: a hard-coded
+one left a paid GPU endpoint reachable by anyone who read the repo.
+    MODAL_EXTRACTOR_URL=https://<app>--<fn>.modal.run
+    MODAL_EXTRACTOR_TOKEN=<same value as the Modal secret>
 
 The endpoint takes pseudonymised text. Names, phone numbers and flat numbers are
 replaced with tokens by tiffintally/privacy.py before a request leaves the
@@ -25,16 +41,18 @@ import os
 import re
 
 import modal
+from fastapi import Header
 
 APP_NAME = os.getenv("MODAL_APP_NAME", "tiffintally-extract")
 ADAPTER_ITERATION = os.getenv("MODAL_ADAPTER_ITERATION", "31")
 BASE_MODEL = os.getenv("MODAL_BASE_MODEL", "Qwen/Qwen2.5-3B-Instruct")
 
+# The bearer token, created once with `modal secret create tiffintally-extract-token`.
+TOKEN_SECRET = modal.Secret.from_name("tiffintally-extract-token")
+
 app = modal.App(APP_NAME)
 volume = modal.Volume.from_name("tiffintally-models", create_if_missing=True)
 
-# Qwen2.5-3B-Instruct weights are public, so no Hugging Face token is needed and
-# the deployment has no secret to leak.
 # The app package is baked into the image for one reason: the adapter was
 # fine-tuned against tiffintally.extract.base.SYSTEM_PROMPT. Without the package
 # in the image that import fails and a three-word fallback prompt is served
@@ -67,105 +85,92 @@ SYSTEM_PROMPT_PATH = os.path.join(
 VALID_ACTIONS = {"new", "change", "add", "cancel", "pause", "payment", "none"}
 VALID_MEALS = {"lunch", "dinner", "both", "unspecified"}
 
+# ------------------------------------------------------------------ #
+# Weights are loaded once per container, not once per request.
+#
+# Module-level globals persist across invocations inside one warm
+# container, so a plain dict cache is enough to get load-once behaviour.
+#
+# This is deliberately not an @app.cls parameterized class. On Modal
+# 1.6.1 `app.cls` is the decorator and `modal.cls` is a package submodule,
+# so the class form raised "TypeError: 'module' object is not callable"
+# at import and took the whole test suite's collection with it.
+# @app.function is stable across versions.
+# ------------------------------------------------------------------ #
 
-@app.function(
-    image=image,
-    gpu="A10G",
-    timeout=600,
-    scaledown_window=300,
-    volumes={"/vol": volume},
-)
-def extract_batch(
-    payload: dict,
-    adapter_iteration: str = ADAPTER_ITERATION,
-    base_model: str = BASE_MODEL,
-) -> dict:
-    """Batched extraction. One HTTP round trip per <=40 messages."""
+_MODELS: dict = {}
+
+
+def _get_model(use_adapter: bool) -> dict:
+    """The loaded weights for this container, loading them at most once."""
+    if use_adapter in _MODELS:
+        return _MODELS[use_adapter]
+
     import sys
-    import time
 
     import torch
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    # The adapter was trained against the app's own prompt, so the same prompt
-    # has to be served. A silent fallback here would score the fallback, not the
-    # model, and the number would look like a property of the checkpoint.
     sys.path.insert(0, "/root")
-    try:
-        from tiffintally.extract.base import SYSTEM_PROMPT
-    except Exception as exc:  # pragma: no cover - fails the deployment instead
-        raise RuntimeError(
-            "tiffintally.extract.base.SYSTEM_PROMPT did not load from the image. "
-            "The adapter must be served with the prompt it was trained on."
-        ) from exc
+    from tiffintally.extract.base import SYSTEM_PROMPT
+
+    # The adapter was trained against the app's own prompt, so the same prompt
+    # has to be served. A silent fallback would score the fallback rather than
+    # the model, and the number would look like a property of the checkpoint.
     if len(SYSTEM_PROMPT) < MIN_SYSTEM_PROMPT_CHARS:
         raise RuntimeError(
             f"SYSTEM_PROMPT is only {len(SYSTEM_PROMPT)} chars; expected the full "
             "rule set. Refusing to serve a different prompt than training used."
         )
 
-    use_adapter = bool(payload.get("use_adapter", True))
-    adapter_path = f"/vol/checkpoints/iteration_{adapter_iteration}"
+    adapter_path = f"/vol/checkpoints/iteration_{ADAPTER_ITERATION}"
     if use_adapter and not os.path.isdir(adapter_path):
-        return {"error": f"no adapter at {adapter_path}", "results": []}
+        raise RuntimeError(
+            f"no adapter at {adapter_path}. Train and save it to the volume first, "
+            "or pass use_adapter=false for the no-adapter control."
+        )
 
     dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    tokenizer_source = adapter_path if use_adapter else base_model
+    tokenizer_source = adapter_path if use_adapter else BASE_MODEL
+
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    # One forward pass per batch. Generating message by message took about 6 s
+    # each, so a 20-message paste hit the endpoint timeout and came back a 500.
+    tokenizer.padding_side = "left"
 
     model = AutoModelForCausalLM.from_pretrained(
-        base_model,
+        BASE_MODEL,
         torch_dtype=dtype,
         device_map="auto",
         attn_implementation="sdpa",
     )
     if use_adapter:
         model = PeftModel.from_pretrained(model, adapter_path)
-        served_model = f"{base_model}+lora-iteration_{adapter_iteration}"
+        served_model = f"{BASE_MODEL}+lora-iteration_{ADAPTER_ITERATION}"
     else:
-        # The control: the same prompt and the same parser, with no adapter.
-        served_model = f"{base_model} (no adapter)"
+        # The control: same prompt, same parser, no adapter.
+        served_model = f"{BASE_MODEL} (no adapter)"
     model.eval()
 
-    messages = payload.get("messages") or []
-    results = []
-    raws = []
-    latencies = []
-    repaired_total = 0
+    _MODELS[use_adapter] = {
+        "model": model,
+        "tokenizer": tokenizer,
+        "system_prompt": SYSTEM_PROMPT,
+        "served_model": served_model,
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+    }
+    return _MODELS[use_adapter]
 
-    prompts = []
-    for item in messages:
-        sender = item.get("sender", "Customer")
-        text = item.get("text", "")
-        chat = [
-            {"role": "system", "content": SYSTEM_PROMPT.strip()},
-            {"role": "user", "content": f"Sender: {sender}\nMessage: {text}"},
-        ]
-        prompts.append(
-            tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
-        )
 
-    # One forward pass per batch, not per message. Generating message by message
-    # took ~6 s each, so a 20-message paste hit the endpoint's 120 s timeout and
-    # the whole request came back as a 500.
-    tokenizer.padding_side = "left"
-    if not prompts:
-        return {
-            "model": served_model,
-            "system_prompt_chars": len(SYSTEM_PROMPT),
-            "results": [],
-            "raw": [],
-            "count": 0,
-            "empty_results": 0,
-            "repaired_blocks": 0,
-            "latency_p50_ms": 0.0,
-            "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
-        }
+def _generate(loaded: dict, prompts: list) -> list:
+    """Batched greedy decode. One forward pass for the whole batch."""
+    import torch
 
-    started = time.perf_counter()
+    model = loaded["model"]
+    tokenizer = loaded["tokenizer"]
     inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
     with torch.no_grad():
         out = model.generate(
@@ -175,28 +180,125 @@ def extract_batch(
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
-    latencies.append((time.perf_counter() - started) * 1000)
-
     generated = out[:, inputs["input_ids"].shape[1] :]
-    decoded = tokenizer.batch_decode(generated, skip_special_tokens=True)
+    return [text.strip() for text in tokenizer.batch_decode(generated, skip_special_tokens=True)]
 
+
+def check_bearer(headers) -> None:
+    """401 unless the request carries the token from the Modal secret.
+
+    The endpoint costs GPU credit per call. An unauthenticated one lets anyone
+    who reads the repo run inference on the owner's account.
+    """
+    import secrets as _secrets
+
+    from fastapi import HTTPException
+
+    expected = os.environ.get("TIFFINTALLY_EXTRACT_TOKEN", "")
+    provided = ""
+    if headers:
+        raw = headers.get("authorization") or headers.get("Authorization") or ""
+        if raw.lower().startswith("bearer "):
+            provided = raw[7:].strip()
+
+    if not expected:
+        # 503, not 401: the deployment is misconfigured rather than the caller
+        # being wrong. Either way this is not retryable, and tiffintally/extract/
+        # gemma.py treats 401/403 as terminal so it stops instead of spending a
+        # second GPU call re-sending a token that can never be accepted.
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "TIFFINTALLY_EXTRACT_TOKEN is not set on the deployment. Create "
+                "the Modal secret 'tiffintally-extract-token' and redeploy; the "
+                "endpoint must not run unauthenticated."
+            ),
+        )
+    if not provided or not _secrets.compare_digest(provided, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="unauthorized: send Authorization: Bearer <token>",
+        )
+
+
+def _build_payload(messages: list, system_prompt: str, tokenizer) -> list:
+    prompts = []
+    for item in messages:
+        chat = [
+            {"role": "system", "content": system_prompt.strip()},
+            {
+                "role": "user",
+                "content": f"Sender: {item.get('sender', 'Customer')}\n"
+                f"Message: {item.get('text', '')}",
+            },
+        ]
+        prompts.append(
+            tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+        )
+    return prompts
+
+
+@app.function(
+    image=image,
+    gpu="A10G",
+    timeout=900,
+    scaledown_window=300,
+    volumes={"/vol": volume},
+    secrets=[TOKEN_SECRET],
+)
+@modal.fastapi_endpoint(method="POST", docs=False)
+def api(payload: dict, authorization: str = Header(default="")) -> dict:
+    """Authenticated batched extraction. One HTTP round trip per <=40 messages.
+
+    `Header` is not decoration. Modal builds the route from this signature, and
+    a bare `authorization: str = ""` becomes a *query* parameter, so the token
+    would arrive as `?authorization=...` and be written to Modal's access logs.
+    Declaring it as a header keeps the secret out of the URL.
+    """
+    import time
+
+    check_bearer({"authorization": authorization})
+
+    messages = payload.get("messages") or []
+    use_adapter = bool(payload.get("use_adapter", True))
+    loaded = _get_model(use_adapter)
+
+    empty = {
+        "model": loaded["served_model"],
+        "system_prompt_chars": len(loaded["system_prompt"]),
+        "results": [],
+        "raw": [],
+        "count": 0,
+        "empty_results": 0,
+        "repaired_blocks": 0,
+        "latency_p50_ms": 0.0,
+        "gpu": loaded["gpu"],
+    }
+    if not messages:
+        return empty
+
+    prompts = _build_payload(messages, loaded["system_prompt"], loaded["tokenizer"])
+    started = time.perf_counter()
+    decoded = _generate(loaded, prompts)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+
+    results, raws, repaired_total = [], [], 0
     for raw in decoded:
-        raw = raw.strip()
         events, fixed = _parse(raw)
         results.append(events)
         raws.append(raw[:400])
         repaired_total += fixed
 
     return {
-        "model": served_model,
-        "system_prompt_chars": len(SYSTEM_PROMPT),
+        "model": loaded["served_model"],
+        "system_prompt_chars": len(loaded["system_prompt"]),
         "results": results,
         "raw": raws,
         "count": len(results),
         "empty_results": sum(1 for r in results if not r),
         "repaired_blocks": repaired_total,
-        "latency_p50_ms": round(sorted(latencies)[len(latencies) // 2], 1) if latencies else 0.0,
-        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+        "latency_p50_ms": round(elapsed_ms, 1),
+        "gpu": loaded["gpu"],
     }
 
 
@@ -371,18 +473,12 @@ def _parse(raw: str) -> tuple:
     return events, 1 if events else 0
 
 
-@app.function(image=image, timeout=900, scaledown_window=300)
-@modal.fastapi_endpoint(method="POST", docs=True)
-def api(payload: dict) -> dict:
-    """HTTP entry point used by tiffintally/extract/gemma.py."""
-    return extract_batch.remote(payload)
-
-
 @app.local_entrypoint()
-def main(messages: str = "", iteration: str = ADAPTER_ITERATION):
-    if messages:
-        payload = json.loads(messages)
-        print(json.dumps(extract_batch.remote(payload, adapter_iteration=iteration), indent=2))
-    else:
-        print("Deploy with: modal deploy scripts/modal_serve.py")
-        print(f"Adapter iteration: {iteration}, base model: {BASE_MODEL}")
+def main():
+    print("This app serves over HTTP only. Deploy with:")
+    print("    modal secret create tiffintally-extract-token")
+    print("    modal deploy scripts/modal_serve.py")
+    print()
+    print(f"Adapter iteration: {ADAPTER_ITERATION}, base model: {BASE_MODEL}")
+    print("Licence: the Qwen2.5-3B base is non-commercial (qwen-research).")
+    print("Built with Qwen.")

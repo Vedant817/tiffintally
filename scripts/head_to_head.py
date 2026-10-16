@@ -14,8 +14,13 @@ Writes evals/runs/<ts>/head_to_head.json and prints a table. RESULTS.md is not
 touched.
 
 Usage:
-    MODAL_EXTRACTOR_URL=https://<app>--tiffintally-extract-api.us-east.modal.run \\
+    MODAL_EXTRACTOR_URL=https://<app>--<fn>.modal.run \\
+    MODAL_EXTRACTOR_TOKEN=<same value as the Modal secret> \\
         uv run python scripts/head_to_head.py
+
+Both variables are required. The endpoint is authenticated; there is no default
+URL, because a hard-coded one published in this repo was a way for anyone to
+spend the owner's GPU credit.
 """
 
 import json
@@ -66,10 +71,28 @@ def regex_predict(text: str, sender: str) -> dict:
     }
 
 
-def model_predict(rows: list, url: str, batch_size: int = 20, use_adapter: bool = True) -> tuple:
-    """Call the served endpoint and return predictions aligned with `rows`."""
+def model_predict(
+    rows: list,
+    url: str,
+    token: str,
+    batch_size: int = 20,
+    use_adapter: bool = True,
+) -> tuple:
+    """Call the served endpoint and return predictions aligned with `rows`.
+
+    `token` is the bearer for the authenticated endpoint. It is required, not
+    optional: an earlier version sent no credentials to an open GPU endpoint,
+    which let anyone reading the repo spend the owner's credit.
+    """
     import httpx
 
+    if not token:
+        raise SystemExit(
+            "MODAL_EXTRACTOR_TOKEN is not set. The endpoint requires "
+            "Authorization: Bearer <token>. See docs/DEPLOY.md."
+        )
+
+    headers = {"Authorization": f"Bearer {token}"}
     predictions = [None] * len(rows)
     metadata = {
         "model": "unknown",
@@ -93,7 +116,7 @@ def model_predict(rows: list, url: str, batch_size: int = 20, use_adapter: bool 
             ],
         }
         began = time.perf_counter()
-        response = httpx.post(url, json=payload, timeout=900.0)
+        response = httpx.post(url, json=payload, timeout=900.0, headers=headers)
         response.raise_for_status()
         body = response.json()
 
@@ -135,10 +158,17 @@ def score(predictions: list, golds: list) -> dict:
 
 
 def main() -> int:
-    url = os.getenv(
-        "MODAL_EXTRACTOR_URL",
-        "https://vedantmahajan271--tiffintally-extract-api.us-east.modal.run",
-    )
+    # Both from the environment. A default URL baked into a script published in
+    # a public repo is a default way to spend the owner's GPU credit.
+    url = os.getenv("MODAL_EXTRACTOR_URL", "").strip()
+    token = os.getenv("MODAL_EXTRACTOR_TOKEN", "").strip()
+    if not url:
+        print(
+            "MODAL_EXTRACTOR_URL is not set. Deploy scripts/modal_serve.py and "
+            "export the URL Modal prints. See docs/DEPLOY.md.",
+            file=sys.stderr,
+        )
+        return 1
     dataset = Path(os.getenv("H2H_DATASET", "data/synthetic/test.jsonl"))
     rows = load(dataset)
     if not rows:
@@ -154,7 +184,7 @@ def main() -> int:
 
     regex_preds = [regex_predict(t, s) for t, s in zip(texts, senders)]
     print("regex done, calling the served model...")
-    model_preds, metadata = model_predict(rows, url)
+    model_preds, metadata = model_predict(rows, url, token)
 
     regex_score = score(regex_preds, golds)
     model_score = score(model_preds, golds)
@@ -209,7 +239,7 @@ def main() -> int:
     base_metadata = None
     if os.getenv("H2H_CONTROL", "1") not in {"0", "false", "no"}:
         print("control: same prompt, same parser, no adapter...")
-        base_preds, base_metadata = model_predict(rows, url, use_adapter=False)
+        base_preds, base_metadata = model_predict(rows, url, token, use_adapter=False)
         base_score = score(base_preds, golds)
 
     payload["base_model_no_adapter"] = base_score
