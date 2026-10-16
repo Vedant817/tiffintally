@@ -1,0 +1,37 @@
+{
+  "system": "regex",
+  "runs": [
+    {
+      "seed": 0,
+      "batch_size": 1,
+      "n": 50,
+      "flips": []
+    },
+    {
+      "seed": 1,
+      "batch_size": 2,
+      "n": 50,
+      "flips": []
+    },
+    {
+      "seed": 2,
+      "batch_size": 7,
+      "n": 50,
+      "flips": []
+    },
+    {
+      "seed": 3,
+      "batch_size": 20,
+      "n": 50,
+      "flips": []
+    },
+    {
+      "seed": 4,
+      "batch_size": 40,
+      "n": 50,
+      "flips": []
+    }
+  ],
+  "gpu": "NOT RUN (needs approval)",
+  "historical_adapter_variance": "NOT REPRODUCIBLE: no complete saved predictions; neither verified nor disproved."
+}

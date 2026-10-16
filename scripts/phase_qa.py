@@ -40,6 +40,18 @@ def main():
             ]
             for seed in (0, 1, 42, 271)
         ]
+    if phase in {"phase4", "phase5", "phase6", "final"}:
+        commands += [
+            [python, "-m", "tiffintally.cli", "eval", "--out", str(clone.parent / "offline-eval")],
+            [python, "scripts/leakage_report.py", "--check-known"],
+            [
+                python,
+                "scripts/compare.py",
+                "evals/final/regex/test.jsonl",
+                "evals/final/regex/test.jsonl",
+            ],
+            [python, "scripts/publish_results.py", "--check"],
+        ]
     lines = [
         f"# {phase}: clean-clone QA",
         "",

@@ -72,7 +72,9 @@ def main():
         dev_in_train=True,
         dev2_rows=len(rows),
         dev2_templates=len(TEMPLATES),
-        dev2_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        dev2_sha256=hashlib.sha256(
+            path.read_text(encoding="utf-8").replace("\n", "\r\n").encode()
+        ).hexdigest(),
         rule="Agent-authored synthetic tuning only; not a real or blind holdout. Frozen legacy files untouched.",
     )
     Path("data/synthetic/split_report_v2.json").write_text(

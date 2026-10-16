@@ -96,26 +96,23 @@ def export_sft(
 
 
 @eval_app.callback(invoke_without_command=True)
-def eval_default(ctx: typer.Context):
+def eval_default(
+    ctx: typer.Context, out: Path = typer.Option(Path("evals/final/offline"), "--out")
+):
     """Run the suite when no subcommand is given, so `eval` is never "Missing command"."""
     if ctx.invoked_subcommand is None:
-        ctx.invoke(eval_all)
+        ctx.invoke(eval_all, out=out)
 
 
 @eval_app.command("all")
-def eval_all():
-    """Run the eval suite. Writes evals/runs/<ts>/ only. Never touches RESULTS.md."""
+def eval_all(out: Path = typer.Option(Path("evals/final/offline"), "--out")):
+    """Run offline evaluation with saved per-row predictions."""
     from tiffintally.eval import run_full_evaluation_suite
 
     console.print("[bold yellow]Running comprehensive TiffinTally evaluations...[/bold yellow]")
-    results = run_full_evaluation_suite()
-    console.print(
-        f"[bold green]Evaluations complete.[/bold green] Run directory: {results['run_dir']}"
-    )
-    console.print(f"Report: [cyan]{results['report_path']}[/cyan]")
-    console.print(
-        "[dim]RESULTS.md is hand-written from these runs and is never regenerated here.[/dim]"
-    )
+    results = run_full_evaluation_suite(out=out)
+    console.print(results)
+    console.print(f"Saved per-row predictions and summary under {out}")
 
 
 if __name__ == "__main__":

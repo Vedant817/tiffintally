@@ -71,13 +71,30 @@ def main():
     registered = {
         (c["file"], c["number"], c["context"]) for c in json.loads(registry.read_text())["claims"]
     }
+    from scripts.publish_results import END, START, generated
+
+    generated_files = generated()
+    for name in ("README.md", "RESULTS.md", "evals/dashboard.html"):
+        expected = generated_files[name]
+        if name == "README.md":
+            expected = expected.split(START, 1)[1].split(END, 1)[0]
+        for line in expected.splitlines():
+            for match in PATTERN.finditer(line):
+                registered.add((name, match.group(), line.strip()))
+    drifted = [
+        name
+        for name, content in generated_files.items()
+        if not (ROOT / name).exists() or (ROOT / name).read_text(encoding="utf-8") != content
+    ]
     missing = [c for c in claims() if (c["file"], c["number"], c["context"]) not in registered]
     for claim in missing:
         print(f"UNREGISTERED {claim['file']}:{claim['line']}: {claim['number']}")
+    for name in drifted:
+        print(f"GENERATED EVIDENCE DRIFT: {name}")
     print(
-        f"{'FAIL' if missing else 'PASS'}: claim registration (historical entries remain unverified)"
+        f"{'FAIL' if missing or drifted else 'PASS'}: source-backed current claims; historical entries remain unverified"
     )
-    return bool(missing)
+    return bool(missing or drifted)
 
 
 if __name__ == "__main__":
