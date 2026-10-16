@@ -1,0 +1,161 @@
+{
+  "status": "UNVERIFIED HISTORICAL CLAIMS; not measurements",
+  "claims": [
+    {
+      "file": "README.md",
+      "line": 19,
+      "number": "84.0%",
+      "context": "`evals/modal_run_iter_1.json` through `modal_run_iter_30.json` are retracted Qwen2.5-0.5B logs. `evals/modal_run_iter_31.json` is a later Qwen2.5-3B LoRA run on the template-disjoint synthetic test: 84.0% exact match on 50 rows (meal, qty, action, mods, and date). That file is the source. The app does not serve the adapter. See `RESULTS.md`."
+    },
+    {
+      "file": "RESULTS.md",
+      "line": 9,
+      "number": "100%",
+      "context": "- \"100% exact match on 50 real WhatsApp messages.\" The file was `data/synthetic/real_benchmark_starter.jsonl`. It was generated with the synthetic set. Most of its texts also appeared in training. It has been removed."
+    },
+    {
+      "file": "RESULTS.md",
+      "line": 12,
+      "number": "100%",
+      "context": "- The edge table (about 286 ms, 8.6 MB, 100% EM). `benchmark-edge` slept and printed constants. It now refuses."
+    },
+    {
+      "file": "RESULTS.md",
+      "line": 39,
+      "number": "84.0%",
+      "context": "- Held-out synthetic test: 50 rows, template-disjoint from train (`data/synthetic/split_report.json`, text overlap 0). Exact match 84.0% on meal, qty, action, mods, and date together. 8 failures. Match rates in the file are labelled `meal_f1` 0.98, `quantity_f1` 0.98, `action_f1` 1.0, `mods_f1` 0.9. Those four fields are correct-count divided by 50, not an F1 score."
+    },
+    {
+      "file": "post.md",
+      "line": 7,
+      "number": "100%",
+      "context": "# The 10pm notebook problem, without the fake 100%"
+    },
+    {
+      "file": "post.md",
+      "line": 21,
+      "number": "84.0%",
+      "context": "If `GOOGLE_API_KEY` is set, extraction calls Gemma and sends the key in a header, not the query string. If it is not set, the page says \"rules fallback\". The fine-tunes that ran on Modal were a 0.5B Qwen LoRA, plus one later 3B LoRA scored at 84.0% on 50 synthetic held-out rows. Neither adapter is wired into this app. I am not going to pretend the sheet is using it."
+    },
+    {
+      "file": "post.md",
+      "line": 27,
+      "number": "100%",
+      "context": "I published a 100% exact match on \"50 real WhatsApp messages\". The file lived in `data/synthetic/`, it was produced by the generator, and most of those strings were also in the training file. The test split had the same problem: hundreds of test rows were copied into train. A model can memorise that and look perfect."
+    },
+    {
+      "file": "post.md",
+      "line": 31,
+      "number": "84.0%",
+      "context": "The Tinker write-up described a 3B LoRA on Thinking Machines' platform. Runs 1\u201330 were Qwen2.5-0.5B on Modal. Run 31 was Qwen2.5-3B on the same platform, 84.0% exact match on synthetic held-out text, with no real cook set. The Tinker client posted to a host that does not exist and, with no key, returned the regex under a model name. Those early \"Gemma\" and \"Tinker\" eval files have the same scores and a latency under a millisecond. That is the regex. I deleted the claim. `benchmark-edge` slept and printed catalog numbers, including a 100% and a Raspberry Pi latency. It now exits with an error."
+    },
+    {
+      "file": "post.md",
+      "line": 31,
+      "number": "100%",
+      "context": "The Tinker write-up described a 3B LoRA on Thinking Machines' platform. Runs 1\u201330 were Qwen2.5-0.5B on Modal. Run 31 was Qwen2.5-3B on the same platform, 84.0% exact match on synthetic held-out text, with no real cook set. The Tinker client posted to a host that does not exist and, with no key, returned the regex under a model name. Those early \"Gemma\" and \"Tinker\" eval files have the same scores and a latency under a millisecond. That is the regex. I deleted the claim. `benchmark-edge` slept and printed catalog numbers, including a 100% and a Raspberry Pi latency. It now exits with an error."
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 32,
+      "number": "100%",
+      "context": "table { width:100%; border-collapse:collapse; font-size:.9rem; }"
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 38,
+      "number": "34%",
+      "context": ".grid tbody th { font-weight:500; color:var(--muted); width:34%; }"
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 73,
+      "number": "88.0%",
+      "context": "<div class=\"v\">88.0%</div>"
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 76,
+      "number": "78.0%",
+      "context": "<div class=\"v\">78.0%</div>"
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 88,
+      "number": "78.0%",
+      "context": "<table class=\"grid\"><thead><tr><th>Field</th><th>Regex (on device)</th><th>Qwen2.5-3B, no adapter</th><th>Qwen2.5-3B + LoRA</th></tr></thead><tbody><tr class=\"strong\"><th>Exact match</th><td class=\"\">78.0%</td><td class=\"\">66.0%</td><td class=\"hl\">88.0%</td></tr><tr><th>Meal</th><td class=\"\">0.940</td><td class=\"\">0.960</td><td class=\"hl\">0.980</td></tr><tr><th>Quantity</th><td class=\"\">1.000</td><td class=\"\">0.840</td><td class=\"hl\">0.980</td></tr><tr><th>Action</th><td class=\"\">0.980</td><td class=\"\">1.000</td><td class=\"hl\">1.000</td></tr><tr><th>Dietary mods</th><td class=\"\">0.840</td><td class=\"\">0.820</td><td class=\"hl\">0.900</td></tr></tbody></table>"
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 88,
+      "number": "66.0%",
+      "context": "<table class=\"grid\"><thead><tr><th>Field</th><th>Regex (on device)</th><th>Qwen2.5-3B, no adapter</th><th>Qwen2.5-3B + LoRA</th></tr></thead><tbody><tr class=\"strong\"><th>Exact match</th><td class=\"\">78.0%</td><td class=\"\">66.0%</td><td class=\"hl\">88.0%</td></tr><tr><th>Meal</th><td class=\"\">0.940</td><td class=\"\">0.960</td><td class=\"hl\">0.980</td></tr><tr><th>Quantity</th><td class=\"\">1.000</td><td class=\"\">0.840</td><td class=\"hl\">0.980</td></tr><tr><th>Action</th><td class=\"\">0.980</td><td class=\"\">1.000</td><td class=\"hl\">1.000</td></tr><tr><th>Dietary mods</th><td class=\"\">0.840</td><td class=\"\">0.820</td><td class=\"hl\">0.900</td></tr></tbody></table>"
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 88,
+      "number": "88.0%",
+      "context": "<table class=\"grid\"><thead><tr><th>Field</th><th>Regex (on device)</th><th>Qwen2.5-3B, no adapter</th><th>Qwen2.5-3B + LoRA</th></tr></thead><tbody><tr class=\"strong\"><th>Exact match</th><td class=\"\">78.0%</td><td class=\"\">66.0%</td><td class=\"hl\">88.0%</td></tr><tr><th>Meal</th><td class=\"\">0.940</td><td class=\"\">0.960</td><td class=\"hl\">0.980</td></tr><tr><th>Quantity</th><td class=\"\">1.000</td><td class=\"\">0.840</td><td class=\"hl\">0.980</td></tr><tr><th>Action</th><td class=\"\">0.980</td><td class=\"\">1.000</td><td class=\"hl\">1.000</td></tr><tr><th>Dietary mods</th><td class=\"\">0.840</td><td class=\"\">0.820</td><td class=\"hl\">0.900</td></tr></tbody></table>"
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 118,
+      "number": "66.0%",
+      "context": "66.0%,"
+    },
+    {
+      "file": "evals/dashboard.html",
+      "line": 120,
+      "number": "88.0%",
+      "context": "88.0%."
+    },
+    {
+      "file": "docs/DECISIONS.md",
+      "line": 3,
+      "number": "100%",
+      "context": "14 Oct 2026: the bullets below that name Tinker, TabPFN, Render, a live .tech domain, a real 50-message set, or \"100% local\" are plans from before the red-team pass. They are not the current system. The running extractor without a key is the regex. Fallback must be labelled as fallback. There is no Dockerfile and no live deploy."
+    },
+    {
+      "file": "docs/DECISIONS.md",
+      "line": 8,
+      "number": "100%",
+      "context": "- **Consequences:** If any hosted vendor demands a card to access API credits or deploy tiers, that path is bypassed immediately. We use verified free tiers (Google AI Studio Gemma free tier, Render free tier, Prior Labs TabPFN free quota, ElevenLabs free tier). If an external API is unavailable or unkeyed, fallback pipelines (cached runs, rule heuristics, local mock extractor) keep the app 100% functional."
+    },
+    {
+      "file": "docs/DECISIONS.md",
+      "line": 31,
+      "number": "100%",
+      "context": "- **Decision:** The LLM is used solely as an information extractor to parse unstructured Hinglish chat lines into atomic `OrderEvent` records. The reconciler is a pure, deterministic, 100% unit-tested Python module that handles cutoff rules, cancellations, modifications, dish totals, and ledger math."
+    },
+    {
+      "file": "docs/DECISIONS.md",
+      "line": 32,
+      "number": "100%",
+      "context": "- **Consequences:** 100% reproducible math, testable edge cases, and zero arithmetic hallucination."
+    },
+    {
+      "file": "docs/DECISIONS.md",
+      "line": 37,
+      "number": "80%",
+      "context": "- Synthetic dataset (\u2265600 rows): Seeded, reproducible, split 80% train / 20% test."
+    },
+    {
+      "file": "docs/DECISIONS.md",
+      "line": 37,
+      "number": "20%",
+      "context": "- Synthetic dataset (\u2265600 rows): Seeded, reproducible, split 80% train / 20% test."
+    },
+    {
+      "file": "docs/QUESTIONS.md",
+      "line": 30,
+      "number": "78.0%",
+      "context": "The 78.0% / 88.0% figures in `RESULTS.md` were measured on the old client, which"
+    },
+    {
+      "file": "docs/QUESTIONS.md",
+      "line": 30,
+      "number": "88.0%",
+      "context": "The 78.0% / 88.0% figures in `RESULTS.md` were measured on the old client, which"
+    }
+  ]
+}
