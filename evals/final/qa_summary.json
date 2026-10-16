@@ -1,0 +1,11 @@
+{
+  "source_code_sha": "9532f00916e2fe4c956670a0997e6d57a86ac3df",
+  "tests_passed": 293,
+  "expected_failures": 4,
+  "artifact": "evidence/final-qa.md",
+  "artifact_sha256": "8e61800fcd4a790d307be9d957625fe4578ff6fa24426645b84f9e8d1bf89643",
+  "environment": "fresh clone and its own uv-installed environment",
+  "status": "PASS",
+  "original_probes": "NOT SUPPLIED",
+  "hosted_models": "NOT RUN"
+}
