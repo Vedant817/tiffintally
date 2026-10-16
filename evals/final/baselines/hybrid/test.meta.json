@@ -1,0 +1,19 @@
+{
+  "dataset": "data\\synthetic\\test.jsonl",
+  "dataset_sha256": "6e9f49ed006fc638210a64fc9a1246e6378fb87c68e10e0932e77a142e9509bd",
+  "system": "hybrid_offline_rules_only",
+  "prompt_sha256": "7e9e1c1ec8d9e6535abedb695bef6dccfc0d65906b77e308f8ab6b6669aeed42",
+  "code_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+  "n": 50,
+  "adapter_id": null,
+  "adapter_sha": null,
+  "max_new_tokens": null,
+  "batch_size": 1,
+  "dtype": null,
+  "decoding": "deterministic rules",
+  "date": "2026-10-16T11:32:56.068513+00:00",
+  "llm_rows": 0,
+  "deferred": 5,
+  "requested_batch_size": 20,
+  "status": "INCOMPLETE: flagged rows deferred"
+}

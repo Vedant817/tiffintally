@@ -1,0 +1,253 @@
+{
+  "n": 50,
+  "templates": 36,
+  "discordant_left_only": 0,
+  "discordant_right_only": 0,
+  "exact_mcnemar_p": 1.0,
+  "delta_right_minus_left": 0.0,
+  "template_clustered_95": [
+    0.0,
+    0.0
+  ],
+  "bootstrap_draws": 20000,
+  "seed": 271,
+  "left": {
+    "n": 50,
+    "strict": {
+      "hits": 35,
+      "accuracy": 0.7,
+      "wilson_95": [
+        0.562496495355466,
+        0.8089644649911906
+      ]
+    },
+    "lenient": {
+      "hits": 47,
+      "accuracy": 0.94,
+      "wilson_95": [
+        0.8378290831116182,
+        0.979385029651026
+      ]
+    },
+    "chitchat": {
+      "n": 2,
+      "strict_hits": 2
+    },
+    "intent": {
+      "n": 48,
+      "strict_hits": 33
+    }
+  },
+  "right": {
+    "n": 50,
+    "strict": {
+      "hits": 35,
+      "accuracy": 0.7,
+      "wilson_95": [
+        0.562496495355466,
+        0.8089644649911906
+      ]
+    },
+    "lenient": {
+      "hits": 47,
+      "accuracy": 0.94,
+      "wilson_95": [
+        0.8378290831116182,
+        0.979385029651026
+      ]
+    },
+    "chitchat": {
+      "n": 2,
+      "strict_hits": 2
+    },
+    "intent": {
+      "n": 48,
+      "strict_hits": 33
+    }
+  },
+  "per_template": {
+    "tomorrow lunch {qty} please": {
+      "n": 8,
+      "delta": 0.0
+    },
+    "please pack {qty} thali for lunch": {
+      "n": 2,
+      "delta": 0.0
+    },
+    "do lunch aur ek dinner": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "lunch 1 dinner 1 kal": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "bina lehsun pyaaz ke {qty} thali dinner": {
+      "n": 2,
+      "delta": 0.0
+    },
+    "bina mirchi ke {qty} dabba dinner": {
+      "n": 6,
+      "delta": 0.0
+    },
+    "kam teekha do thali lunch me": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "1 thali lunch, replace curd with extra sabzi": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "lunch at 12:30 pm sharp, 1 dabba": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "dinner 2 thali tonight around 9 pm": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "aaj raat ka dinner nahi hoga, cancel": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "kal lunch mat bhejna aunty": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "cancel kal lunch": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "cancel tomorrow's lunch": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "Aunty please cancel dinner tonight, fever aa gaya hai": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "no tiffin for next 3 days, project submission chal raha hai": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "going home for Diwali, Sunday se next Thursday tak band rakhna": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "pause tiffin for weekend Saturday and Sunday": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "Sunday off please, going home for weekend": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "paid 1500 via PhonePe for this week": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "Aunty \u20b92100 transfer kiya GPay pe, last 2 weeks ka": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "Gulab jamun was so sweet thank you aunty": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "tomrw dinr cncl": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "dinr 1 no spic": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "dinnr cancl": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "\u0926\u094b\u092a\u0939\u0930 \u0915\u093e \u0916\u093e\u0928\u093e 2 \u0921\u092c\u094d\u092c\u093e": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "\u0916\u093e\u0928\u093e \u092c\u0939\u0941\u0924 \u0938\u094d\u0935\u093e\u0926\u093f\u0937\u094d\u091f \u0925\u093e \u0927\u0928\u094d\u092f\u0935\u093e\u0926": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "\u0915\u0932 \u0926\u094b\u092a\u0939\u0930 \u0915\u093e \u0916\u093e\u0928\u093e \u090f\u0915 \u092a\u094d\u0932\u0947\u091f": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "shaak rotli 2 dabba please lunch": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "rotli vadhare aapjo ek thali sathe": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "aunty ekdum kadak roti bhejna 1 thali dinner": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "dinner 2 thali, doorbell mat bajana baby so raha hai": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "lunch 1 plate, deliver at gate number 3": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "Diwali vacation tak tiffin off please": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "out of station for 4 days, stop tiffin": {
+      "n": 1,
+      "delta": 0.0
+    },
+    "going out of town from tomorrow till Friday, pause please": {
+      "n": 1,
+      "delta": 0.0
+    }
+  },
+  "leave_one_template_out": {
+    "tomorrow lunch {qty} please": 0.0,
+    "please pack {qty} thali for lunch": 0.0,
+    "do lunch aur ek dinner": 0.0,
+    "lunch 1 dinner 1 kal": 0.0,
+    "bina lehsun pyaaz ke {qty} thali dinner": 0.0,
+    "bina mirchi ke {qty} dabba dinner": 0.0,
+    "kam teekha do thali lunch me": 0.0,
+    "1 thali lunch, replace curd with extra sabzi": 0.0,
+    "lunch at 12:30 pm sharp, 1 dabba": 0.0,
+    "dinner 2 thali tonight around 9 pm": 0.0,
+    "aaj raat ka dinner nahi hoga, cancel": 0.0,
+    "kal lunch mat bhejna aunty": 0.0,
+    "cancel kal lunch": 0.0,
+    "cancel tomorrow's lunch": 0.0,
+    "Aunty please cancel dinner tonight, fever aa gaya hai": 0.0,
+    "no tiffin for next 3 days, project submission chal raha hai": 0.0,
+    "going home for Diwali, Sunday se next Thursday tak band rakhna": 0.0,
+    "pause tiffin for weekend Saturday and Sunday": 0.0,
+    "Sunday off please, going home for weekend": 0.0,
+    "paid 1500 via PhonePe for this week": 0.0,
+    "Aunty \u20b92100 transfer kiya GPay pe, last 2 weeks ka": 0.0,
+    "Gulab jamun was so sweet thank you aunty": 0.0,
+    "tomrw dinr cncl": 0.0,
+    "dinr 1 no spic": 0.0,
+    "dinnr cancl": 0.0,
+    "\u0926\u094b\u092a\u0939\u0930 \u0915\u093e \u0916\u093e\u0928\u093e 2 \u0921\u092c\u094d\u092c\u093e": 0.0,
+    "\u0916\u093e\u0928\u093e \u092c\u0939\u0941\u0924 \u0938\u094d\u0935\u093e\u0926\u093f\u0937\u094d\u091f \u0925\u093e \u0927\u0928\u094d\u092f\u0935\u093e\u0926": 0.0,
+    "\u0915\u0932 \u0926\u094b\u092a\u0939\u0930 \u0915\u093e \u0916\u093e\u0928\u093e \u090f\u0915 \u092a\u094d\u0932\u0947\u091f": 0.0,
+    "shaak rotli 2 dabba please lunch": 0.0,
+    "rotli vadhare aapjo ek thali sathe": 0.0,
+    "aunty ekdum kadak roti bhejna 1 thali dinner": 0.0,
+    "dinner 2 thali, doorbell mat bajana baby so raha hai": 0.0,
+    "lunch 1 plate, deliver at gate number 3": 0.0,
+    "Diwali vacation tak tiffin off please": 0.0,
+    "out of station for 4 days, stop tiffin": 0.0,
+    "going out of town from tomorrow till Friday, pause please": 0.0
+  },
+  "conclusion": "No superiority claim is supported."
+}

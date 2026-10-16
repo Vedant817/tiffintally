@@ -1,0 +1,58 @@
+[
+  {
+    "claim": "Primary identity comes from the source sender",
+    "implementation": "tiffintally/extract/gemma.py:464",
+    "evidence": "tests/test_modal_integration.py",
+    "last_verified_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+    "verification": "local tests; see evidence/final-qa.md"
+  },
+  {
+    "claim": "Payments need eligible session confirmation",
+    "implementation": "tiffintally/reconcile.py:652",
+    "evidence": "tests/test_modal_integration.py",
+    "last_verified_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+    "verification": "local tests; see evidence/final-qa.md"
+  },
+  {
+    "claim": "Duplicate source payments are credited once",
+    "implementation": "tiffintally/reconcile.py:655",
+    "evidence": "tests/test_modal_integration.py",
+    "last_verified_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+    "verification": "local tests; see evidence/final-qa.md"
+  },
+  {
+    "claim": "Token maps default to instance memory",
+    "implementation": "tiffintally/privacy.py:65",
+    "evidence": "tests/test_round4_privacy.py",
+    "last_verified_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+    "verification": "local tests; see evidence/final-qa.md"
+  },
+  {
+    "claim": "Sheet and ledger share daily replay",
+    "implementation": "tiffintally/reconcile.py:292",
+    "evidence": "tests/test_daily_invariants.py",
+    "last_verified_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+    "verification": "local tests; see evidence/final-qa.md"
+  },
+  {
+    "claim": "Session creation has a hard cap",
+    "implementation": "tiffintally/app.py:123",
+    "evidence": "tests/test_session_cap.py",
+    "last_verified_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+    "verification": "local tests; see evidence/final-qa.md"
+  },
+  {
+    "claim": "Private holdouts require provenance and freezing",
+    "implementation": "tiffintally/datasets.py:52",
+    "evidence": "tests/test_human_holdout.py",
+    "last_verified_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+    "verification": "local tests; see evidence/final-qa.md"
+  },
+  {
+    "claim": "Numerical tables rescore saved predictions",
+    "implementation": "scripts/publish_results.py:35",
+    "evidence": "evals/final/public_summary.json",
+    "last_verified_sha": "76acb4833e8b40b68a8fb977d8d598682f08574a",
+    "verification": "local tests; see evidence/final-qa.md"
+  }
+]

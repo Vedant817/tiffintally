@@ -1,0 +1,61 @@
+{
+  "measurements": [
+    {
+      "system": "regex",
+      "batch_size": 1,
+      "temperature": "first_pass_not_process_cold",
+      "n": 60,
+      "p50_ms": 0.43199999345233664,
+      "p95_ms": 0.6051000091247261,
+      "definition": "batch wall time divided by messages, not individual request latency"
+    },
+    {
+      "system": "regex",
+      "batch_size": 1,
+      "temperature": "warm",
+      "n": 60,
+      "p50_ms": 0.40675000491319224,
+      "p95_ms": 0.4680999991251156,
+      "definition": "batch wall time divided by messages, not individual request latency"
+    },
+    {
+      "system": "regex",
+      "batch_size": 20,
+      "temperature": "first_pass_not_process_cold",
+      "n": 60,
+      "p50_ms": 0.4034550001961179,
+      "p95_ms": 0.408035000145901,
+      "definition": "batch wall time divided by messages, not individual request latency"
+    },
+    {
+      "system": "regex",
+      "batch_size": 20,
+      "temperature": "warm",
+      "n": 60,
+      "p50_ms": 0.39443999994546175,
+      "p95_ms": 0.4277100000763312,
+      "definition": "batch wall time divided by messages, not individual request latency"
+    },
+    {
+      "system": "regex",
+      "batch_size": 40,
+      "temperature": "first_pass_not_process_cold",
+      "n": 60,
+      "p50_ms": 0.46157500000845175,
+      "p95_ms": 0.46157500000845175,
+      "definition": "batch wall time divided by messages, not individual request latency"
+    },
+    {
+      "system": "regex",
+      "batch_size": 40,
+      "temperature": "warm",
+      "n": 60,
+      "p50_ms": 0.45328500018513296,
+      "p95_ms": 0.45328500018513296,
+      "definition": "batch wall time divided by messages, not individual request latency"
+    }
+  ],
+  "hosted": "NOT RUN (needs approval)",
+  "cold_gpu": "NOT MEASURED",
+  "cost_per_1k": "NOT MEASURED (no billing record)"
+}

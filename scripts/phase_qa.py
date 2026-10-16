@@ -80,6 +80,23 @@ def main():
             ]
             for system in ("regex", "hybrid", "adapter")
         ]
+    if phase == "final":
+        commands += [
+            [python, "-c", "import tiffintally; print(tiffintally.__file__)"],
+            [
+                "git",
+                "diff",
+                "--exit-code",
+                "4c24ec6",
+                "--",
+                "data/synthetic/test.jsonl",
+                "data/synthetic/dev.jsonl",
+                "data/synthetic/train.jsonl",
+                "data/synthetic/split_report.json",
+            ],
+            ["gitleaks", "git", ".", "--redact", "--no-banner", "--log-opts=HEAD"],
+            ["git", "diff", "--exit-code"],
+        ]
     lines = [
         f"# {phase}: clean-clone QA",
         "",
