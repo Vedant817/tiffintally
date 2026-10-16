@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime, time, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional, Set, Tuple
 
 from tiffintally.dates import resolve_day_label
@@ -248,6 +249,9 @@ def _final_states(
     events: List[OrderEvent],
     target_date: str,
     as_of: datetime,
+    cutoff_time: Optional[time] = None,
+    cook_names: Optional[List[str]] = None,
+    accept_late_cancels: bool = False,
 ) -> Dict[Tuple[str, str, str], CustomerMealState]:
     """Replay events into the last known plate count per (customer, day, meal).
 
@@ -260,27 +264,30 @@ def _final_states(
     """
     state_map: Dict[Tuple[str, str, str], CustomerMealState] = {}
 
-    for ev in sorted(events, key=_sort_key):
-        label = (ev.date or "").strip().lower()
-        if label in {"", "unspecified", "ambiguous"} and ev.action not in {"none", "payment"}:
-            continue
-        if not event_matches_target(ev, target_date, as_of):
-            continue
-        if ev.needs_review or ev.audit_flags:
-            continue
-        if ev.action not in {"new", "change", "add", "cancel", "pause"}:
-            continue
-
-        day = label if label else (ev.timestamp or "")[:10]
-        day_map: Dict[Tuple[str, str], CustomerMealState] = {}
-        _apply_event(ev, day_map)
-        for (cust, meal), st in day_map.items():
-            state_map[(cust, day, meal)] = st
+    days = {
+        calendar_day(ev.date, evening_reference(parse_timestamp(ev.timestamp), as_of))
+        for ev in events
+        if ev.action not in {"none", "payment"}
+    }
+    target = calendar_day(target_date, as_of)
+    if target_date != "any":
+        days = {target} if target else set()
+    for day in sorted(day for day in days if day is not None):
+        _, day_map = _replay_day(
+            events,
+            day.isoformat(),
+            cutoff_time=cutoff_time,
+            as_of=as_of,
+            cook_names=cook_names,
+            accept_late_cancels=accept_late_cancels,
+        )
+        for (cust, meal), state in day_map.items():
+            state_map[(cust, day.isoformat(), meal)] = state
 
     return state_map
 
 
-def reconcile_orders(
+def _replay_day(
     events: List[OrderEvent],
     target_date: str = "tomorrow",
     cutoff_time: Optional[time] = None,
@@ -288,7 +295,7 @@ def reconcile_orders(
     as_of: Optional[datetime] = None,
     cook_names: Optional[List[str]] = None,
     accept_late_cancels: bool = False,
-) -> DailyPrepSheet:
+) -> tuple[DailyPrepSheet, Dict[Tuple[str, str], CustomerMealState]]:
     """
     Apply events in time order.
     Returns the complete DailyPrepSheet.
@@ -300,7 +307,9 @@ def reconcile_orders(
     default they are shown as a pending reduction instead: a late cancel saves
     food, but only the cook knows whether she has already packed it.
     """
+    as_of = parse_timestamp(as_of) if isinstance(as_of, str) else as_of
     as_of = as_of or datetime.now()
+    events = [ev.model_copy(deep=True) for ev in events]
     resolved_target = calendar_day(target_date, as_of)
     sheet_date = resolved_target.isoformat() if resolved_target else target_date
     prep_sheet = DailyPrepSheet(date=sheet_date)
@@ -314,7 +323,9 @@ def reconcile_orders(
             state_map[(cust.lower(), "lunch")] = st
 
     cooks = _cook_names(cook_names)
-    conflicting = _conflicting_quantities(events)
+    conflicting = _conflicting_quantities(
+        [ev for ev in events if event_matches_target(ev, target_date, as_of)]
+    )
     cook_message_count = 0
 
     # 1. Deduplication. A forwarded message repeated twice is one order.
@@ -346,7 +357,7 @@ def reconcile_orders(
 
     # Flag re-statements before anything is applied, so the change is visible on
     # the sheet even though the later count is the one that gets used.
-    _flag_restatements(sorted_events)
+    _flag_restatements([ev for ev in sorted_events if event_matches_target(ev, target_date, as_of)])
 
     # 3. Process events chronologically.
     for ev in sorted_events:
@@ -407,8 +418,10 @@ def reconcile_orders(
             continue
 
         # A row the cook has to judge is not applied to the sheet.
-        if ev.needs_review or any(
-            f.startswith(("prompt_injection", "excessive_quantity")) for f in ev.audit_flags
+        if (
+            ev.needs_review
+            or ev.confidence < 0.70
+            or any(f.startswith(("prompt_injection", "excessive_quantity")) for f in ev.audit_flags)
         ):
             continue
 
@@ -484,7 +497,37 @@ def reconcile_orders(
         sheet_state_qty(state_map, ev) for ev in prep_sheet.late_cancellations
     )
 
-    return prep_sheet
+    return prep_sheet, state_map
+
+
+def reconcile_orders(
+    events: List[OrderEvent],
+    target_date: str = "tomorrow",
+    cutoff_time: Optional[time] = None,
+    standing_orders: Optional[Dict[str, int]] = None,
+    as_of: Optional[datetime] = None,
+    cook_names: Optional[List[str]] = None,
+    accept_late_cancels: bool = False,
+) -> DailyPrepSheet:
+    """Pure projection of the shared daily replay used by the ledger."""
+    return _replay_day(
+        events, target_date, cutoff_time, standing_orders, as_of, cook_names, accept_late_cancels
+    )[0]
+
+
+def plates_by_day(
+    events: List[OrderEvent],
+    *,
+    target_date: str = "any",
+    as_of: Optional[datetime] = None,
+    cutoff_time: Optional[time] = None,
+    cook_names: Optional[List[str]] = None,
+    accept_late_cancels: bool = False,
+):
+    states = _final_states(
+        events, target_date, as_of or datetime.now(), cutoff_time, cook_names, accept_late_cancels
+    )
+    return {key: state.qty for key, state in states.items()}
 
 
 def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealState]) -> None:
@@ -502,10 +545,9 @@ def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealSt
     # plates on the sheet and two plates on the bill.
     if ev.action in {"cancel", "pause"}:
         for meal in meals:
-            key = (ev.customer.strip().lower(), meal)
-            st = state_map.setdefault(
-                key, CustomerMealState(customer=ev.customer.strip(), meal=meal)
-            )
+            recipient = ev.secondary_customer or ev.customer
+            key = (recipient.strip().lower(), meal)
+            st = state_map.setdefault(key, CustomerMealState(customer=recipient.strip(), meal=meal))
             st.qty = 0
             st.items = []
             st.mods = []
@@ -517,11 +559,11 @@ def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealSt
 
     # "roommate Priya ke liye bhi ek" is a second plate, not a replacement.
     allocations: List[Tuple[str, int]] = []
-    if ev.secondary_customer and ev.qty > 1:
-        allocations.append((ev.customer, ev.qty - 1))
-        allocations.append((ev.secondary_customer, 1))
+    if ev.secondary_customer and ev.qty >= ev.secondary_qty:
+        allocations.append((ev.customer, ev.qty - ev.secondary_qty))
+        allocations.append((ev.secondary_customer, ev.secondary_qty))
     elif ev.secondary_customer:
-        allocations.append((ev.secondary_customer, 1))
+        return  # Impossible allocation, never invent plates.
     else:
         allocations.append((ev.customer, ev.qty))
 
@@ -538,6 +580,7 @@ def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealSt
             else:
                 st.qty = qty
                 st.items = list(ev.items) if ev.items else (st.items or ["thali"])
+            st.is_paused = False
             if ev.mods:
                 st.mods.extend(m for m in ev.mods if m not in st.mods)
 
@@ -549,6 +592,9 @@ def reconcile_ledger(
     target_date: str = "any",
     as_of: Optional[datetime] = None,
     confirmed_payments: Optional[Set[str]] = None,
+    cutoff_time: Optional[time] = None,
+    cook_names: Optional[List[str]] = None,
+    accept_late_cancels: bool = False,
 ) -> Dict[str, CustomerLedger]:
     """
     Calculate customer financial ledgers and generate polite Hinglish reminders.
@@ -561,7 +607,9 @@ def reconcile_ledger(
     as_of = as_of or datetime.now()
     prev_bals = previous_balances or {}
 
-    states = _final_states(events, target_date, as_of)
+    price_per_thali = money(price_per_thali)
+    prev_bals = {key.strip().lower(): money(value) for key, value in prev_bals.items()}
+    states = _final_states(events, target_date, as_of, cutoff_time, cook_names, accept_late_cancels)
 
     ledgers: Dict[str, CustomerLedger] = {
         name.strip().lower(): CustomerLedger(
@@ -602,7 +650,7 @@ def reconcile_ledger(
                 balance_due=opening,
             )
         entry = ledgers[cust_key]
-        amount = ev.payment_amount or 0.0
+        amount = money(ev.payment_amount or 0)
         if payment_id(ev) not in (confirmed_payments or set()):
             entry.total_claimed += amount
             continue
@@ -618,7 +666,14 @@ def reconcile_ledger(
         if entry.balance_due > 0:
             entry.draft_reminder = (
                 f"Namaste {entry.customer} ji! 🙏 Aapka tiffin ka balance "
-                f"₹{int(entry.balance_due)} due hai. Jab bhi time mile GPay/PhonePe kar dijiyega. Thank you!"
+                f"₹{entry.balance_due:.2f} due hai. Jab bhi time mile GPay/PhonePe kar dijiyega. Thank you!"
             )
 
     return ledgers
+
+
+def money(value) -> Decimal:
+    amount = Decimal(str(value))
+    if not amount.is_finite():
+        raise ValueError("Money must be finite")
+    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

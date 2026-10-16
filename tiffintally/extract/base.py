@@ -43,7 +43,7 @@ Extract structured order events from WhatsApp messages into JSON:
 Rules:
 1. Cancel: "kal lunch cancel" -> meal='lunch', action='cancel', qty=0.
 2. Multi-event: "kal lunch 2, dinner skip" -> 2 events: lunch qty=2 action='new'; dinner qty=0 action='cancel'.
-3. Secondary: "roommate Priya ke liye ek lunch" -> secondary_customer='Priya', meal='lunch', qty=1.
+3. Secondary: qty is TOTAL plates for each meal. secondary_customer receives secondary_qty of that total (default 1), sender receives the remainder. Sender plus a roommate means qty=2, secondary_qty=1. A roommate-only order means qty=1, secondary_qty=1. A cancel with secondary_customer cancels that recipient only.
 4. Pause: "Sunday off" -> meal='both', action='pause', qty=0.
 5. Chit-chat: "khana bahut tasty tha" -> action='none', meal='unspecified', qty=0, items=[].
 6. Payment: "500 GPay kiya" -> action='payment', meal='unspecified', payment_amount=500.0, qty=0.

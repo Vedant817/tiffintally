@@ -28,6 +28,18 @@ def main():
         [python, "-m", "pytest", "-q"],
         [python, "scripts/check_claims.py"],
     ]
+    if phase in {"phase2", "final"}:
+        commands += [
+            [
+                python,
+                "-m",
+                "pytest",
+                "tests/test_daily_invariants.py",
+                "-q",
+                f"--hypothesis-seed={seed}",
+            ]
+            for seed in (0, 1, 42, 271)
+        ]
     lines = [
         f"# {phase}: clean-clone QA",
         "",

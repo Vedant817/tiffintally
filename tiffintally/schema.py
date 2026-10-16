@@ -1,6 +1,7 @@
 """Pydantic schemas and data models for TiffinTally."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -129,10 +130,10 @@ class CustomerLedger(BaseModel):
     customer: str
     phone: Optional[str] = None
     total_orders: int = 0
-    price_per_thali: float = 80.0
-    total_billed: float = 0.0
-    total_paid: float = 0.0
-    total_claimed: float = 0.0
-    total_refunded: float = 0.0
-    balance_due: float = 0.0
+    price_per_thali: Decimal = Decimal("80.00")
+    total_billed: Decimal = Decimal("0.00")
+    total_paid: Decimal = Decimal("0.00")
+    total_claimed: Decimal = Decimal("0.00")
+    total_refunded: Decimal = Decimal("0.00")
+    balance_due: Decimal = Decimal("0.00")
     draft_reminder: str = ""

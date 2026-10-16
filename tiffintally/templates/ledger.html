@@ -30,6 +30,21 @@
 </div>
 
 <div class="card">
+  <a href="/ledger/balances.csv" class="btn btn-secondary">Export closing balances</a>
+  <form action="/ledger/balances" method="post" enctype="multipart/form-data">
+    <label>Import opening balances (customer,balance CSV)
+      <input type="file" name="balance_file" accept=".csv" required>
+    </label>
+    <button class="btn btn-secondary">Import</button>
+  </form>
+  {% for source, target in alias_suggestions %}
+  <form action="/api/aliases/confirm" method="post">
+    Merge {{ source }} into {{ target }}?
+    <input type="hidden" name="source" value="{{ source }}">
+    <input type="hidden" name="target" value="{{ target }}">
+    <button class="btn btn-secondary">Confirm merge</button>
+  </form>
+  {% endfor %}
   {% for payment in blocked_payments %}
   <p>{{ payment.customer }}: ₹{{ payment.payment_amount }} payment needs review; not credited.</p>
   {% endfor %}
@@ -55,10 +70,10 @@
       <tr style="border-bottom: 1px solid var(--border);">
         <td style="padding: 12px; font-weight: 600;">{{ entry.customer }}</td>
         <td style="padding: 12px; text-align: right;">{{ entry.total_orders }}</td>
-        <td style="padding: 12px; text-align: right;">₹{{ entry.total_billed|int }}</td>
-        <td style="padding: 12px; text-align: right; color: #2e7d32; font-weight: 600;">₹{{ entry.total_paid|int }}</td>
+        <td style="padding: 12px; text-align: right;">₹{{ "%.2f"|format(entry.total_billed) }}</td>
+        <td style="padding: 12px; text-align: right; color: #2e7d32; font-weight: 600;">₹{{ "%.2f"|format(entry.total_paid) }}</td>
         <td style="padding: 12px; text-align: right; font-weight: 700; color: {% if entry.balance_due > 0 %}#c62828{% else %}#2e7d32{% endif %};">
-          ₹{{ entry.balance_due|int }}
+          ₹{{ "%.2f"|format(entry.balance_due) }}
         </td>
         <td style="padding: 12px; text-align: center;">
           {% if entry.balance_due > 0 %}

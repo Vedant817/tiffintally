@@ -4,24 +4,33 @@ Serves a mobile-friendly kitchen UI, printable prep sheets, the dues ledger,
 voice briefs, and the active-learning correction flywheel.
 """
 
+import csv
+import io
 import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, time
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from tiffintally.extract.gemma import GemmaExtractor
 from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
 from tiffintally.parser import parse_chat_export
-from tiffintally.reconcile import payment_id, payment_is_safe, reconcile_ledger, reconcile_orders
+from tiffintally.reconcile import (
+    money,
+    payment_id,
+    payment_is_safe,
+    reconcile_ledger,
+    reconcile_orders,
+)
 from tiffintally.schema import DailyPrepSheet, OrderEvent
 from tiffintally.transcribe import VoiceNoteTranscriber
 from tiffintally.uploads import (
@@ -65,6 +74,9 @@ class KitchenSession:
     extractor_notes: list = field(default_factory=list)
     accept_late_cancels: bool = False
     confirmed_payments: set[str] = field(default_factory=set)
+    price_per_thali: Decimal = Decimal("80.00")
+    previous_balances: dict[str, Decimal] = field(default_factory=dict)
+    aliases: dict[str, str] = field(default_factory=dict)
     cook_names: list[str] = field(default_factory=list)
     cutoff: time = field(default_factory=lambda: time(22, 0))
     touched: datetime = field(default_factory=datetime.now)
@@ -236,6 +248,7 @@ async def process(
     target_date: str = Form("tomorrow"),
     cutoff: str = Form("22:00"),
     cook_names: Optional[str] = Form(None),
+    price_per_thali: Decimal = Form(Decimal("80.00"), gt=0, le=10000),
 ):
     session, is_new = open_session(request)
 
@@ -260,6 +273,9 @@ async def process(
     extractor = GemmaExtractor()
     batch = extractor.extract_batch_counted(parsed_msgs) if parsed_msgs else None
     events = batch.events if batch else []
+    session.price_per_thali = money(price_per_thali)
+    for event in events:
+        event.customer = session.aliases.get(event.customer.lower(), event.customer)
     # The label is whatever a response said, or "rules (regex)".
     #
     # It used to fall back to the configured default, so a sheet produced
@@ -336,18 +352,14 @@ def view_ledger(request: Request):
     session, is_new = open_session(request)
     ensure_empty(session)
 
-    ledger = reconcile_ledger(
-        session.events,
-        price_per_thali=80.0,
-        previous_balances=None,
-        confirmed_payments=session.confirmed_payments,
-    )
+    ledger = session_ledger(session)
 
     response = templates.TemplateResponse(
         request=request,
         name="ledger.html",
         context={
             "ledger": ledger,
+            "alias_suggestions": alias_suggestions(session),
             "blocked_payments": [
                 ev for ev in session.events if ev.action == "payment" and not payment_is_safe(ev)
             ],
@@ -359,6 +371,95 @@ def view_ledger(request: Request):
         },
     )
     return remember_cookie(response, session, is_new)
+
+
+def session_ledger(session: KitchenSession):
+    return reconcile_ledger(
+        session.events,
+        price_per_thali=session.price_per_thali,
+        previous_balances=session.previous_balances,
+        confirmed_payments=session.confirmed_payments,
+        cutoff_time=session.cutoff,
+        cook_names=session.cook_names,
+        accept_late_cancels=session.accept_late_cancels,
+    )
+
+
+def alias_suggestions(session: KitchenSession):
+    names = sorted({event.customer for event in session.events})
+    return [
+        (short, long)
+        for short in names
+        for long in names
+        if short != long and " " not in short and long.lower().startswith(short.lower() + " ")
+    ]
+
+
+@app.post("/api/aliases/confirm")
+def confirm_alias(request: Request, source: str = Form(...), target: str = Form(...)):
+    session, is_new = open_session(request)
+    if (source, target) not in alias_suggestions(session):
+        raise HTTPException(status_code=400, detail="No matching alias suggestion")
+    session.aliases[source.lower()] = target
+    for event in session.events:
+        if event.customer == source:
+            event.customer = target
+        if event.secondary_customer == source:
+            event.secondary_customer = target
+    session.confirmed_payments.clear()
+    fill_session(
+        session,
+        session.events,
+        session.sheet.date,
+        session.cutoff,
+        session.extractor_label,
+        session.used_fallback,
+        session.model_messages,
+        session.fallback_messages,
+        session.extractor_notes,
+    )
+    return remember_cookie(JSONResponse({"status": "merged"}), session, is_new)
+
+
+@app.get("/ledger/balances.csv")
+def export_balances(request: Request):
+    session, is_new = open_session(request)
+    stream = io.StringIO()
+    writer = csv.writer(stream)
+    writer.writerow(["customer", "balance"])
+    for entry in session_ledger(session).values():
+        writer.writerow([entry.customer, f"{entry.balance_due:.2f}"])
+    return remember_cookie(
+        Response(
+            stream.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=balances.csv"},
+        ),
+        session,
+        is_new,
+    )
+
+
+@app.post("/ledger/balances")
+async def import_balances(request: Request, balance_file: UploadFile):
+    session, is_new = open_session(request)
+    raw = await balance_file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Balance CSV too large")
+    try:
+        rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"))))
+        balances = {}
+        for row in rows:
+            name = row["customer"].strip()
+            if not name or name.lower() in balances:
+                raise ValueError("Empty or duplicate customer")
+            balances[name.lower()] = money(row["balance"])
+    except (ValueError, KeyError, ArithmeticError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid customer,balance CSV") from exc
+    session.previous_balances = balances
+    return remember_cookie(
+        JSONResponse({"status": "imported", "customers": len(balances)}), session, is_new
+    )
 
 
 @app.post("/api/payments/{event_id}/confirm")
