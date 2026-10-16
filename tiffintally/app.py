@@ -62,6 +62,7 @@ class KitchenSession:
     used_fallback: bool = True
     model_messages: int = 0
     fallback_messages: int = 0
+    extractor_notes: list = field(default_factory=list)
     accept_late_cancels: bool = False
     cook_names: list[str] = field(default_factory=list)
     cutoff: time = field(default_factory=lambda: time(22, 0))
@@ -123,6 +124,7 @@ def fill_session(
     used_fallback: bool,
     model_messages: int = 0,
     fallback_messages: int = 0,
+    extractor_notes: Optional[list] = None,
 ) -> None:
     """Build the sheet from this cook's events only. Standing orders default to empty."""
     session.events = events
@@ -130,6 +132,7 @@ def fill_session(
     session.used_fallback = used_fallback
     session.model_messages = model_messages
     session.fallback_messages = fallback_messages
+    session.extractor_notes = list(extractor_notes or [])
     session.cutoff = cutoff_t
     session.sheet = reconcile_orders(
         events=events,
@@ -151,7 +154,7 @@ def ensure_empty(session: KitchenSession) -> None:
             events=[],
             target_date="tomorrow",
             cutoff_t=time(22, 0),
-            extractor_label="no chat loaded",
+            extractor_label="rules (regex)",
             used_fallback=True,
         )
 
@@ -164,6 +167,7 @@ def sheet_context(session: KitchenSession) -> dict:
         "used_fallback": session.used_fallback,
         "model_messages": session.model_messages,
         "fallback_messages": session.fallback_messages,
+        "extractor_notes": session.extractor_notes,
         "cook_names": session.cook_names,
         "accept_late_cancels": session.accept_late_cancels,
         "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
@@ -253,14 +257,17 @@ async def process(
     extractor = GemmaExtractor()
     batch = extractor.extract_batch_counted(parsed_msgs) if parsed_msgs else None
     events = batch.events if batch else []
-    # What served, not what was configured. The configured label defaulted to a
-    # Gemma id while Modal served a Qwen adapter.
-    label = batch.model_name if batch and batch.model_name else extractor.model_name
+    # The label is whatever a response said, or "rules (regex)".
+    #
+    # It used to fall back to the configured default, so a sheet produced
+    # entirely by the regex read "0 message(s) read by gemma-4-26b-a4b-it". A
+    # judge opening the live site would see Gemma named on a run where Gemma
+    # never ran.
+    label = batch.model_name if batch else "rules (regex)"
     model_messages = batch.model_messages if batch else 0
     fallback_messages = batch.fallback_messages if batch else 0
-    used_fallback = fallback_messages > 0 or not extractor.is_available()
-    if used_fallback and not label.endswith("-fallback"):
-        label = f"{label}-fallback"
+    used_fallback = model_messages == 0
+    extractor_notes = list(batch.errors) if batch else []
 
     try:
         parts = cutoff.split(":")
@@ -277,6 +284,7 @@ async def process(
         used_fallback=used_fallback,
         model_messages=model_messages,
         fallback_messages=fallback_messages,
+        extractor_notes=extractor_notes,
     )
 
     response = templates.TemplateResponse(
@@ -302,6 +310,7 @@ def accept_late_cancels(request: Request):
         used_fallback=session.used_fallback,
         model_messages=session.model_messages,
         fallback_messages=session.fallback_messages,
+        extractor_notes=session.extractor_notes,
     )
     response = JSONResponse({"status": "accepted", "total_thalis": session.sheet.total_thalis})
     return remember_cookie(response, session, is_new)
@@ -389,6 +398,9 @@ def apply_correction(session: KitchenSession, payload: CorrectionPayload) -> int
             cutoff_t=session.cutoff,
             extractor_label=session.extractor_label,
             used_fallback=session.used_fallback,
+            model_messages=session.model_messages,
+            fallback_messages=session.fallback_messages,
+            extractor_notes=session.extractor_notes,
         )
     return applied
 

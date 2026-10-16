@@ -10,19 +10,27 @@
       Reconciled at {{ current_time }}
     </p>
     {# Honest accounting. A sheet must never read as if a model ran when the
-       regex did the work: per-message counts, not one global flag. #}
+       rules did the work, and a fallback must say why without naming a model
+       that was never called. #}
     <div style="margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 0.85rem;
                 border-left: 4px solid {% if fallback_messages %}#c62828{% else %}#2e7d32{% endif %};
                 background: {% if fallback_messages %}#fdecea{% else %}#e8f5e9{% endif %};">
-      {% if fallback_messages %}
-        <strong>Regex fallback:</strong> {{ model_messages }} message(s) read by
-        <strong>{{ extractor_label|replace("-fallback", "") }}</strong>,
-        {{ fallback_messages }} read by the on-device rules.
-        The totals below mix both. Fix the extractor, or paste again, before you trust the count.
+      {% if model_messages and fallback_messages %}
+        <strong>Mixed read:</strong>
+        {{ model_messages }} message(s) read by <strong>{{ extractor_label }}</strong>,
+        {{ fallback_messages }} read by the on-device rules. The totals below mix both.
       {% elif model_messages %}
-        <strong>{{ extractor_label }}:</strong> all {{ model_messages }} message(s) read by the hosted model.
+        <strong>{{ extractor_label }}</strong> read all {{ model_messages }} message(s).
       {% else %}
-        Extractor: <strong>{{ extractor_label }}</strong>
+        <strong>Rules (regex) only.</strong> No model was called for this sheet,
+        so every count below came from the pattern rules, not from a model.
+      {% endif %}
+      {% if extractor_notes %}
+        <ul style="margin: 6px 0 0 18px; padding: 0;">
+          {% for note in extractor_notes[:3] %}
+          <li>{{ note }}</li>
+          {% endfor %}
+        </ul>
       {% endif %}
       {% if sheet.cook_message_count %}
         <br />{{ sheet.cook_message_count }} message(s) from you were not counted as orders.
