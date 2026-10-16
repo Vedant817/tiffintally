@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import os
+import time as time_mod
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -22,13 +23,14 @@ from threading import RLock
 from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from tiffintally.db import load_kitchen_events, persist_correction, persist_upload_and_events
 from tiffintally.extract.gemma import GemmaExtractor
 from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
+from tiffintally.logging_config import get_logger, log_failure, setup_logging
 from tiffintally.parser import parse_chat_export
 from tiffintally.reconcile import (
     money,
@@ -47,7 +49,8 @@ from tiffintally.uploads import (
 )
 from tiffintally.voice import VoiceBriefResult, VoiceBriefService
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = get_logger("app")
 
 BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -55,13 +58,13 @@ CORRECTIONS_FILE = Path("data/private/corrections.jsonl")
 
 SESSION_COOKIE = "tt_sid"
 
-# A cook exports once a night. Two hours idle is generous for in-memory cache.
+# A cook exports once a night. Two hours idle is generous for that.
 SESSION_IDLE_SECONDS = int(os.getenv("SESSION_IDLE_SECONDS", str(2 * 60 * 60)))
 MAX_SESSIONS = max(1, int(os.getenv("MAX_SESSIONS", "500")))
 
 
 def demo_mode() -> bool:
-    """True on a public deployment where client exports/writes are sandboxed."""
+    """True on a public deployment, where nothing may be written to disk."""
     return os.getenv("TIFFINTALLY_DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -101,7 +104,11 @@ class CorrectionPayload(BaseModel):
 
 
 def _prune_sessions(now: datetime) -> None:
-    """Evict idle in-memory cached sessions."""
+    """Evict idle sessions.
+
+    SESSIONS grew without bound: 2,000 cookieless GETs left 2,001 entries, each
+    holding a sheet, on a free-tier process.
+    """
     stale = [
         sid
         for sid, session in SESSIONS.items()
@@ -119,13 +126,19 @@ def _open_session(request: Request) -> tuple[KitchenSession, bool]:
         SESSIONS[sid].touched = now
         return SESSIONS[sid], False
     if sid:
-        # Restore from durable SQLite database if evicted from memory
         try:
             stored_events = load_kitchen_events(sid)
             if stored_events:
                 session = KitchenSession(sid=sid, touched=now)
                 SESSIONS[sid] = session
-                fill_session(session, events=stored_events, target_date="tomorrow", cutoff_t=time(22, 0), extractor_label="restored from database", used_fallback=True)
+                fill_session(
+                    session,
+                    events=stored_events,
+                    target_date="tomorrow",
+                    cutoff_t=time(22, 0),
+                    extractor_label="restored from database",
+                    used_fallback=True,
+                )
                 return session, False
         except Exception as exc:
             logger.debug(f"Session {sid} not in database: {exc}")
@@ -153,10 +166,10 @@ def remember_cookie(response, session: KitchenSession, is_new: bool):
 def fill_session(
     session: KitchenSession,
     events: list[OrderEvent],
-    target_date: str = "tomorrow",
-    cutoff_t: time = time(22, 0),
-    extractor_label: str = "rules (regex)",
-    used_fallback: bool = True,
+    target_date: str,
+    cutoff_t: time,
+    extractor_label: str,
+    used_fallback: bool,
     model_messages: int = 0,
     fallback_messages: int = 0,
     extractor_notes: Optional[list] = None,
@@ -211,6 +224,7 @@ def sheet_context(session: KitchenSession) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Do not seed fictional customers into a process-wide sheet.
     yield
 
 
@@ -225,8 +239,41 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 @app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time_mod.perf_counter()
+    method = request.method
+    path = request.url.path
+    client_ip = request.client.host if request.client else "unknown"
+    sid = request.cookies.get(SESSION_COOKIE, "-")
+
+    try:
+        response = await call_next(request)
+        duration_ms = (time_mod.perf_counter() - start_time) * 1000.0
+        status = response.status_code
+        if status >= 400:
+            logger.warning(f"HTTP {status} {method} {path} [{sid}] from {client_ip} in {duration_ms:.1f}ms")
+        else:
+            logger.info(f"HTTP {status} {method} {path} [{sid}] from {client_ip} in {duration_ms:.1f}ms")
+        return response
+    except Exception as exc:
+        duration_ms = (time_mod.perf_counter() - start_time) * 1000.0
+        log_failure(
+            "UNHANDLED_EXCEPTION",
+            f"Unhandled error processing {method} {path} [{sid}] in {duration_ms:.1f}ms",
+            exc=exc,
+            extra={"method": method, "path": path, "client_ip": client_ip},
+        )
+        raise
+
+
+@app.middleware("http")
 async def reject_oversized_bodies(request: Request, call_next):
-    """Refuse a huge body before it is parsed."""
+    """Refuse a huge body before it is parsed.
+
+    Starlette's form parser reads the whole multipart body first, so a 21 MB
+    paste was rejected as a 400 *after* the server had already spent the memory
+    and the seconds. Check Content-Length first and answer 413 immediately.
+    """
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BYTES:
         return JSONResponse(
@@ -293,7 +340,7 @@ async def process(
     session.accept_late_cancels = False
     extractor = GemmaExtractor()
 
-    # Run extraction off the main asyncio thread to avoid starving the ASGI event loop
+    # Offload extraction from ASGI loop to worker thread
     batch = (
         await asyncio.to_thread(extractor.extract_batch_counted, parsed_msgs)
         if parsed_msgs
@@ -304,8 +351,8 @@ async def process(
     for event in events:
         event.customer = session.aliases.get(event.customer.lower(), event.customer)
 
-    # Durably persist the upload and extracted events to SQLite database
-    if events or content.strip():
+    # Durably persist chat upload and events to SQLite
+    if events or (content and content.strip()):
         try:
             persist_upload_and_events(
                 kitchen_id=session.sid,
@@ -316,6 +363,7 @@ async def process(
         except Exception as exc:
             logger.warning(f"Durable database persistence failed: {exc}")
 
+    # The label is whatever a response said, or "rules (regex)".
     label = batch.model_name if batch else "rules (regex)"
     model_messages = batch.model_messages if batch else 0
     fallback_messages = batch.fallback_messages if batch else 0
@@ -350,7 +398,7 @@ async def process(
 
 @app.post("/api/late-cancels/accept")
 def accept_late_cancels(request: Request):
-    """One tap on '−N if you accept'. Only the cook knows if she has packed."""
+    """One tap on "−N if you accept". Only the cook knows if she has packed."""
     session, is_new = open_session(request)
     ensure_empty(session)
     session.accept_late_cancels = True
@@ -365,7 +413,10 @@ def accept_late_cancels(request: Request):
         fallback_messages=session.fallback_messages,
         extractor_notes=session.extractor_notes,
     )
-    response = JSONResponse({"status": "accepted", "total_thalis": session.sheet.total_thalis})
+    if "text/html" in request.headers.get("accept", ""):
+        response = RedirectResponse(url="/prep", status_code=303)
+    else:
+        response = JSONResponse({"status": "accepted", "total_thalis": session.sheet.total_thalis})
     return remember_cookie(response, session, is_new)
 
 
@@ -394,6 +445,7 @@ def view_ledger(request: Request):
         context={
             "ledger": ledger,
             "alias_suggestions": alias_suggestions(session),
+            "unresolved_events": [ev for ev in session.events if ev.needs_review],
             "blocked_payments": [
                 ev for ev in session.events if ev.action == "payment" and not payment_is_safe(ev)
             ],
@@ -551,20 +603,24 @@ def apply_correction(session: KitchenSession, payload: CorrectionPayload) -> int
     if applied:
         fill_session(
             session,
-            events=session.events,
-            target_date=session.sheet.date,
-            cutoff_t=session.cutoff,
-            extractor_label=session.extractor_label,
-            used_fallback=session.used_fallback,
-            model_messages=session.model_messages,
-            fallback_messages=session.fallback_messages,
-            extractor_notes=session.extractor_notes,
+            session.events,
+            session.sheet.date,
+            session.cutoff,
+            session.extractor_label,
+            session.used_fallback,
+            session.model_messages,
+            session.fallback_messages,
+            session.extractor_notes,
         )
     return applied
 
 
 def corrections_file_for(session: KitchenSession) -> Path:
-    """Where this cook's corrections live."""
+    """Where this cook's corrections live.
+
+    They used to share one `data/private/corrections.jsonl`, so every visitor's
+    customers pooled together in one file and one SFT export.
+    """
     return CORRECTIONS_FILE.parent / f"corrections_{session.sid[:8]}.jsonl"
 
 
@@ -619,7 +675,11 @@ def save_correction(request: Request, payload: CorrectionPayload):
 
 @app.post("/api/active-learning/export")
 def export_active_learning(request: Request):
-    """Export this cook's corrections into an SFT JSONL training batch."""
+    """Export this cook's corrections into an SFT JSONL training batch.
+
+    This used to take no session and dumped every visitor's corrections into one
+    file. In demo mode it is refused outright.
+    """
     if demo_mode():
         raise HTTPException(
             status_code=403,
@@ -650,6 +710,10 @@ async def transcribe_voice_note(
     """
     Ingest a WhatsApp voice note (.ogg, .opus, .m4a, .mp3),
     transcribe it into Hinglish text, and return formatted WhatsApp chat entry.
+
+    The client filename is never used to build a path. It previously was, so an
+    upload named "../../x.ogg" wrote outside the upload folder; on Render that
+    can overwrite application files.
     """
     transcriber = VoiceNoteTranscriber()
 
