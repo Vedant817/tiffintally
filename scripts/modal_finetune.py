@@ -39,7 +39,7 @@ image = (
 @app.function(
     image=image,
     gpu="A10G",
-    timeout=3600,
+    timeout=1200,
     volumes={"/vol": volume},
 )
 def run_finetune_job(
@@ -58,9 +58,11 @@ def run_finetune_job(
         DataCollatorForSeq2Seq,
         Trainer,
         TrainingArguments,
+        set_seed,
     )
 
     iteration = hyperparams.get("iteration", 12)
+    set_seed(hyperparams.get("seed", 271))
     base_model_name = hyperparams.get("base_model_name", "Qwen/Qwen2.5-0.5B-Instruct")
     num_epochs = hyperparams.get("num_epochs", 2)
     lr = hyperparams.get("learning_rate", 1.5e-4)
@@ -176,6 +178,8 @@ def run_finetune_job(
 
     output_dir = f"/tmp/checkpoints/run_{iteration}"
     training_args = TrainingArguments(
+        seed=hyperparams.get("seed", 271),
+        data_seed=hyperparams.get("seed", 271),
         output_dir=output_dir,
         num_train_epochs=num_epochs,
         per_device_train_batch_size=batch_size,
@@ -408,10 +412,19 @@ def main(
     warmup_steps: int = 15,
     base_model: str = "Qwen/Qwen2.5-3B-Instruct",
     max_seq_len: int = 1024,
+    seed: int = 271,
+    train_path: str = "",
 ):
     """Local runner that prepares datasets and dispatches fine-tuning to Modal GPU."""
     repo_root = Path(__file__).parent.parent
-    train_file = repo_root / "data/synthetic/tinker_sft_train.jsonl"
+    from tiffintally.gpu_budget import require_training_approval
+
+    require_training_approval()
+    train_file = (
+        Path(train_path) if train_path else repo_root / "data/synthetic/tinker_sft_train.jsonl"
+    )
+    if not train_file.is_file():
+        raise FileNotFoundError("Reviewed training dataset missing; refusing to train")
     test_file = repo_root / "data/synthetic/test.jsonl"
 
     from tiffintally.extract.base import SYSTEM_PROMPT
@@ -520,6 +533,7 @@ def main(
         tm_list = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
     hyperparams = {
+        "seed": seed,
         "iteration": iteration,
         "base_model_name": base_model,
         "real_eval_note": (

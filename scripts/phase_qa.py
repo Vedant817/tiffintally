@@ -52,6 +52,18 @@ def main():
             ],
             [python, "scripts/publish_results.py", "--check"],
         ]
+    if phase in {"phase5", "phase6", "final"}:
+        commands += [
+            [
+                python,
+                "scripts/run_baselines.py",
+                "--system",
+                system,
+                "--out",
+                str(clone.parent / "baseline-qa"),
+            ]
+            for system in ("regex", "hybrid", "adapter")
+        ]
     lines = [
         f"# {phase}: clean-clone QA",
         "",

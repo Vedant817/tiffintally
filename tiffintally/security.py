@@ -30,6 +30,14 @@ INJECTION_PATTERNS = [
     re.compile(r"reveal\s+(the\s+)?secret", re.IGNORECASE),
     re.compile(r"new\s+rule[:\s]", re.IGNORECASE),
     re.compile(r"forget\s+everything", re.IGNORECASE),
+    re.compile(r"\b(?:admin|developer|system)\s+(?:mode|override)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:set|clear|reset|erase)\s+(?:all\s+)?(?:dues|balance|ledger|payments?)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(?:पिछल[ेी]|पुरान[ेी]).*(?:निर्देश|हिदायत).*(?:भूल|अनदेखा)", re.IGNORECASE),
+    re.compile(r"(?:हिसाब|बकाया|उधार).*(?:शून्य|मिटा|साफ)", re.IGNORECASE),
+    re.compile(r'"(?:events|customer|action|payment_amount)"\s*:', re.IGNORECASE),
 ]
 
 # Maximum reasonable thali quantity for a single domestic WhatsApp message
@@ -100,6 +108,7 @@ class InputGuardrail:
             is_safe = False
         elif flags:
             risk_level = "medium"
+            is_safe = False
 
         return SecurityAuditResult(
             clean_text=clean_text,

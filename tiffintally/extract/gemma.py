@@ -448,6 +448,22 @@ class GemmaExtractor:
                                 ev.qty = bounded
                                 ev.audit_flags.append(flag)
                                 ev.needs_review = True
+                        if any(
+                            any(
+                                flag.startswith(
+                                    (
+                                        "excessive_quantity",
+                                        "invalid_order_quantity",
+                                        "model_invalid",
+                                    )
+                                )
+                                for flag in ev.audit_flags
+                            )
+                            for ev in produced
+                        ):
+                            for ev in produced:
+                                ev.needs_review = True
+                                ev.audit_flags.append("source_message_requires_review")
                         self._stamp(produced, index, msg)
                         for ev in produced:
                             ev.customer = msg.sender
