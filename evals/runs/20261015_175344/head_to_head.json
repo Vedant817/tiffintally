@@ -1,0 +1,510 @@
+{
+  "run_timestamp": "20261015_175344",
+  "date_ist": "2026-10-15 17:53 44 IST",
+  "dataset": "data/synthetic/test.jsonl",
+  "dataset_rows": 50,
+  "model_endpoint": "https://vedantmahajan271--tiffintally-extract-api.us-east.modal.run",
+  "model": "Qwen/Qwen2.5-3B-Instruct+lora-iteration_31",
+  "gpu": "NVIDIA A10",
+  "model_calls_ms": [
+    12820.8,
+    12688.5,
+    10927.0
+  ],
+  "model_repaired_blocks": 0,
+  "model_empty_results": 0,
+  "regex": {
+    "n": 50,
+    "per_field": {
+      "meal": 0.94,
+      "qty": 1.0,
+      "action": 0.98,
+      "mods": 0.84
+    },
+    "exact_match": 0.78
+  },
+  "open_model": {
+    "n": 50,
+    "per_field": {
+      "meal": 0.98,
+      "qty": 0.98,
+      "action": 1.0,
+      "mods": 0.9
+    },
+    "exact_match": 0.88
+  },
+  "delta_exact_match": 0.1,
+  "disagreements": [
+    {
+      "text": "bina mirchi ke 2 dabba dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "winner": "model"
+    },
+    {
+      "text": "bina mirchi ke 3 dabba dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 3,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 3,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 3,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "winner": "model"
+    },
+    {
+      "text": "bina mirchi ke two dabba dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "winner": "model"
+    },
+    {
+      "text": "bina mirchi ke teen dabba dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 3,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 3,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 3,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "winner": "model"
+    },
+    {
+      "text": "bina mirchi ke 1 dabba dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "winner": "model"
+    },
+    {
+      "text": "bina mirchi ke do dabba dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "no chili"
+        ]
+      },
+      "winner": "model"
+    },
+    {
+      "text": "shaak rotli 2 dabba please lunch",
+      "gold": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "rotli"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "Sunday off please, going home for weekend",
+      "gold": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "regex": {
+        "meal": "unspecified",
+        "qty": 0,
+        "action": "none",
+        "mods": []
+      },
+      "model": {
+        "meal": "both",
+        "qty": 0,
+        "action": "pause",
+        "mods": []
+      },
+      "winner": "model"
+    },
+    {
+      "text": "1 thali lunch, replace curd with extra sabzi",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no curd",
+          "extra sabzi"
+        ]
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no curd",
+          "extra sabzi"
+        ]
+      },
+      "model": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "curd replaced with extra sabzi"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "dinr 1 no spic",
+      "gold": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "less spicy"
+        ]
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no spice"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "do lunch aur ek dinner",
+      "gold": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "both",
+        "qty": 3,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "aunty ekdum kadak roti bhejna 1 thali dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "kadak roti"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "kadak roti"
+        ]
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "roti bhejna",
+          "kadak"
+        ]
+      },
+      "winner": "regex"
+    },
+    {
+      "text": "lunch 1 dinner 1 kal",
+      "gold": {
+        "meal": "both",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "both",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "winner": "model"
+    },
+    {
+      "text": "dinnr cancl",
+      "gold": {
+        "meal": "dinner",
+        "qty": 0,
+        "action": "cancel",
+        "mods": []
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 0,
+        "action": "cancel",
+        "mods": []
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 0,
+        "action": "cancel",
+        "mods": []
+      },
+      "winner": "model"
+    },
+    {
+      "text": "bina lehsun pyaaz ke one thali dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no onion",
+          "no garlic"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "no onion",
+          "no garlic"
+        ]
+      },
+      "winner": "model"
+    },
+    {
+      "text": "bina lehsun pyaaz ke 2 thali dinner",
+      "gold": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "no onion",
+          "no garlic"
+        ]
+      },
+      "regex": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": []
+      },
+      "model": {
+        "meal": "dinner",
+        "qty": 2,
+        "action": "new",
+        "mods": [
+          "no onion",
+          "no garlic"
+        ]
+      },
+      "winner": "model"
+    },
+    {
+      "text": "rotli vadhare aapjo ek thali sathe",
+      "gold": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "extra roti"
+        ]
+      },
+      "regex": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "extra roti"
+        ]
+      },
+      "model": {
+        "meal": "lunch",
+        "qty": 1,
+        "action": "new",
+        "mods": [
+          "roti vadhare"
+        ]
+      },
+      "winner": "regex"
+    }
+  ],
+  "winner_counts": {
+    "model": 11,
+    "regex": 6
+  },
+  "base_model_no_adapter": {
+    "n": 50,
+    "per_field": {
+      "meal": 0.96,
+      "qty": 0.84,
+      "action": 1.0,
+      "mods": 0.82
+    },
+    "exact_match": 0.66
+  },
+  "base_model_endpoint": "Qwen/Qwen2.5-3B-Instruct (no adapter)",
+  "base_model_latencies_ms": [
+    10797.8,
+    11067.1,
+    8350.5
+  ]
+}
