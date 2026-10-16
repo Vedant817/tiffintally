@@ -1,18 +1,128 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>TiffinTally metrics — retracted</title>
-  <style>
-    body { font-family: Georgia, serif; max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; color: #1c1917; line-height: 1.5; }
-    h1 { font-size: 1.6rem; }
-    .note { background: #fef2f2; border-left: 4px solid #b91c1c; padding: 0.75rem 1rem; }
-  </style>
-</head>
-<body>
-  <p class="note"><strong>Retracted.</strong> This page used to chart a 100% exact match, a Grand Champion tier, and an edge latency. Those figures were not a measurement on messages the model had not memorised, and the edge numbers were constants. They are not shown here.</p>
-  <h1>No score is published from this file</h1>
-  <p>Runs 1–30 in <code>evals/modal_run_iter_*.json</code> were Qwen2.5-0.5B jobs and are retracted. Run 31 is Qwen2.5-3B, 84.0% exact match on 50 synthetic rows, and it is not a real-WhatsApp result. <code>RESULTS.md</code> is the status that counts. The app does not serve those weights.</p>
-  <p>A new number belongs on this page only after an evaluation script writes it. Do not type one in.</p>
-</body>
-</html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TiffinTally — measured results</title>
+<style>
+  :root {
+    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f8fafc;
+    --regex:#64748b; --base:#f59e0b; --lora:#2563eb;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:1120px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-size:1.7rem; margin:0 0 4px; letter-spacing:-.02em; }
+  h2 { font-size:1.05rem; margin:0 0 14px; letter-spacing:.01em; }
+  .sub { color:var(--muted); margin:0 0 4px; }
+  .paths { color:var(--muted); font:12px/1.7 ui-monospace,Menlo,monospace;
+    background:#fff; border:1px solid var(--line); border-radius:8px;
+    padding:10px 12px; margin:16px 0 24px; overflow-x:auto; }
+  .paths b { color:var(--ink); font-weight:600; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:12px; margin-bottom:24px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px; }
+  .card .k { font-size:.72rem; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); }
+  .card .v { font-size:1.9rem; font-weight:700; margin-top:2px; }
+  .card .d { font-size:.8rem; color:var(--muted); }
+  .good { color:var(--lora); } .bad { color:#b91c1c; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:12px;
+    padding:20px 22px; margin-bottom:20px; }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
+  thead th { font-size:.72rem; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--muted); }
+  td.hl { background:#eff6ff; font-weight:600; }
+  tr.strong td.hl { font-weight:700; }
+  .grid tbody th { font-weight:500; color:var(--muted); width:34%; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px; font-size:.85rem; }
+  .key { display:inline-flex; align-items:center; gap:6px; color:var(--muted); }
+  .key i { width:10px; height:10px; border-radius:2px; display:inline-block; }
+  .group { display:grid; grid-template-columns:140px 1fr; gap:4px 12px;
+    padding:9px 0; border-top:1px solid var(--line); }
+  .glabel { font-weight:600; font-size:.9rem; }
+  .barrow { display:flex; align-items:center; gap:10px; }
+  .barlabel { font:12px ui-monospace,Menlo,monospace; color:var(--muted); width:78px; }
+  .bar { display:block; }
+  .split { display:grid; grid-template-columns:180px 1fr; gap:24px; align-items:start; }
+  .msg { max-width:320px; }
+  code { font:12px ui-monospace,Menlo,monospace; background:#f1f5f9;
+    padding:1px 5px; border-radius:4px; }
+  .model { color:var(--lora); font-weight:600; }
+  .regex { color:var(--regex); font-weight:600; }
+  .note { background:#fffbeb; border:1px solid #fde68a; border-radius:8px;
+    padding:12px 14px; font-size:.86rem; color:#78350f; }
+  .foot { color:var(--muted); font-size:.8rem; margin-top:24px; }
+</style></head>
+<body><div class="wrap">
+
+<h1>TiffinTally — what the open model actually scored</h1>
+<p class="sub">Frozen test split, 50 labelled messages, measured against the served endpoint on Modal.</p>
+
+<div class="paths">
+  <b>head to head</b> C:/Users/vedan/Documents/Resources/Code/tiffin-tally/evals/runs/20261015_175344/head_to_head.json<br>
+  <b>eval suite</b> C:/Users/vedan/Documents/Resources/Code/tiffin-tally/evals/runs/20261015_174336/summary.json<br>
+  <b>model</b> Qwen/Qwen2.5-3B-Instruct+lora-iteration_31
+  on NVIDIA A10<br>
+  <b>measured</b> 2026-10-15 17:53 44 IST
+</div>
+
+<div class="cards">
+  <div class="card"><div class="k">Open model, exact match</div>
+    <div class="v">88.0%</div>
+    <div class="d">Qwen/Qwen2.5-3B-Instruct+lora-iteration_31</div></div>
+  <div class="card"><div class="k">Regex, exact match</div>
+    <div class="v">78.0%</div>
+    <div class="d">on device, no model call</div></div>
+  <div class="card"><div class="k">Difference</div>
+    <div class="v good">+10.0</div>
+    <div class="d">percentage points, exact match</div></div>
+  <div class="card"><div class="k">Rows where they differ</div>
+    <div class="v">17</div>
+    <div class="d">11 model · 6 regex</div></div>
+</div>
+
+<div class="panel">
+  <h2>Field accuracy</h2>
+  <table class="grid"><thead><tr><th>Field</th><th>Regex (on device)</th><th>Qwen2.5-3B, no adapter</th><th>Qwen2.5-3B + LoRA</th></tr></thead><tbody><tr class="strong"><th>Exact match</th><td class="">78.0%</td><td class="">66.0%</td><td class="hl">88.0%</td></tr><tr><th>Meal</th><td class="">0.940</td><td class="">0.960</td><td class="hl">0.980</td></tr><tr><th>Quantity</th><td class="">1.000</td><td class="">0.840</td><td class="hl">0.980</td></tr><tr><th>Action</th><td class="">0.980</td><td class="">1.000</td><td class="hl">1.000</td></tr><tr><th>Dietary mods</th><td class="">0.840</td><td class="">0.820</td><td class="hl">0.900</td></tr></tbody></table>
+</div>
+
+<div class="panel">
+  <h2>Same numbers, drawn</h2>
+  <div class="legend"><span class="key"><i style="background:#64748b"></i>regex</span><span class="key"><i style="background:#f59e0b"></i>no adapter</span><span class="key"><i style="background:#2563eb"></i>+ LoRA</span></div><div class="group"><div class="glabel">Meal</div><div class="barrow"><span class="barlabel">regex</span><svg class="bar" width="278" height="18" role="img" aria-label="94.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="206.8" height="10" rx="5" fill="#64748b"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">94.0</text></svg></div><div class="barrow"><span class="barlabel">no adapter</span><svg class="bar" width="278" height="18" role="img" aria-label="96.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="211.2" height="10" rx="5" fill="#f59e0b"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">96.0</text></svg></div><div class="barrow"><span class="barlabel">+ LoRA</span><svg class="bar" width="278" height="18" role="img" aria-label="98.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="215.6" height="10" rx="5" fill="#2563eb"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">98.0</text></svg></div></div><div class="group"><div class="glabel">Quantity</div><div class="barrow"><span class="barlabel">regex</span><svg class="bar" width="278" height="18" role="img" aria-label="100.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="220.0" height="10" rx="5" fill="#64748b"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">100.0</text></svg></div><div class="barrow"><span class="barlabel">no adapter</span><svg class="bar" width="278" height="18" role="img" aria-label="84.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="184.8" height="10" rx="5" fill="#f59e0b"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">84.0</text></svg></div><div class="barrow"><span class="barlabel">+ LoRA</span><svg class="bar" width="278" height="18" role="img" aria-label="98.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="215.6" height="10" rx="5" fill="#2563eb"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">98.0</text></svg></div></div><div class="group"><div class="glabel">Action</div><div class="barrow"><span class="barlabel">regex</span><svg class="bar" width="278" height="18" role="img" aria-label="98.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="215.6" height="10" rx="5" fill="#64748b"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">98.0</text></svg></div><div class="barrow"><span class="barlabel">no adapter</span><svg class="bar" width="278" height="18" role="img" aria-label="100.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="220.0" height="10" rx="5" fill="#f59e0b"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">100.0</text></svg></div><div class="barrow"><span class="barlabel">+ LoRA</span><svg class="bar" width="278" height="18" role="img" aria-label="100.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="220.0" height="10" rx="5" fill="#2563eb"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">100.0</text></svg></div></div><div class="group"><div class="glabel">Dietary mods</div><div class="barrow"><span class="barlabel">regex</span><svg class="bar" width="278" height="18" role="img" aria-label="84.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="184.8" height="10" rx="5" fill="#64748b"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">84.0</text></svg></div><div class="barrow"><span class="barlabel">no adapter</span><svg class="bar" width="278" height="18" role="img" aria-label="82.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="180.4" height="10" rx="5" fill="#f59e0b"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">82.0</text></svg></div><div class="barrow"><span class="barlabel">+ LoRA</span><svg class="bar" width="278" height="18" role="img" aria-label="90.0 percent"><rect x="0" y="4" width="220" height="10" rx="5" fill="#e2e8f0"/><rect x="0" y="4" width="198.0" height="10" rx="5" fill="#2563eb"/><text x="228" y="14" font-size="12" fill="#334155" font-family="ui-monospace,Menlo,monospace">90.0</text></svg></div></div>
+</div>
+
+<div class="panel">
+  <h2>Where they disagree</h2>
+  <div class="split">
+    <svg viewBox="0 0 160 160" width="160" height="160"><circle class="seg" r="54" cx="80" cy="80" fill="none" stroke="#2563eb" stroke-width="22" stroke-dasharray="219.54 119.75" stroke-dashoffset="-0.00" transform="rotate(-90 80 80)"><title>Open model: 11</title></circle><circle class="seg" r="54" cx="80" cy="80" fill="none" stroke="#64748b" stroke-width="22" stroke-dasharray="119.75 219.54" stroke-dashoffset="-219.54" transform="rotate(-90 80 80)"><title>Regex: 6</title></circle><text x="80" y="76" text-anchor="middle" font-size="26" font-weight="700" fill="#0f172a">17</text><text x="80" y="96" text-anchor="middle" font-size="11" fill="#64748b">rows they differ on</text></svg>
+    <div>
+      <table>
+        <thead><tr><th>Message</th><th>Expected</th><th>Right</th></tr></thead>
+        <tbody><tr><td class="msg">bina mirchi ke 2 dabba dinner</td><td><code>dinner</code> 2 <code>new</code> no chili</td><td class="model">open model</td></tr><tr><td class="msg">bina mirchi ke 3 dabba dinner</td><td><code>dinner</code> 3 <code>new</code> no chili</td><td class="model">open model</td></tr><tr><td class="msg">bina mirchi ke two dabba dinner</td><td><code>dinner</code> 2 <code>new</code> no chili</td><td class="model">open model</td></tr><tr><td class="msg">bina mirchi ke teen dabba dinner</td><td><code>dinner</code> 3 <code>new</code> no chili</td><td class="model">open model</td></tr><tr><td class="msg">bina mirchi ke 1 dabba dinner</td><td><code>dinner</code> 1 <code>new</code> no chili</td><td class="model">open model</td></tr><tr><td class="msg">bina mirchi ke do dabba dinner</td><td><code>dinner</code> 2 <code>new</code> no chili</td><td class="model">open model</td></tr><tr><td class="msg">shaak rotli 2 dabba please lunch</td><td><code>lunch</code> 2 <code>new</code></td><td class="regex">regex</td></tr><tr><td class="msg">Sunday off please, going home for weekend</td><td><code>both</code> 0 <code>pause</code></td><td class="model">open model</td></tr><tr><td class="msg">1 thali lunch, replace curd with extra sabzi</td><td><code>lunch</code> 1 <code>new</code> no curd, extra sabzi</td><td class="regex">regex</td></tr><tr><td class="msg">dinr 1 no spic</td><td><code>dinner</code> 1 <code>new</code> less spicy</td><td class="regex">regex</td></tr><tr><td class="msg">do lunch aur ek dinner</td><td><code>lunch</code> 2 <code>new</code></td><td class="regex">regex</td></tr><tr><td class="msg">aunty ekdum kadak roti bhejna 1 thali dinner</td><td><code>dinner</code> 1 <code>new</code> kadak roti</td><td class="regex">regex</td></tr><tr><td class="msg">lunch 1 dinner 1 kal</td><td><code>both</code> 1 <code>new</code></td><td class="model">open model</td></tr><tr><td class="msg">dinnr cancl</td><td><code>dinner</code> 0 <code>cancel</code></td><td class="model">open model</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Read this before quoting a number</h2>
+  <div class="note">
+    <p style="margin:0 0 8px">Every figure above is on the <b>frozen synthetic split</b>
+    (<code>data/synthetic/test.jsonl</code>). No cook has supplied real messages yet, so the
+    held-out section of the eval report reads <code>NOT RUN</code> and stays that way until
+    real messages are collected.</p>
+    <p style="margin:0">The "no adapter" column is the same model on the same prompt with the
+    fine-tune removed. It is the control: the base model scores
+    66.0%,
+    the adapter lifts it to
+    88.0%.
+    That gap is the fine-tune's contribution, measured rather than asserted.</p>
+  </div>
+</div>
+
+<p class="foot">Generated by <code>scripts/build_dashboard.py</code> from the run artifacts listed
+above. Nothing on this page is recomputed from the model.</p>
+
+</div></body></html>
