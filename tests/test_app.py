@@ -245,3 +245,20 @@ def test_voice_note_api():
     assert data["status"] == "transcribed"
     assert data["customer"] == "Deepak"
     assert "Deepak" in data["chat_line"]
+
+
+def test_favicon_returns_204():
+    resp = client.get("/favicon.ico")
+    assert resp.status_code == 204
+
+
+def test_process_get_redirects_to_home_or_prep():
+    resp = client.get("/process", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] in ("/", "/prep")
+
+
+def test_late_cancels_accept_get_redirects_to_prep():
+    resp = client.get("/api/late-cancels/accept", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/prep"

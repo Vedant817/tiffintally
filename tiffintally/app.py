@@ -308,6 +308,20 @@ def index_view(request: Request):
     )
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Return 204 No Content to silence browser favicon 404 warnings."""
+    return Response(status_code=204)
+
+
+@app.get("/process")
+def process_get(request: Request):
+    """Gracefully redirect GET /process to /prep or home page."""
+    session, is_new = open_session(request)
+    target = "/prep" if session.sheet and (session.sheet.total_thalis > 0 or session.sheet.packing_labels) else "/"
+    return remember_cookie(RedirectResponse(url=target, status_code=303), session, is_new)
+
+
 @app.post("/process", response_class=HTMLResponse)
 async def process(
     request: Request,
@@ -418,6 +432,12 @@ def accept_late_cancels(request: Request):
     else:
         response = JSONResponse({"status": "accepted", "total_thalis": session.sheet.total_thalis})
     return remember_cookie(response, session, is_new)
+
+
+@app.get("/api/late-cancels/accept")
+def accept_late_cancels_get(request: Request):
+    """Gracefully redirect GET /api/late-cancels/accept to the prep sheet."""
+    return RedirectResponse(url="/prep", status_code=303)
 
 
 @app.get("/prep", response_class=HTMLResponse)
