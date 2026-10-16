@@ -9,7 +9,6 @@ import asyncio
 import csv
 import io
 import json
-import logging
 import os
 import time as time_mod
 import uuid
@@ -251,9 +250,13 @@ async def log_requests(request: Request, call_next):
         duration_ms = (time_mod.perf_counter() - start_time) * 1000.0
         status = response.status_code
         if status >= 400:
-            logger.warning(f"HTTP {status} {method} {path} [{sid}] from {client_ip} in {duration_ms:.1f}ms")
+            logger.warning(
+                f"HTTP {status} {method} {path} [{sid}] from {client_ip} in {duration_ms:.1f}ms"
+            )
         else:
-            logger.info(f"HTTP {status} {method} {path} [{sid}] from {client_ip} in {duration_ms:.1f}ms")
+            logger.info(
+                f"HTTP {status} {method} {path} [{sid}] from {client_ip} in {duration_ms:.1f}ms"
+            )
         return response
     except Exception as exc:
         duration_ms = (time_mod.perf_counter() - start_time) * 1000.0
@@ -318,7 +321,11 @@ def favicon():
 def process_get(request: Request):
     """Gracefully redirect GET /process to /prep or home page."""
     session, is_new = open_session(request)
-    target = "/prep" if session.sheet and (session.sheet.total_thalis > 0 or session.sheet.packing_labels) else "/"
+    target = (
+        "/prep"
+        if session.sheet and (session.sheet.total_thalis > 0 or session.sheet.packing_labels)
+        else "/"
+    )
     return remember_cookie(RedirectResponse(url=target, status_code=303), session, is_new)
 
 

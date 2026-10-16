@@ -7,7 +7,6 @@ request tracing, and forensic debugging of failure scenarios.
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import traceback
 from logging.handlers import RotatingFileHandler
@@ -60,7 +59,9 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
     logger.addHandler(fail_file_handler)
 
     _CONFIGURED = True
-    logger.info("Structured logging initialized: outputting to %s and %s", APP_LOG_PATH, FAILURE_LOG_PATH)
+    logger.info(
+        "Structured logging initialized: outputting to %s and %s", APP_LOG_PATH, FAILURE_LOG_PATH
+    )
     return logger
 
 

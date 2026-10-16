@@ -13,8 +13,8 @@ import os
 import subprocess
 import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 
 HOST = "127.0.0.1"
 PORT = 8000
@@ -26,9 +26,13 @@ def find_pid_on_port(port: int = PORT) -> list[int]:
     if sys.platform == "win32":
         try:
             output = subprocess.check_output(
-                ["powershell", "-NoProfile", "-Command",
-                 f"(Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue).OwningProcess"],
-                text=True
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    f"(Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue).OwningProcess",
+                ],
+                text=True,
             ).strip()
             for line in output.splitlines():
                 line = line.strip()
@@ -106,7 +110,9 @@ def start_server() -> bool:
     for i in range(40):
         time.sleep(0.25)
         if is_healthy():
-            print(f"Server is healthy and ready at http://{HOST}:{PORT}/ (in {(i+1)*0.25:.1f}s)")
+            print(
+                f"Server is healthy and ready at http://{HOST}:{PORT}/ (in {(i + 1) * 0.25:.1f}s)"
+            )
             return True
 
     print("Server failed to become healthy within 10 seconds.")
@@ -129,7 +135,9 @@ def server_status():
 
 def main():
     parser = argparse.ArgumentParser(description="TiffinTally server manager")
-    parser.add_argument("action", choices=["start", "stop", "restart", "status"], default="status", nargs="?")
+    parser.add_argument(
+        "action", choices=["start", "stop", "restart", "status"], default="status", nargs="?"
+    )
     args = parser.parse_args()
 
     if args.action == "status":

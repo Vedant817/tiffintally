@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from typing import Generator, List, Optional
 
 from tiffintally.schema import OrderEvent
 
@@ -263,7 +263,9 @@ def load_kitchen_events(kitchen_id: str, db_path: Optional[Path] = None) -> List
                 confidence=r["confidence"],
                 audit_flags=json.loads(r["audit_flags_json"] or "[]"),
                 secondary_customer=r["secondary_customer"],
-                payment_amount=Decimal(str(r["payment_amount"])) if r["payment_amount"] is not None else None,
+                payment_amount=Decimal(str(r["payment_amount"]))
+                if r["payment_amount"] is not None
+                else None,
                 payment_note=r["payment_note"],
             )
         )

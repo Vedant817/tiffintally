@@ -89,7 +89,9 @@ class GemmaExtractor:
         openai_base_url: Optional[str] = None,
     ):
         self.api_key = api_key if api_key is not None else os.getenv("GOOGLE_API_KEY")
-        self.model_name = model_name or (DEFAULT_OPENAI_MODEL if backend == "openai" else DEFAULT_GEMMA_MODEL)
+        self.model_name = model_name or (
+            DEFAULT_OPENAI_MODEL if backend == "openai" else DEFAULT_GEMMA_MODEL
+        )
         self.pseudonymizer = pseudonymizer or Pseudonymizer()
         self.guardrail = InputGuardrail()
         self.backend = (backend or EXTRACTOR_BACKEND).strip().lower()
@@ -398,7 +400,11 @@ class GemmaExtractor:
                     self.served_model = (
                         body.get("model")
                         or body.get("model_version")
-                        or (headers_dict.get("x-served-model") if isinstance(headers_dict, dict) else None)
+                        or (
+                            headers_dict.get("x-served-model")
+                            if isinstance(headers_dict, dict)
+                            else None
+                        )
                         or self.served_model
                     )
                     latency = (time.perf_counter() - start) * 1000
