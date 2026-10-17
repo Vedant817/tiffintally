@@ -117,39 +117,26 @@ Two things that URL is, and is not:
 
 ## CI on this branch
 
-Run `39041210343`, head `16fb083`: every step passes except one.
+Run `39041426504`, head `60c3b14`: both jobs green, every step successful.
 
-| Step | Result |
+| Job | Steps |
 |---|---|
-| Lint, format, tests, probes, claims, leakage, rescore, daily invariants | success |
-| `tiffintally eval must leave RESULTS.md untouched` | success |
-| Verify no secret leakage | **failure** |
+| `test` | lint, format, tests, regression probes, claims registry, known leakage, saved-prediction rescore, daily invariants, secret scan: all success |
+| `no-results-drift` | `tiffintally eval` leaves `RESULTS.md` untouched: success |
 
-The failure is not a finding. The step log says:
+Four earlier runs failed at `Verify no secret leakage` only. The cause was not a finding:
+`gitleaks/gitleaks-action@v2` refuses to scan a `pull_request` event without a token, so the
+scan never started and every pull request in the repository failed that step. The fix is
+`GITHUB_TOKEN` on the step plus `pull-requests: read` in `permissions`, and the scan now runs
+for real: that step's log reads `13 commits scanned` and `no leaks found`.
 
-```
-[error] GITHUB_TOKEN is now required to scan pull requests. You can use the
-automatically created token as shown in the README.
-```
+The same fix also exists on `chore/pr-preview-testing`; it is applied here too so this branch
+can be verified on its own instead of depending on merge order. `EXTRACTOR_BACKEND` in
+`render.yaml` is still outstanding and is owned by that PR.
 
-`gitleaks/gitleaks-action@v2` refuses to run on a `pull_request` event without a token, so the
-scan never started. The same step fails on every run of this branch, including the first one,
-before any of the later commits.
-
-The scan itself is clean, run locally with this repository's own config over exactly this
-branch's commits:
-
-```
-gitleaks detect --source . --config .gitleaks.toml --log-opts="origin/main..HEAD" --redact
-  INF 11 commits scanned
-  INF scanned ~78421 bytes (78.42 KB) in 271ms
-  INF no leaks found
-```
-
-PR #1 (`chore/pr-preview-testing`) already fixes this by passing `GITHUB_TOKEN` to the step and
-granting `pull-requests: read`. That fix is in `ci.yml`, which that PR owns, so it was
-deliberately not duplicated here: two copies of one workflow change is two merge conflicts.
-Merging PR #1 turns this step green for this branch as well. Re-check after that merge.
+Greptile posted one comment on this pull request: its trial ended, so it performed no review.
+There is no review feedback to act on. Reactivating it is an account action on the owner's
+side, not a repository change.
 
 ## Not done
 
