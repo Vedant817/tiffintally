@@ -26,14 +26,14 @@ A Google Form would be cleaner, but customers ignore it—they already have the 
 
 ### The Honest-Evals Angle: Standing Apart from the Crowd
 
-Other submissions in this space have claimed 100% accuracy on synthetic WhatsApp chats or showcased TabPFN plate forecasts that claim to save thousands of rupees a month.
+Other submissions in this space have claimed flawless accuracy on synthetic WhatsApp chats or showcased TabPFN plate forecasts that claim to save thousands of rupees a month.
 
 When we actually audited messy WhatsApp text against open-weight models, we discovered the unvarnished reality:
 - Models frequently hallucinate on **negated cancellations**: *"don't send lunch"* gets misparsed as *`meal: lunch, qty: 1`*.
 - Hindi number words (*"ek"*, *"do"*, *"teen"*) and roommate split orders (*"cancel for Rahul, keep mine"*) lead to missed plates.
 - Dietary restrictions (*"bina mirch"*, *"jain"*) often get dropped, risking allergic or religious customer conflicts.
 
-Instead of hiding behind cherry-picked synthetic numbers, TiffinTally introduces an **AI Benchmark & Self-Healing Evaluation Lab** (`/benchmarks`). It continuously evaluates open-weight model outputs across 7 quantitative metrics (Precision, Recall, Micro F1, Strict/Lenient Accuracy, Schema Adherence, and Guardrail Safety). When an extraction falls below the 90% benchmark threshold, an automated self-healing retry loop applies diagnostic repair heuristics until the output passes before any prep sheet hits the kitchen.
+Instead of hiding behind cherry-picked synthetic numbers, TiffinTally introduces an **AI Benchmark & Self-Healing Evaluation Lab** (`/benchmarks`). It continuously evaluates open-weight model outputs across 7 quantitative metrics (Precision, Recall, Micro F1, Strict/Lenient Accuracy, Schema Adherence, and Guardrail Safety). When an extraction falls below the target benchmark threshold (score under 0.90), an automated self-healing retry loop applies diagnostic repair heuristics until the output passes before any prep sheet hits the kitchen.
 
 ---
 
@@ -106,7 +106,7 @@ The hardest part of parsing chat exports with an LLM is handling negated instruc
   2. *Dietary Allergens*: *"bina pyaz lahsun / jain thali"* (no onion/garlic).
   3. *Roommate Splits*: *"cancel for Rahul, add one for me"*.
   4. *Adversarial Guardrails*: Prompt injection and delimiter escaping attempts.
-- When an open model extraction fails, TiffinTally's repair heuristics diagnose the error type (`MODS_MISMATCH`, `NEGATED_CANCELLATION`, `SPLIT_ROOMMATE`), heal the event payload, and iterate until passing the $\ge 90\%$ benchmark threshold.
+- When an open model extraction fails, TiffinTally's repair heuristics diagnose the error type (`MODS_MISMATCH`, `NEGATED_CANCELLATION`, `SPLIT_ROOMMATE`), heal the event payload, and iterate until passing the target threshold (score >= 0.90).
 
 ---
 
@@ -122,7 +122,7 @@ The hardest part of parsing chat exports with an LLM is handling negated instruc
 
 TiffinTally was built, refactored, and verified with deep autonomous testing:
 - Over 305 automated pytest unit and invariant tests covering edge-case parsers, privacy boundaries, and database gating.
-- Full collaborative browser verification using real browser sessions to navigate the UI, test flawed extractions, and watch the self-healing retry loop achieve 100% benchmark scores in real time.
+- Full collaborative browser verification using real browser sessions to navigate the UI, test flawed extractions, and watch the self-healing retry loop achieve passing benchmark scores in real time.
 
 ---
 
