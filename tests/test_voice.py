@@ -283,9 +283,7 @@ def test_brief_does_not_call_an_applied_cancel_plates_already_in_the_total():
         as_of=datetime(2026, 10, 18, 18, 0),
     )
 
-    review_cancel = next(
-        event for event in sheet.unresolved_reviews if event.action == "cancel"
-    )
+    review_cancel = next(event for event in sheet.unresolved_reviews if event.action == "cancel")
     assert review_cancel.applied_to_plate_count is False
     assert sheet.total_thalis == 0
     assert all(label.customer != "Ravi" for label in sheet.packing_labels)
