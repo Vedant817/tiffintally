@@ -13,7 +13,11 @@
     {# Honest accounting. A sheet must never read as if a model ran when the
        rules did the work, and a fallback must say why without naming a model
        that was never called. #}
-    <div class="banner {% if model_messages and fallback_messages %}warn{% endif %}">
+    {# A chosen rules path (EXTRACTOR_BACKEND=off) is the product, so it stays
+       quiet. A configured model that fell back is a failure and must not
+       wear the same calm banner. #}
+    {% set rules_by_choice = extractor_notes|length == 1 and extractor_notes[0] == "EXTRACTOR_BACKEND=off, rules only" %}
+    <div class="banner {% if fallback_messages and not rules_by_choice %}warn{% endif %}">
       {% if model_messages and fallback_messages %}
         <strong>Mixed read:</strong>
         {{ model_messages }} message(s) read by <strong>{{ extractor_label }}</strong>,
