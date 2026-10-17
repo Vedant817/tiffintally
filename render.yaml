@@ -15,4 +15,4 @@ services:
       - key: GOOGLE_API_KEY
         sync: false
       - key: GEMMA_MODEL
-        value: "gemma-2-9b-it"
+        value: "gemma-4-26b-a4b-it"

@@ -17,11 +17,13 @@ EXTRACTOR_BACKEND=off uv run tiffintally eval --out evals/final/offline
 uv run python scripts/publish_results.py --check
 ```
 
-The configured backend is selected from Modal endpoint credentials (fine-tuned open-weight Qwen2.5-3B),
-a Google key (defaulting to the open-weight `gemma-2-9b-it` model on Google AI Studio), an OpenAI-compatible endpoint (e.g. local Ollama),
+The configured backend is selected from Modal endpoint credentials (a fine-tuned Qwen2.5-3B adapter),
+a Google key (defaulting to the open-weight `gemma-4-26b-a4b-it` model on Google AI Studio), an OpenAI-compatible endpoint (e.g. local Ollama),
 or local rules. The UI reports what actually answered, including mixed fallback.
-The Qwen research adapter is non-commercial; its licence is separate from this
-repository's MIT code licence. Built with open-weight models when configured.
+The Qwen adapter is built on the `qwen-research` base model, which carries a non-commercial
+research licence; the adapter itself is not published here and is not measured. That licence is
+separate from this repository's MIT code licence. No hosted Gemma run has been measured yet, so
+no model accuracy is claimed anywhere in this repository.
 
 ## Data and evidence
 

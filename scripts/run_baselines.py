@@ -13,6 +13,7 @@ import httpx
 
 from tiffintally.datasets import load_dataset, reserve_holdout
 from tiffintally.extract.base import SYSTEM_PROMPT, heuristic_extract
+from tiffintally.extract.gemma import DEFAULT_GEMMA_MODEL, answer_text, strip_code_fences
 from tiffintally.gpu_budget import GpuBudget
 from tiffintally.model_validation import clean_model_event
 from tiffintally.scoring import score_events, summarize
@@ -57,6 +58,8 @@ def run(system, dataset, out, *, execute=False, batch_size=20, human_holdout=Fal
     rows = []
     llm_rows = 0
     deferred = 0
+    gemini_model = os.getenv("GEMMA_MODEL") or DEFAULT_GEMMA_MODEL
+    response_mime_mode = "json"
     for sample in samples:
         text = sample.get("raw_text") or sample["text"]
         started = time.perf_counter()
@@ -73,26 +76,39 @@ def run(system, dataset, out, *, execute=False, batch_size=20, human_holdout=Fal
             if system == "gemini":
                 # Kept explicit: no automatic fallback can become a model score.
                 key = os.getenv("GOOGLE_API_KEY")
-                model = os.getenv("GEMMA_MODEL")
-                if not key or not model:
-                    raise PermissionError("NOT RUN: GOOGLE_API_KEY and GEMMA_MODEL required")
+                if not key:
+                    raise PermissionError("NOT RUN: GOOGLE_API_KEY required")
+                request = {
+                    "contents": [{"parts": [{"text": prompt + "\n" + text}]}],
+                    "generationConfig": {"temperature": 0},
+                }
+                if response_mime_mode == "json":
+                    request["generationConfig"]["responseMimeType"] = "application/json"
                 response = httpx.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{gemini_model}:generateContent",
                     headers={"x-goog-api-key": key},
                     timeout=60,
-                    json={
-                        "contents": [{"parts": [{"text": prompt + "\n" + text}]}],
-                        "generationConfig": {
-                            "temperature": 0,
-                            "responseMimeType": "application/json",
-                        },
-                    },
+                    json=request,
                 )
+                if response.status_code == 400 and response_mime_mode == "json":
+                    # The served model rejected responseMimeType. One retry
+                    # without it; the mode that answered is recorded below.
+                    response_mime_mode = "none"
+                    request["generationConfig"].pop("responseMimeType", None)
+                    response = httpx.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/"
+                        f"{gemini_model}:generateContent",
+                        headers={"x-goog-api-key": key},
+                        timeout=60,
+                        json=request,
+                    )
                 response.raise_for_status()
-                raw_output = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                raw_output = answer_text(response.json())
                 try:
                     parsed = [
-                        clean_model_event(event) for event in json.loads(raw_output)["events"]
+                        clean_model_event(event)
+                        for event in json.loads(strip_code_fences(raw_output))["events"]
                     ]
                 except (ValueError, KeyError, TypeError):
                     parsed, parse_ok = [], False
@@ -156,6 +172,8 @@ def run(system, dataset, out, *, execute=False, batch_size=20, human_holdout=Fal
         deferred=deferred,
         requested_batch_size=batch_size,
         status="INCOMPLETE: flagged rows deferred" if deferred else "measured",
+        hosted_model=gemini_model if system == "gemini" and llm_rows else None,
+        response_mime_mode=response_mime_mode if system == "gemini" and llm_rows else None,
     )
     (out / "test.meta.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     result = dict(**summarize(rows), metadata=metadata)

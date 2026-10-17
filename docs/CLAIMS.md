@@ -12,3 +12,6 @@ Generated from implementation and local evidence; not production certification.
 | Session creation has a hard cap | tiffintally/app.py:123 | tests/test_session_cap.py | 76acb4833e8b40b68a8fb977d8d598682f08574a |
 | Private holdouts require provenance and freezing | tiffintally/datasets.py:52 | tests/test_human_holdout.py | 76acb4833e8b40b68a8fb977d8d598682f08574a |
 | Numerical tables rescore saved predictions | scripts/publish_results.py:35 | evals/final/public_summary.json | 76acb4833e8b40b68a8fb977d8d598682f08574a |
+| Hosted default is a Gemma 4 id the Gemini API serves | tiffintally/extract/gemma.py:32 | tests/test_gemma_transport.py | pending: fix/honest-final |
+| A Gemini answer with a thought part or a fence is still parsed | tiffintally/extract/gemma.py:74 | tests/test_gemma_transport.py | pending: fix/honest-final |
+| A retired model id shows "rules (regex)" plus the HTTP error | tiffintally/extract/gemma.py:392 | tests/test_gemma_transport.py | pending: fix/honest-final |

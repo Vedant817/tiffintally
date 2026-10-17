@@ -1,4 +1,4 @@
----
+﻿---
 title: TiffinTally: A WhatsApp-to-Kitchen Prep Sheet with Honest Evals and Open-Weight AI
 published: false
 tags: devchallenge, hf26challenge, opensource, python
@@ -15,7 +15,7 @@ Home tiffin cooks in Pune, Bengaluru, and Mumbai cook 30 to 50 meals every day. 
 
 At 10 PM, after turning off the stoves, the cook copies these messages into a paper notebook. A missed cancellation is wasted groceries and cooking time; a missed extra order is a hungry customer and lost revenue.
 
-A Google Form would be cleaner, but customers ignore it—they already have the cook's WhatsApp chat open.
+A Google Form would be cleaner, but customers ignore itâ€”they already have the cook's WhatsApp chat open.
 
 **TiffinTally** is a local-first, privacy-preserving order desk and kitchen prep sheet for tiffin cooks. You paste the raw WhatsApp export; TiffinTally:
 1. **Masks sensitive PII** (phone numbers, street addresses, and customer names) locally in memory.
@@ -74,7 +74,7 @@ TiffinTally includes an official Render Blueprint specification (`render.yaml`).
 {% github Vedant817/tiffintally %}
 
 Key architectural modules:
-- [`tiffintally/extract/gemma.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/extract/gemma.py): Multi-backend model router supporting Google AI Studio (`gemma-2-9b-it`), Modal (`Qwen2.5-3B`), local OpenAI/Ollama, or offline regex rules.
+- [`tiffintally/extract/gemma.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/extract/gemma.py): Multi-backend model router supporting Google AI Studio (`gemma-4-26b-a4b-it`), Modal (`Qwen2.5-3B`), local OpenAI/Ollama, or offline regex rules.
 - [`tiffintally/benchmarks.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/benchmarks.py): Quantitative metrics calculator, diagnostic repair rules, and self-healing retry loop.
 - [`tiffintally/privacy.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/privacy.py): In-memory pseudonymization replacing Indian mobile numbers, street addresses, and personal names with sequential tokens (`C001`, `C002`).
 - [`tiffintally/db.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/db.py): ACID SQLite persistence layer gated behind `TIFFINTALLY_PERSIST=1`, storing only masked text to ensure unmasked phone numbers never touch disk.
@@ -87,7 +87,7 @@ Key architectural modules:
 ### 1. Multi-Provider Open-Weight Routing
 
 TiffinTally is engineered from the ground up around open-source AI and open-weight models:
-- **Gemma 2 9B (`gemma-2-9b-it`)**: Google's instruction-tuned open-weight model accessed via Google AI Studio API for zero-cost hosted extraction.
+- **Gemma 2 9B (`gemma-4-26b-a4b-it`)**: Google's instruction-tuned open-weight model accessed via Google AI Studio API for zero-cost hosted extraction.
 - **Qwen2.5-3B**: Fine-tuned LoRA adapter served via Modal for fast batched extraction.
 - **Local Ollama / vLLM**: Seamless compatibility with local endpoints via OpenAI-compatible schemas (`http://localhost:11434/v1`).
 - **Offline Heuristic Engine**: Fast, deterministic regex rules that run offline with zero internet access when no API key is supplied.
@@ -112,7 +112,7 @@ The hardest part of parsing chat exports with an LLM is handling negated instruc
 
 ## Why Does Open Innovation Matter?
 
-1. **Unit Economics for Small Businesses**: A tiffin cook selling home-cooked meals for ₹80 ($0.95) cannot spend $0.03 per customer chat on proprietary closed APIs. Open-weight models like Gemma 2 9B and Qwen2.5-3B make the unit economics viable at zero or near-zero marginal cost.
+1. **Unit Economics for Small Businesses**: A tiffin cook selling home-cooked meals for â‚¹80 ($0.95) cannot spend $0.03 per customer chat on proprietary closed APIs. Open-weight models like Gemma 2 9B and Qwen2.5-3B make the unit economics viable at zero or near-zero marginal cost.
 2. **Customer Privacy**: Home kitchen customers trust the cook with their home address and phone number. Open models can run on a local laptop via Ollama or with local pseudonymization, ensuring customer PII never leaves the cook's control.
 3. **No Vendor Lock-In**: Because extraction relies on standard open-weight architectures, a cook or developer is never trapped by proprietary API deprecations or sudden price hikes.
 
@@ -129,7 +129,7 @@ TiffinTally was built, refactored, and verified with deep autonomous testing:
 ## Prize Categories
 
 ### Best Use of Gemma
-TiffinTally uses Google's open-weight **Gemma 2 9B** (`gemma-2-9b-it`) via Google AI Studio as its default hosted extraction engine. It routes pseudonymized Hinglish WhatsApp orders through Gemma's JSON schema generation API, extracting meal counts, dietary constraints, and cancellation intents with high fidelity.
+TiffinTally uses Google's open-weight **Gemma 4 26B** (`gemma-4-26b-a4b-it`) via Google AI Studio as its default hosted extraction engine. It routes pseudonymized Hinglish WhatsApp orders through Gemma's JSON schema generation API, extracting meal counts, dietary constraints, and cancellation intents with high fidelity.
 
 ### Best Use of Render
 TiffinTally provides a zero-setup `render.yaml` Blueprint to deploy the FastAPI application on Render's cloud platform with Python 3.11, automatic dependency resolution with `uv`, demo mode isolation, and health check monitoring.

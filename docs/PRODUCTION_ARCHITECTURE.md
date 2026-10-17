@@ -103,7 +103,7 @@ To support billions of orders across millions of kitchens:
 
 ### Dynamic Multi-Provider Routing Hierarchy
 The system routes extraction dynamically based on operational state and cost envelope:
-1. **Tier 1 (Private Self-Hosted Clusters)**: vLLM or Ollama instances running fine-tuned open weights (`qwen2.5:3b-instruct` or `gemma-2-9b-it`).
+1. **Tier 1 (Private Self-Hosted Clusters)**: vLLM or Ollama instances running fine-tuned open weights (`qwen2.5:3b-instruct` or a `gemma-4-26b-a4b-it` weights build).
 2. **Tier 2 (High-Throughput Free/Cost-Effective Cloud)**: Google AI Studio (`gemini-2.0-flash` with strict JSON schema mode).
 3. **Tier 3 (OpenAI-Compatible Providers)**: Groq (Llama-3.3-70b-versatile) or DeepSeek for high concurrency bursts.
 4. **Tier 4 (Guaranteed Deterministic Engine)**: `heuristic_extract` rule-based baseline.

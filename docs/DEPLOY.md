@@ -4,6 +4,8 @@ Nothing here has been deployed. `https://tiffintally.tech` does not serve this a
 
 The steps below are a plan for later. Do not describe them as done.
 
+One thing to decide before making a public URL: with `GOOGLE_API_KEY` set, every paste is sent to Google in masked form and spends the owner's quota. Leave the key unset for a rules-only public demo.
+
 # Deployment guide: Render free tier
 
 Follow these steps if you later deploy TiffinTally. A custom domain is optional and is not attached.
@@ -35,12 +37,10 @@ Follow these steps if you later deploy TiffinTally. A custom domain is optional 
    - Health check: `/health`
 
 5. In the **Environment Variables** panel in Render, fill in the values:
-   - `GOOGLE_API_KEY`: Your Google AI Studio API key
-   - `GEMMA_MODEL`: `gemma-2-9b-it` (or `gemma-3-27b-it`)
-   - `TABPFN_API_KEY`: Your Prior Labs TabPFN API key (optional for demo)
-   - `TINKER_API_KEY`: Your Tinker API key (optional)
-   - `ELEVENLABS_API_KEY`: Your ElevenLabs API key (optional)
    - `TIFFINTALLY_DEMO_MODE`: `true`
+   - `EXTRACTOR_BACKEND`: `off` (rules only) or `gemini` (hosted Gemma)
+   - `GOOGLE_API_KEY`: your Google AI Studio API key. Leave it unset for a rules-only public demo.
+   - `GEMMA_MODEL`: `gemma-4-26b-a4b-it` (the default; only read when the gemini backend is selected)
 
 6. Click **Apply**. The deployment build will take ~2-3 minutes.
 
