@@ -35,9 +35,23 @@ ADDRESS_TAIL_PATTERN = re.compile(
 
 EMAIL_PATTERN = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.]+\b")
 
+# People named inside a message rather than as its sender: "roommate Priya".
+REFERENCED_PERSON_PATTERN = re.compile(
+    r"\b(?:roommate|roomie|friend|dost)\s+([A-Za-z]{3,})\b", re.IGNORECASE
+)
+
 # Names shorter than this are too generic to mask safely: "Ravi" is a person,
 # "aunty" and "ji" are not, and masking them would corrupt the message.
 MIN_NAME_LENGTH = 3
+
+
+def referenced_people(text: str) -> List[str]:
+    """People named in a message body as someone else's roommate or friend.
+
+    They are not senders, so nothing else would register them, and an
+    unregistered name is never masked.
+    """
+    return REFERENCED_PERSON_PATTERN.findall(text or "")
 
 
 def normalized_identity(value: str) -> str:

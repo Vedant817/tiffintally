@@ -96,7 +96,7 @@ TiffinTally is engineered from the ground up around open-source AI and open-weig
 
 Small kitchen businesses handle real customer phone numbers, home addresses, and apartment gate codes:
 - **Default Ephemeral Mode**: By default and in demo mode (`TIFFINTALLY_PERSIST=0`), no chats, customer names, or orders are written to disk. All state resides in ephemeral server memory for the browser session.
-- **Strict Masking on Disk**: When persistence is explicitly turned on (`TIFFINTALLY_PERSIST=1`), both `uploads.raw_text` and `orders.raw_text` are sanitized using `Pseudonymizer`. Real phone numbers like `+91 98765 43210` are replaced with tokens (`C001`, `C002`). Binary inspection tests in CI verify that raw phone numbers never appear anywhere in the `.db` file.
+- **Masked Persistence**: When persistence is explicitly turned on (`TIFFINTALLY_PERSIST=1`), one `Pseudonymizer` per upload replaces every sender name, every roommate named in a message, phone numbers, email addresses and flat or building numbers with sequential tokens (`C001`, `C002`), in the stored lines and in `orders.customer`, `orders.secondary_customer` and `orders.payment_note`. `tests/test_db_persistence.py` pastes a bracketed export and then reads every table plus the WAL and shared-memory bytes, asserting that no name, phone number, email or building name is on disk. A street name with no flat number in front of it (`Baner Road`) is not matched, so it stays: the test asserts that too, and persistence is off by default.
 
 ### 3. Scorer Demo
 

@@ -22,7 +22,7 @@ from tiffintally.extract.base import (
     log_model_call,
     parse_and_validate_llm_json,
 )
-from tiffintally.privacy import Pseudonymizer
+from tiffintally.privacy import Pseudonymizer, referenced_people
 from tiffintally.schema import OrderEvent
 from tiffintally.security import InputGuardrail, enforce_business_bounds
 
@@ -346,10 +346,7 @@ class GemmaExtractor:
             return result
         self.pseudonymizer.register_senders(m.sender for _, m in usable)
         for _, message in usable:
-            referenced = re.findall(
-                r"\b(?:roommate|friend|dost)\s+([A-Za-z]{3,})\b", message.text, re.I
-            )
-            self.pseudonymizer.register_senders(referenced)
+            self.pseudonymizer.register_senders(referenced_people(message.text))
 
         reason = self.unavailable_reason()
         if reason:

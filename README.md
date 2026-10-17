@@ -39,10 +39,16 @@ and payment confirmations live strictly in ephemeral server memory for the brows
 never written to disk.
 
 Persistent storage in SQLite (`data/tiffintally.db`) is an explicit opt-in gated behind `TIFFINTALLY_PERSIST=1`.
-When persistence is enabled, `uploads.raw_text` and `orders.raw_text` store **only masked text**:
-phone numbers, street/apartment addresses, emails, and customer display names are masked with
-sequential pseudo-tokens (`C001`, `C002`, etc.) before insertion. Raw customer phone numbers and
-unmasked chat exports are **never stored** in the database file.
+When persistence is enabled, one `Pseudonymizer` per upload replaces, before any write:
+
+- every sender name in the export, its first word, and any roommate named in a message (`roommate Sneha`), with sequential tokens (`C001`, `C002`, and so on);
+- phone numbers in the Indian formats people type, and email addresses;
+- flat, house, plot and room numbers, and the building or society name that follows the number (`flat 402 Sai Heights`);
+- the stored `orders.customer`, `orders.secondary_customer` and `orders.payment_note` fields, using the same token map.
+
+Two limits, both stated rather than glossed over. A street name with no flat or building number in front of it (`Baner Road`) is not matched, so street names can remain in the masked text. Masking is pattern based, so an address phrased in a way no pattern recognises is not removed either. Because the stored customer name is already a token, a kitchen reloading from the database sees `C001`, not a name.
+
+`tests/test_db_persistence.py` pastes a bracketed export and then reads every table plus the WAL and shared-memory bytes, asserting that no name, phone number, email address or building name is on disk. It also asserts that a bare street name is still there, so this section cannot quietly drift into a stronger claim than the code supports.
 
 Each paste uses an in-memory token map to mask identifiers before sending messages to any configured
 hosted model. Masking covers common Indian phone formats, street addresses, and sender aliases.
