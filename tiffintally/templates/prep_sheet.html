@@ -65,11 +65,11 @@
   </div>
 </div>
 
-<!-- Voice Briefing Player (ElevenLabs) -->
+<!-- Voice Briefing Player. The ElevenLabs label appears only when audio exists. -->
 <div class="card no-print" style="background: linear-gradient(135deg, #fff8e1 0%, #fff 100%); border-left: 4px solid #ffb300;">
   <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
     <h3 style="font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
-      🎙️ Morning Kitchen Audio Brief (ElevenLabs)
+      🎙️ Morning Kitchen Audio Brief{% if voice_brief.audio_path %} (ElevenLabs){% endif %}
       {% if voice_brief.used_tts_api %}
         <span class="badge badge-success">Audio Ready</span>
       {% else %}
@@ -92,7 +92,7 @@
     </audio>
   {% else %}
     <p style="font-size: 0.8rem; color: #888;">
-      💡 Set <code>ELEVENLABS_API_KEY</code> to enable realistic Hindi/Hinglish speech output.
+      Written summary (no audio, no key configured)
     </p>
   {% endif %}
 </div>
@@ -165,7 +165,12 @@
     🔍 Human Review & Corrections Needed ({{ sheet.unresolved_reviews|length + sheet.late_orders|length }})
   </h3>
   <p style="font-size: 0.85rem; color: #666; margin-bottom: 12px;">
-    Highlighted items are either low-confidence, received after kitchen cutoff, or flagged by security guardrails. Save Correction puts your meal, quantity, and action on this sheet. A copy is also written to <code>data/private/corrections.jsonl</code>.
+    Highlighted items are either low-confidence, received after kitchen cutoff, or flagged by security guardrails. Save Correction puts your meal, quantity, and action on this sheet.
+    {% if demo_mode %}
+    Demo mode keeps that correction on this sheet and does not write it to disk.
+    {% else %}
+    A copy is also written to this session's corrections file. The customer name in that file is a token.
+    {% endif %}
   </p>
 
   {% for rev in sheet.unresolved_reviews + sheet.late_orders %}
@@ -251,8 +256,11 @@
             <span style="color: #d84315; font-weight: 600; background: #fff3e0; padding: 2px 6px; border-radius: 4px;">
               {{ label.mods|join("; ") }}
             </span>
-          {% else %}
+          {% elif not label.notes %}
             <span style="color: #bbb;">Standard</span>
+          {% endif %}
+          {% if label.notes %}
+            <div style="margin-top: 4px; color: #6d4c41; font-size: 0.85rem;">{{ label.notes }}</div>
           {% endif %}
         </td>
       </tr>

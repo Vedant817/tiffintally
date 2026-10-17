@@ -25,9 +25,16 @@ from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.requests import Request as StarletteRequest
 
 from tiffintally.benchmarks import STANDARD_BENCHMARK_SUITES, evaluate_and_heal_loop
-from tiffintally.db import load_kitchen_events, persist_correction, persist_upload_and_events
+from tiffintally.clock import now as kitchen_now
+from tiffintally.db import (
+    load_kitchen_events,
+    mask_correction_fields,
+    persist_correction,
+    persist_upload_and_events,
+)
 from tiffintally.extract.gemma import GemmaExtractor
 from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
 from tiffintally.logging_config import get_logger, log_failure, setup_logging
@@ -40,7 +47,6 @@ from tiffintally.reconcile import (
     reconcile_orders,
 )
 from tiffintally.schema import DailyPrepSheet, OrderEvent
-from tiffintally.transcribe import VoiceNoteTranscriber
 from tiffintally.uploads import (
     MAX_UPLOAD_BYTES,
     UploadRejected,
@@ -51,6 +57,18 @@ from tiffintally.voice import VoiceBriefResult, VoiceBriefService
 
 setup_logging()
 logger = get_logger("app")
+
+# Starlette rejects a form field over 1 MB before the app's 2 MB check runs.
+# Raise the part limit to the same cap the cook is told about.
+_starlette_form = StarletteRequest.form
+
+
+async def _form_with_upload_limit(self, *args, **kwargs):
+    kwargs.setdefault("max_part_size", MAX_UPLOAD_BYTES)
+    return await _starlette_form(self, *args, **kwargs)
+
+
+StarletteRequest.form = _form_with_upload_limit
 
 BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -88,6 +106,7 @@ class KitchenSession:
     aliases: dict[str, str] = field(default_factory=dict)
     cook_names: list[str] = field(default_factory=list)
     cutoff: time = field(default_factory=lambda: time(22, 0))
+    flash: str = ""
     touched: datetime = field(default_factory=datetime.now)
 
 
@@ -119,7 +138,7 @@ def _prune_sessions(now: datetime) -> None:
 
 
 def _open_session(request: Request) -> tuple[KitchenSession, bool]:
-    now = datetime.now()
+    now = kitchen_now()
     _prune_sessions(now)
     sid = request.cookies.get(SESSION_COOKIE)
     if sid and sid in SESSIONS:
@@ -139,14 +158,15 @@ def _open_session(request: Request) -> tuple[KitchenSession, bool]:
                     extractor_label="restored from database",
                     used_fallback=True,
                     extractor_notes=[
-                        "Restored from SQLite. Names are stored as tokens (C001, C002), "
-                        "so they read as tokens here: the token map lives in memory only "
-                        "and is gone after a restart."
+                        "Restored from SQLite. Names are tokens after restart and are "
+                        "stored as tokens (C001, C002). The token map lives in memory "
+                        "only and is gone after a restart. Cutoff, target date, price "
+                        "and corrections are not restored. Persistence is experimental."
                     ],
                 )
                 return session, False
         except Exception as exc:
-            logger.debug(f"Session {sid} not in database: {exc}")
+            logger.debug(f"Session {sid[:8]} not in database: {exc}")
 
     sid = uuid.uuid4().hex
     while len(SESSIONS) >= MAX_SESSIONS:
@@ -162,10 +182,66 @@ def open_session(request: Request) -> tuple[KitchenSession, bool]:
         return _open_session(request)
 
 
-def remember_cookie(response, session: KitchenSession, is_new: bool):
+def _cookie_secure(request: Request) -> bool:
+    if request.url.scheme == "https":
+        return True
+    forwarded = request.headers.get("x-forwarded-proto", "")
+    return forwarded.split(",")[0].strip().lower() == "https"
+
+
+def remember_cookie(response, session: KitchenSession, is_new: bool, request: Request):
     if is_new:
-        response.set_cookie(SESSION_COOKIE, session.sid, httponly=True, samesite="lax")
+        response.set_cookie(
+            SESSION_COOKIE,
+            session.sid,
+            httponly=True,
+            samesite="lax",
+            secure=_cookie_secure(request),
+        )
     return response
+
+
+def _accept_q(accept: str, media: str) -> float | None:
+    """Quality of one media type, or None when the header does not list it."""
+    best: float | None = None
+    for part in accept.split(","):
+        bits = [bit.strip() for bit in part.split(";") if bit.strip()]
+        if not bits or bits[0].lower() != media:
+            continue
+        quality = 1.0
+        for param in bits[1:]:
+            if param.lower().startswith("q="):
+                try:
+                    quality = float(param[2:])
+                except ValueError:
+                    quality = 0.0
+        if best is None or quality > best:
+            best = quality
+    return best
+
+
+def wants_html(request: Request) -> bool:
+    """True when the client prefers HTML over JSON.
+
+    A header that merely mentions text/html is not enough: application/json
+    with a higher q stays on the JSON response.
+    """
+    accept = request.headers.get("accept", "")
+    html_q = _accept_q(accept, "text/html")
+    if html_q is None:
+        return False
+    json_q = _accept_q(accept, "application/json")
+    if json_q is None:
+        return True
+    return html_q >= json_q
+
+
+def csv_cell(value: object) -> str:
+    """Stop a spreadsheet from treating a cell as a formula."""
+    text = "" if value is None else str(value)
+    if text[:1] in "=+-@":
+        return "'" + text
+    return text
 
 
 def fill_session(
@@ -195,8 +271,9 @@ def fill_session(
         cook_names=session.cook_names,
         accept_late_cancels=session.accept_late_cancels,
     )
+    cook_name = session.cook_names[0] if session.cook_names else None
     session.voice_brief = VoiceBriefService(session_id=session.sid).generate_morning_brief(
-        session.sheet
+        session.sheet, cook_name=cook_name
     )
 
 
@@ -223,7 +300,8 @@ def sheet_context(session: KitchenSession) -> dict:
         "extractor_notes": session.extractor_notes,
         "cook_names": session.cook_names,
         "accept_late_cancels": session.accept_late_cancels,
-        "current_time": datetime.now().strftime("%I:%M %p, %d %b %Y"),
+        "current_time": kitchen_now().strftime("%I:%M %p, %d %b %Y"),
+        "demo_mode": demo_mode(),
     }
 
 
@@ -233,11 +311,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
+_DEBUG = os.getenv("TIFFINTALLY_DEBUG", "").strip() == "1"
 app = FastAPI(
     title="TiffinTally",
     description="Your WhatsApp orders, sorted before the pressure cooker's first whistle.",
     version=version("tiffintally"),
     lifespan=lifespan,
+    docs_url="/docs" if _DEBUG else None,
+    redoc_url="/redoc" if _DEBUG else None,
+    openapi_url="/openapi.json" if _DEBUG else None,
 )
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -249,7 +331,8 @@ async def log_requests(request: Request, call_next):
     method = request.method
     path = request.url.path
     client_ip = request.client.host if request.client else "unknown"
-    sid = request.cookies.get(SESSION_COOKIE, "-")
+    raw_sid = request.cookies.get(SESSION_COOKIE, "-")
+    sid = raw_sid[:8] if raw_sid not in {"", "-"} else raw_sid
 
     try:
         response = await call_next(request)
@@ -297,6 +380,22 @@ async def reject_oversized_bodies(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Baseline headers. CSP is report-only because the templates use inline CSS and scripts."""
+    response = await call_next(request)
+    response.headers["Content-Security-Policy-Report-Only"] = (
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+    )
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    if _cookie_secure(request):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
+
+
 @app.get("/health")
 def health_check():
     """Liveness only. Feature lists belong in the README, not a health check."""
@@ -332,7 +431,7 @@ def process_get(request: Request):
         if session.sheet and (session.sheet.total_thalis > 0 or session.sheet.packing_labels)
         else "/"
     )
-    return remember_cookie(RedirectResponse(url=target, status_code=303), session, is_new)
+    return remember_cookie(RedirectResponse(url=target, status_code=303), session, is_new, request)
 
 
 @app.post("/process", response_class=HTMLResponse)
@@ -403,16 +502,18 @@ async def process(
     except Exception:
         cutoff_t = time(22, 0)
 
-    fill_session(
+    # Reconcile off the event loop so a large paste cannot stall /health.
+    await asyncio.to_thread(
+        fill_session,
         session,
-        events=events,
-        target_date=target_date,
-        cutoff_t=cutoff_t,
-        extractor_label=label,
-        used_fallback=used_fallback,
-        model_messages=model_messages,
-        fallback_messages=fallback_messages,
-        extractor_notes=extractor_notes,
+        events,
+        target_date,
+        cutoff_t,
+        label,
+        used_fallback,
+        model_messages,
+        fallback_messages,
+        extractor_notes,
     )
 
     response = templates.TemplateResponse(
@@ -420,7 +521,7 @@ async def process(
         name="prep_sheet.html",
         context=sheet_context(session),
     )
-    return remember_cookie(response, session, is_new)
+    return remember_cookie(response, session, is_new, request)
 
 
 @app.post("/api/late-cancels/accept")
@@ -444,7 +545,7 @@ def accept_late_cancels(request: Request):
         response = RedirectResponse(url="/prep", status_code=303)
     else:
         response = JSONResponse({"status": "accepted", "total_thalis": session.sheet.total_thalis})
-    return remember_cookie(response, session, is_new)
+    return remember_cookie(response, session, is_new, request)
 
 
 @app.get("/api/late-cancels/accept")
@@ -462,7 +563,7 @@ def view_prep_sheet(request: Request):
         name="prep_sheet.html",
         context=sheet_context(session),
     )
-    return remember_cookie(response, session, is_new)
+    return remember_cookie(response, session, is_new, request)
 
 
 @app.get("/ledger", response_class=HTMLResponse)
@@ -479,6 +580,7 @@ def view_ledger(request: Request):
             "ledger": ledger,
             "alias_suggestions": alias_suggestions(session),
             "unresolved_events": [ev for ev in session.events if ev.needs_review],
+            "flash": session.flash,
             "blocked_payments": [
                 ev for ev in session.events if ev.action == "payment" and not payment_is_safe(ev)
             ],
@@ -489,7 +591,8 @@ def view_ledger(request: Request):
             ],
         },
     )
-    return remember_cookie(response, session, is_new)
+    session.flash = ""
+    return remember_cookie(response, session, is_new, request)
 
 
 def session_ledger(session: KitchenSession):
@@ -537,7 +640,12 @@ def confirm_alias(request: Request, source: str = Form(...), target: str = Form(
         session.fallback_messages,
         session.extractor_notes,
     )
-    return remember_cookie(JSONResponse({"status": "merged"}), session, is_new)
+    if wants_html(request):
+        session.flash = f"Merged {source} into {target}."
+        response = RedirectResponse(url="/ledger", status_code=303)
+    else:
+        response = JSONResponse({"status": "merged"})
+    return remember_cookie(response, session, is_new, request)
 
 
 @app.get("/ledger/balances.csv")
@@ -547,7 +655,7 @@ def export_balances(request: Request):
     writer = csv.writer(stream)
     writer.writerow(["customer", "balance"])
     for entry in session_ledger(session).values():
-        writer.writerow([entry.customer, f"{entry.balance_due:.2f}"])
+        writer.writerow([csv_cell(entry.customer), csv_cell(f"{entry.balance_due:.2f}")])
     return remember_cookie(
         Response(
             stream.getvalue(),
@@ -556,6 +664,7 @@ def export_balances(request: Request):
         ),
         session,
         is_new,
+        request,
     )
 
 
@@ -568,17 +677,23 @@ async def import_balances(request: Request, balance_file: UploadFile):
     try:
         rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"))))
         balances = {}
+        seen: set[str] = set()
         for row in rows:
             name = row["customer"].strip()
-            if not name or name.lower() in balances:
+            key = name.lower()
+            if not name or key in seen:
                 raise ValueError("Empty or duplicate customer")
-            balances[name.lower()] = money(row["balance"])
+            seen.add(key)
+            balances[name] = money(row["balance"])
     except (ValueError, KeyError, ArithmeticError) as exc:
         raise HTTPException(status_code=400, detail="Invalid customer,balance CSV") from exc
     session.previous_balances = balances
-    return remember_cookie(
-        JSONResponse({"status": "imported", "customers": len(balances)}), session, is_new
-    )
+    if wants_html(request):
+        session.flash = f"Imported opening balances for {len(balances)} customer(s)."
+        response = RedirectResponse(url="/ledger", status_code=303)
+    else:
+        response = JSONResponse({"status": "imported", "customers": len(balances)})
+    return remember_cookie(response, session, is_new, request)
 
 
 @app.post("/api/payments/{event_id}/confirm")
@@ -587,7 +702,7 @@ def confirm_payment(request: Request, event_id: str):
     if not any(payment_id(ev) == event_id and payment_is_safe(ev) for ev in session.events):
         raise HTTPException(status_code=404, detail="No eligible payment in this session")
     session.confirmed_payments.add(event_id)
-    return remember_cookie(JSONResponse({"status": "confirmed"}), session, is_new)
+    return remember_cookie(JSONResponse({"status": "confirmed"}), session, is_new, request)
 
 
 @app.get("/api/audio/morning_brief")
@@ -689,12 +804,14 @@ def save_correction(request: Request, payload: CorrectionPayload):
             ),
             session,
             is_new,
+            request,
         )
 
+    masked_customer, masked_raw = mask_correction_fields(payload.customer, payload.raw_text)
     mgr = ActiveLearningManager(storage_path=corrections_file_for(session))
     entry = CorrectionEntry(
-        customer=payload.customer,
-        raw_text=payload.raw_text,
+        customer=masked_customer,
+        raw_text=masked_raw,
         corrected_meal=payload.corrected_meal,
         corrected_qty=payload.corrected_qty,
         corrected_action=payload.corrected_action,
@@ -703,7 +820,7 @@ def save_correction(request: Request, payload: CorrectionPayload):
     response = JSONResponse(
         {"status": "saved", "applied": applied, "persisted": True, "record": record}
     )
-    return remember_cookie(response, session, is_new)
+    return remember_cookie(response, session, is_new, request)
 
 
 @app.post("/api/active-learning/export")
@@ -728,60 +845,7 @@ def export_active_learning(request: Request):
             "export_path": "data/sft/active_learning_batch.jsonl",
         }
     )
-    return remember_cookie(response, session, is_new)
-
-
-_ALLOWED_AUDIO_SUFFIXES = {".ogg", ".opus", ".m4a", ".mp3"}
-MAX_AUDIO_BYTES = 10 * 1024 * 1024
-
-
-@app.post("/api/voice-note")
-async def transcribe_voice_note(
-    audio_file: Optional[UploadFile] = None,
-    customer_name: str = Form("VoiceCustomer"),
-):
-    """
-    Ingest a WhatsApp voice note (.ogg, .opus, .m4a, .mp3),
-    transcribe it into Hinglish text, and return formatted WhatsApp chat entry.
-
-    The client filename is never used to build a path. It previously was, so an
-    upload named "../../x.ogg" wrote outside the upload folder; on Render that
-    can overwrite application files.
-    """
-    transcriber = VoiceNoteTranscriber()
-
-    upload_dir = Path("data/uploads/audio")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    if audio_file and audio_file.filename:
-        suffix = Path(audio_file.filename).suffix.lower()
-        if suffix not in _ALLOWED_AUDIO_SUFFIXES:
-            raise HTTPException(
-                status_code=415,
-                detail=f"Voice notes must be one of {', '.join(sorted(_ALLOWED_AUDIO_SUFFIXES))}.",
-            )
-        audio_bytes = await audio_file.read()
-        if len(audio_bytes) > MAX_AUDIO_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"That note is {len(audio_bytes) // (1024 * 1024)} MB. "
-                "WhatsApp voice notes are much smaller.",
-            )
-        dest_path = upload_dir / f"{uuid.uuid4().hex}{suffix}"
-        dest_path.write_bytes(audio_bytes)
-    else:
-        dest_path = upload_dir / "sample_voice_cancel.ogg"
-        dest_path.write_bytes(b"MOCK_OGG_HEADER")
-
-    result = transcriber.transcribe(dest_path, customer_name=customer_name)
-    return {
-        "status": "transcribed",
-        "customer": result.customer,
-        "text": result.transcribed_text,
-        "chat_line": result.formatted_chat_line,
-        "backend": result.backend_used,
-        "confidence": result.confidence,
-    }
+    return remember_cookie(response, session, is_new, request)
 
 
 @app.get("/benchmarks", response_class=HTMLResponse)
@@ -822,6 +886,16 @@ async def run_benchmark_eval(
             gold_data = json.loads(custom_gold_json)
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Invalid custom gold JSON") from exc
+        objects = isinstance(gold_data, dict) or (
+            isinstance(gold_data, list)
+            and len(gold_data) > 0
+            and all(isinstance(item, dict) for item in gold_data)
+        )
+        if not objects:
+            raise HTTPException(
+                status_code=400,
+                detail="custom gold must be a JSON object or a list of objects",
+            )
         raw_text = custom_raw_text
     elif selected_suite:
         raw_text = selected_suite["raw_text"]
@@ -835,9 +909,10 @@ async def run_benchmark_eval(
     if inject_flaw:
         # A hand-built wrong event, so the scorer has something to react to.
         # This is not a model output and no model is asked for one.
+        gold_sample = gold_data if isinstance(gold_data, dict) else gold_data[0]
         initial_pred = [
             {
-                "customer": gold_data.get("customer", "Customer"),
+                "customer": gold_sample.get("customer", "Customer"),
                 "meal": "lunch",
                 "qty": 1,
                 "action": "cancel" if "cancel" in raw_text.lower() else "new",

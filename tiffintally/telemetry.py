@@ -120,7 +120,6 @@ def trace_span(
     - guardrail.sanitization
     - llm.extraction
     - reconcile.orders
-    - forecast.tabpfn
     """
     start_time = time.perf_counter()
     sentry_span = None

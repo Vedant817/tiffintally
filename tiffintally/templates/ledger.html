@@ -29,6 +29,12 @@
   </div>
 </div>
 
+{% if flash %}
+<div class="card" style="border-left: 4px solid #2e7d32; background: #e8f5e9;">
+  <p style="margin: 0;">{{ flash }}</p>
+</div>
+{% endif %}
+
 <div class="card">
   <a href="/ledger/balances.csv" class="btn btn-secondary">Export closing balances</a>
   <form action="/ledger/balances" method="post" enctype="multipart/form-data">

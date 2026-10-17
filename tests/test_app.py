@@ -171,7 +171,7 @@ def test_save_correction_api(tmp_path, monkeypatch):
     written = list(tmp_path.glob("corrections_*.jsonl"))
     assert len(written) == 1, "a correction must land in exactly one session file"
     content = written[0].read_text(encoding="utf-8")
-    assert "Ravi" in content
+    assert "Ravi" not in content
     assert '"corrected_qty": 3' in content
 
 
@@ -235,16 +235,9 @@ def test_active_learning_export_api(tmp_path, monkeypatch):
     assert data["examples_count"] >= 1
 
 
-def test_voice_note_api():
-    resp = client.post(
-        "/api/voice-note",
-        data={"customer_name": "Deepak"},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "transcribed"
-    assert data["customer"] == "Deepak"
-    assert "Deepak" in data["chat_line"]
+def test_voice_note_route_is_gone():
+    resp = client.post("/api/voice-note", data={"customer_name": "Deepak"})
+    assert resp.status_code == 404
 
 
 def test_favicon_returns_204():

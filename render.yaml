@@ -19,8 +19,9 @@ services:
     plan: free
     buildCommand: pip install uv && uv sync --frozen --no-dev
     startCommand: .venv/bin/uvicorn tiffintally.app:app --host 0.0.0.0 --port $PORT
-    # Left empty deliberately: health checks are a paid-plan feature, so reachability
-    # is verified externally against /health rather than by Render.
+    # Left empty deliberately. Platform health checks are off on the free plan,
+    # so healthCheckPath stays "". Reachability is verified externally against
+    # the app's /health endpoint rather than by Render.
     healthCheckPath: ""
     autoDeployTrigger: commit
     envVars:
@@ -48,3 +49,7 @@ services:
       # demo on the on-device rules no matter what else is configured.
       - key: EXTRACTOR_BACKEND
         sync: false
+      # Message dates use this zone. Unset, the process clock on Render is UTC
+      # and "today" is a day early between midnight and 05:30 IST.
+      - key: TIFFINTALLY_TZ
+        value: Asia/Kolkata

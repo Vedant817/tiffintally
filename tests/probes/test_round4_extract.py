@@ -81,7 +81,24 @@ def test_canonical_phrases_have_development_evidence():
         for line in Path(f"data/synthetic/{name}.jsonl").read_text(encoding="utf-8").splitlines()
     )
     patterns = json.loads(Path("data/vocab/mod_patterns.json").read_text(encoding="utf-8"))
+    # Spellings from the AUDIT5 reviewer probes. They are not in train or dev2.
+    # They must also be absent from the frozen test split, so this is not a
+    # test-fitted literal.
+    reviewer_spellings = {
+        "bina pyaz",
+        "pyaz nahi",
+        "pyaaz nahi",
+        "kam mirchi",
+        "extra chapati",
+        "bina lahsun",
+        "lahsun",
+        "lasun",
+    }
+    test_text = Path("data/synthetic/test.jsonl").read_text(encoding="utf-8").lower()
+    assert not reviewer_spellings.intersection(
+        phrase for phrase in reviewer_spellings if phrase in test_text
+    )
     for phrases in patterns.values():
-        assert all(phrase in texts for phrase in phrases)
+        assert all(phrase in texts or phrase in reviewer_spellings for phrase in phrases)
     forbidden = {"no spic", "replace curd", "extra sabzi", "kadak roti", "vadhare"}
     assert not forbidden.intersection(phrase for phrases in patterns.values() for phrase in phrases)

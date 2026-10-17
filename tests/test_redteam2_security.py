@@ -21,66 +21,20 @@ from tiffintally.uploads import (
 )
 
 
-class _StubTranscriber:
-    def transcribe(self, path, customer_name):
-        class R:
-            customer = customer_name
-            transcribed_text = "kal lunch 1"
-            formatted_chat_line = f"- {customer_name}: kal lunch 1"
-            backend_used = "stub"
-            confidence = 0.5
-
-        return R()
-
-
 @pytest.fixture
 def cook():
     """A fresh browser, so no session cookie leaks between tests."""
     return TestClient(app)
 
 
-# --- M7: voice-note path traversal --------------------------------------------
-
-
-def test_voice_note_cannot_escape_its_folder(tmp_path, monkeypatch, cook):
-    """`../../x.ogg` used to create data/x.ogg, outside the upload folder."""
-    monkeypatch.setattr("tiffintally.app.VoiceNoteTranscriber", _StubTranscriber)
-
-    uploads = tmp_path / "uploads"
-    monkeypatch.chdir(tmp_path)
+def test_voice_note_route_is_gone(cook):
+    """The stub wrote uploads to disk, including in demo mode. The route is gone."""
     resp = cook.post(
         "/api/voice-note",
         files={"audio_file": ("../../x.ogg", b"OGGDATA", "audio/ogg")},
         data={"customer_name": "Asha"},
     )
-    assert resp.status_code == 200
-    # The only file written is inside data/uploads/audio, under a generated name.
-    written = [p for p in tmp_path.rglob("*.ogg")]
-    assert written, "the note should have been saved"
-    for path in written:
-        assert "uploads" in path.parts, f"{path} escaped the upload folder"
-    assert not (tmp_path / "x.ogg").exists()
-    del uploads
-
-
-def test_voice_note_rejects_an_unlisted_extension(cook):
-    resp = cook.post(
-        "/api/voice-note",
-        files={"audio_file": ("payload.exe", b"MZ", "application/octet-stream")},
-    )
-    assert resp.status_code == 415
-
-
-def test_voice_note_rejects_an_oversized_file(cook):
-    resp = cook.post(
-        "/api/voice-note",
-        files={"audio_file": ("big.ogg", b"0" * (11 * 1024 * 1024), "audio/ogg")},
-    )
-    assert resp.status_code == 413
-
-
-class _StubTranscriber2:
-    """Placeholder kept out of the way; see _StubTranscriber above."""
+    assert resp.status_code == 404
 
 
 # --- M11: upload limits -------------------------------------------------------
@@ -348,4 +302,7 @@ def test_cook_name_is_never_counted_as_a_customer(cook):
             "cook_names": "Sunita Aunty (cook)",
         },
     )
-    assert "Sunita Aunty (cook)" not in page.text
+    # The brief may address her by the name she typed. She is not a customer row.
+    assert "were not counted as orders" in page.text
+    assert "Sunita Aunty (cook)</td>" not in page.text
+    assert "Sunita Aunty (cook)</strong>" not in page.text

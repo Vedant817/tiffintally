@@ -14,6 +14,8 @@ Home tiffin cooks take orders on WhatsApp, usually late in the evening, in Hingl
 "Aaj raat 1 thali, bina pyaaz lahsun."
 "Roommate left, cancel one thali from tomorrow."
 
+I ran those three through the shipped rules (`heuristic_extract`, sender Ravi) on 17 October 2026. The first is a lunch of 2 and a dinner cancel. The second is one dinner with both `no onion` and `no garlic`. The third does not name a meal, so it is held for review (`unscoped_decrement`) instead of cancelling every lunch.
+
 Someone has to turn that chat into a count of plates, a list of special requests and a record of who owes what. A missed cancellation wastes groceries; a missed extra order loses a customer.
 
 You paste a WhatsApp export. TiffinTally:
@@ -40,16 +42,16 @@ The test split shares sibling templates with the training split. I documented th
 I had earlier reported model accuracy figures. The per-row outputs were never saved and the adapter cannot be re-scored, so I retracted them. The old logs are kept under `evals/retracted/`.
 An audit found five regex patterns I had fitted to test rows. I removed them, and the regex score went down.
 
-A failure you can reproduce. The rules read "don't send lunch" as one new lunch order:
+A case that used to fail. The rules used to read "don't send lunch" as one new lunch order. They now cancel it, same as the Hinglish line:
 
 ```python
 from tiffintally.extract.base import heuristic_extract
 
-heuristic_extract("don't send lunch", "Ravi")  # action=new, meal=lunch, qty=1
+heuristic_extract("don't send lunch", "Ravi")  # action=cancel, meal=lunch, qty=0
 heuristic_extract("kal lunch mat bhejna", "Ravi")  # action=cancel, meal=lunch, qty=0
 ```
 
-Both lines are what that command prints today, 17 October 2026. I have not measured how any model does on English negation, so I make no claim either way.
+Both lines are what that command prints today, 17 October 2026. I have not measured how any model does on English negation, so I make no claim either way. A meal that is not named ("cancel one thali") is still sent to review rather than guessed.
 
 ## Demo
 
@@ -78,7 +80,7 @@ Open http://127.0.0.1:8000, paste an export and read the prep sheet. With no key
 
 ## How I Built It
 
-Stack: FastAPI, Pydantic, uv, pytest. The suite has 334 passing tests and 4 expected failures, and CI is green.
+Stack: FastAPI, Pydantic, uv, pytest. The suite has 364 passing tests and 4 expected failures, and CI on main was green before this branch.
 
 Extraction backends, chosen by environment variables:
 
@@ -91,13 +93,13 @@ The default hosted id used to be a Gemma 2 9B that the API had retired. It answe
 
 Model output is untrusted. Messages are numbered in the batch and replies are matched by index. A message the model skips falls back to the rules and is flagged for review. Quantities are bounded and prompt-injection text is flagged.
 
-Privacy. Nothing is written to disk by default. The opt-in SQLite mode (`TIFFINTALLY_PERSIST=1`) stores masked text: one pseudonymizer per upload replaces every sender name, every roommate named in a message, phone numbers, email addresses and flat or building numbers with sequential tokens, in the stored lines and in the customer, secondary customer and payment note columns. A street name with no flat number in front of it is not matched, so street names can remain. A test pastes an export and reads every table plus the database, WAL and shared-memory bytes, asserting that no name, phone number, email or building name reaches disk.
+Privacy. Nothing is written to disk by default. The opt-in SQLite mode (`TIFFINTALLY_PERSIST=1`) is experimental: names come back as tokens after a restart, and the cutoff, date, price and corrections are not restored. While it is on, one pseudonymizer per upload replaces every sender name, every roommate named in a message, phone numbers, email addresses and flat or building numbers with sequential tokens, in the stored lines and in the customer, secondary customer and payment note columns. A street name with no flat number in front of it is not matched, so street names can remain. A test pastes an export and reads the SQLite file (every table, plus the WAL and shared-memory bytes) and every file written under `data/` for that session, including `data/private/`. That is the disk the test covers. It does not say that no name can ever reach disk.
 
 Reconciliation and the ledger are plain deterministic code, so counts and money never depend on a model.
 
 Why open matters here
 
-The rules path runs on a laptop with no internet, so a cook's customer list never has to leave the kitchen. An open-weight model behind a local endpoint extends that. If a hosted model is used, the masked text goes to that provider and spends the owner's quota, so the deployed demo keeps the extractor explicitly off. Open weights also let me swap models without rewriting the app. I have not measured how much any of this saves.
+The rules path runs on a laptop with no internet, so a cook's customer list never has to leave the kitchen. An open-weight model behind a local endpoint extends that. If a hosted model is used, the masked text goes to that provider and spends the owner's quota. The deployed demo has no model key, so it uses the on-device rules; the blueprint documents `EXTRACTOR_BACKEND=off` to make that explicit. I am not claiming that value is set in the Render dashboard. Open weights also let me swap models without rewriting the app. I have not measured how much any of this saves.
 
 What is next
 
@@ -111,4 +113,4 @@ Overall prize, Side Hustle theme.
 
 Best Use of Render
 
-The app is deployed and live at <https://tiffintally-lbn2.onrender.com> on Render's free tier, from a `render.yaml` blueprint in the repository: `runtime: python`, dependencies resolved from the committed lockfile with `uv sync --frozen --no-dev`, a health path, and demo mode with `TIFFINTALLY_PERSIST=0`. Every pull request also gets its own deployment from `.github/workflows/preview.yml`, which waits until the preview answers on `/health` before it reports ready. That is the whole claim: a rules-only, nothing-persisted demo on a free instance. No hosted model key is configured there, and I am not claiming a model result from it.
+The app is deployed and live at <https://tiffintally-lbn2.onrender.com> on Render's free tier, from a `render.yaml` blueprint in the repository: `runtime: python`, dependencies resolved from the committed lockfile with `uv sync --frozen --no-dev`, a `/health` endpoint, and demo mode with `TIFFINTALLY_PERSIST=0`. Platform health checks are off on the free plan (`healthCheckPath` is empty in `render.yaml`). Every pull request also gets its own deployment from `.github/workflows/preview.yml`, which waits until the preview answers on `/health` before it reports ready. That is the whole claim: a rules-only, nothing-persisted demo on a free instance. No hosted model key is configured there, and I am not claiming a model result from it.

@@ -63,6 +63,15 @@ def mask_chat_text_for_storage(text: str, pseudonymizer: Optional[Pseudonymizer]
     return "\n".join(masked_lines)
 
 
+def mask_correction_fields(customer: str, raw_text: str) -> tuple[str, str]:
+    """Token for the cook's correction log. A fresh map, so it may not match orders."""
+    p = Pseudonymizer()
+    p.register_senders([customer, *referenced_people(raw_text)])
+    masked_customer = mask_identifier(customer, p) or ""
+    _sender, masked_raw = p.mask_text(customer, raw_text)
+    return masked_customer, masked_raw
+
+
 def mask_identifier(value: Optional[str], p: Pseudonymizer) -> Optional[str]:
     """Mask a stored name, email or phone number with the upload's token map."""
     if not value:
@@ -254,9 +263,7 @@ def persist_correction(
         return 0
 
     init_db(db_path)
-    p = Pseudonymizer()
-    masked_raw = mask_chat_text_for_storage(raw_text, p)
-    customer_clean = mask_identifier(customer, p)
+    customer_clean, masked_raw = mask_correction_fields(customer, raw_text)
 
     with get_connection(db_path) as conn:
         cursor = conn.execute(

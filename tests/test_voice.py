@@ -19,7 +19,9 @@ def test_generate_briefing_script():
         ],
     )
     script = generate_briefing_script(sheet)
-    assert "Namaste Aunty!" in script
+    assert "Namaste!" in script
+    assert "Aunty" not in script
+    assert "Kal " in script
     assert "total 45 thalis" in script
     assert "Lunch ke 35 orders" in script
     assert "Priya ka roti nahi rice" in script
@@ -37,7 +39,9 @@ def test_voice_brief_service_fallback_without_key(monkeypatch):
     assert res.audio_path is None
     assert res.used_tts_api is False
     assert res.character_count > 0
-    assert "Namaste Aunty" in res.transcript
+    assert "Namaste!" in res.transcript
+    assert "Aunty" not in res.transcript
+    assert res.message == "Written summary (no audio, no key configured)"
 
 
 def test_voice_brief_caching(tmp_path, monkeypatch):

@@ -6,8 +6,8 @@ The saved synthetic results describe the cleaned rules only; they establish neit
 
 | System | Split | Metric | Correct / n | Accuracy | Wilson interval | Source |
 |---|---|---|---|---|---|---|
-| regex | train | strict | 206 / 342 | 60.2% | 55.0 to 65.3 | evals/final/regex/train.jsonl |
-| regex | train | lenient | 253 / 342 | 74.0% | 69.1 to 78.3 | evals/final/regex/train.jsonl |
+| regex | train | strict | 220 / 342 | 64.3% | 59.1 to 69.2 | evals/final/regex/train.jsonl |
+| regex | train | lenient | 260 / 342 | 76.0% | 71.2 to 80.2 | evals/final/regex/train.jsonl |
 | regex | dev2 | strict | 57 / 60 | 95.0% | 86.3 to 98.3 | evals/final/regex/dev2.jsonl |
 | regex | dev2 | lenient | 57 / 60 | 95.0% | 86.3 to 98.3 | evals/final/regex/dev2.jsonl |
 | regex | test | strict | 35 / 50 | 70.0% | 56.2 to 80.9 | evals/final/regex/test.jsonl |

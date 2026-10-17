@@ -1,10 +1,10 @@
 {
-  "no onion": ["no onion", "bina pyaaz", "बिना प्याज"],
+  "no onion": ["no onion", "bina pyaaz", "bina pyaz", "pyaz nahi", "pyaaz nahi", "बिना प्याज"],
   "jain": ["jain"],
   "roti nahi rice": ["roti nahi rice", "no rice", "only roti", "4 roti"],
-  "less spicy": ["kam teekha", "less spicy", "bina mirchi"],
+  "less spicy": ["kam teekha", "less spicy", "bina mirchi", "kam mirchi"],
   "no curd": ["no curd"],
-  "extra roti": ["extra roti"],
-  "no garlic": ["no garlic", "bina lehsun"],
-  "less oily": ["less oily", "oil kam"]
+  "extra roti": ["extra roti", "extra chapati"],
+  "no garlic": ["no garlic", "bina lehsun", "bina lahsun", "lahsun", "lehsun", "lasun"],
+  "less oily": ["less oily", "oil kam", "less oil"]
 }
