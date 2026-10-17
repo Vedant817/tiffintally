@@ -11,7 +11,10 @@
 services:
   - type: web
     name: tiffintally
-    env: python
+    # Blueprint services use `runtime`. The REST API uses a different key for the same
+    # thing (`serviceDetails.env`), which is why the two disagree; this file is a
+    # blueprint, so it is `runtime` here.
+    runtime: python
     region: oregon
     plan: free
     buildCommand: pip install uv && uv sync --frozen --no-dev
