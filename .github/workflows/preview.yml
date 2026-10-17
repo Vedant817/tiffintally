@@ -170,7 +170,8 @@ jobs:
           set -euo pipefail
           curl -sS -X POST "$RENDER_API/services/$SERVICE/deploys" \
             -H "Authorization: Bearer $RENDER_API_KEY" >/dev/null
-          echo "url=" >> "$GITHUB_OUTPUT"
+          # url is appended only once the deployment is genuinely live, so a failed
+          # wait leaves no url key at all rather than an empty one.
           for i in $(seq 1 60); do
             sleep 10
             status=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
@@ -178,8 +179,11 @@ jobs:
               python3 -c 'import json,sys;d=json.load(sys.stdin);print(d[0]["deploy"]["status"] if d else "none")')
             echo "poll $i: $status"
             if [ "$status" = "live" ]; then
+              # The API is not consistent about this: GET /v1/services/{id} returns
+              # the service flat, while GET /v1/services returns it nested under a
+              # "service" key. Accept either so this does not depend on which one.
               curl -sS -H "Authorization: Bearer $RENDER_API_KEY" "$RENDER_API/services/$SERVICE" |
-                python3 -c 'import json,sys;u=json.load(sys.stdin)["service"]["serviceDetails"]["url"];print("url="+u)' >> "$GITHUB_OUTPUT"
+                python3 -c 'import json,sys;d=json.load(sys.stdin);d=d.get("service",d);print("url="+d["serviceDetails"]["url"])' >> "$GITHUB_OUTPUT"
               break
             fi
             if [ "$status" = "build_failed" ] || [ "$status" = "update_failed" ] || [ "$status" = "canceled" ]; then
