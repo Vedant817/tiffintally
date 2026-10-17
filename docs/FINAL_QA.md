@@ -92,14 +92,40 @@ the exact command to run it later.
 | Blueprint | `uv run python -c "import yaml;print(yaml.safe_load(open('render.yaml')))"` and `Select-String -Path render.yaml -Pattern "gemma-2"` | Parses; `runtime: python`, `EXTRACTOR_BACKEND` sync false; no `gemma-2` |
 | Deploy guide | `Select-String -Path docs/DEPLOY.md -Pattern "TABPFN\|TINKER\|ELEVENLABS"` | No hits |
 
+## Production deployment, checked after the QA run
+
+The QA run above happened before any deployment existed. One is now live, so this
+section supersedes the deployment line in "Not done". Checked with:
+
+```
+Invoke-WebRequest https://tiffintally-lbn2.onrender.com/health      -> 200 {"status":"ok","version":"0.1.0"}
+Invoke-WebRequest https://tiffintally-lbn2.onrender.com/             -> 200
+Invoke-WebRequest https://tiffintally-lbn2.onrender.com/benchmarks   -> 200
+POST https://tiffintally-lbn2.onrender.com/process                  -> 200
+```
+
+Two things that URL is, and is not:
+
+- It serves **`main`**, which does not contain this branch. Its `/benchmarks` still reads
+  "AI Benchmark & Self-Healing Lab" and "Run Benchmark & Self-Healing Loop", because the
+  wording fixed in this branch (`1768909`) is not merged. Verified: the live page returns
+  those strings today. Anyone recording a demo against the live URL before this branch
+  merges will capture the copy this branch removes.
+- Its `POST /process` banner reads "Rules (regex) only. No model was called for this
+  sheet", because no key is configured on the service. That is the honest behaviour, and it
+  is what `post.md` describes for a no-keys run.
+
 ## Not done
 
 - **NOT DONE: Gemma measurement.** No key in the environment. Nothing in the repository
   claims a Gemma number, so no number is missing.
 - **NOT DONE: one end-to-end POST with a real key.** Needs `GOOGLE_API_KEY`. Until it is
   run, the Best Use of Gemma line in `post.md` must stay deleted.
-- **NOT DONE: live Render URL.** Nothing is deployed, so no Render claim is made and
-  `docs/DEPLOY.md` still says so. The Best Use of Render line must stay deleted.
+- **NOT DONE: a live URL serving this branch.** Production serves `main` (§ above). The
+  Best Use of Render condition in `post.md` asks for a live URL serving the app at the time
+  of publishing, so it needs this branch merged and auto-deployed first. Which prize
+  categories to enter is Vedant's call, not this branch's; both bracketed lines are left
+  untouched.
 - **NOT DONE: a human cook has not used this.** `post.md` says so in the first section.
 - **NOT DONE: post-deadline commit list.** `README.md` has the empty list the challenge
   asks for. Nothing goes in it before 19 Oct 12:29 PM IST, and `docs/FINAL_QA.md` plus the
