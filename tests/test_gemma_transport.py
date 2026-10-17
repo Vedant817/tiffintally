@@ -9,7 +9,9 @@ import json
 from datetime import datetime
 
 import httpx
+from fastapi.testclient import TestClient
 
+from tiffintally.app import app
 from tiffintally.extract.gemma import (
     DEFAULT_GEMMA_MODEL,
     GemmaExtractor,
@@ -218,3 +220,83 @@ def test_gemini_request_numbers_the_batch_and_a_model_note_credits_no_money(monk
     ledger = reconcile_ledger(batch.events)
     assert all(entry.total_paid == 0 for entry in ledger.values())
     assert isinstance(batch.latency_ms, float)
+
+
+# --- the sheet must name the model that actually answered --------------------
+
+
+def test_sheet_banner_names_the_model_that_answered(monkeypatch):
+    """The claim post.md makes about the banner, pinned at the route level.
+
+    The rules-only case is covered in tests/test_redteam_fixes.py. This is the
+    other half: a hosted model answers, and the page names the served model
+    instead of claiming the rules did the work.
+    """
+    served = json.loads(_reply(_events_body()).text)
+    served["model"] = "gemma-4-31b-it"
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "gemini")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-never-sent")
+    monkeypatch.setattr(
+        GemmaExtractor, "_post", lambda self, payload: httpx.Response(200, json=served)
+    )
+
+    client = TestClient(app)
+    # /process only redirects to /prep when the caller wants HTML.
+    response = client.post(
+        "/process",
+        data={"raw_text": CHAT, "target_date": "tomorrow"},
+        headers={"accept": "text/html"},
+        follow_redirects=True,
+    )
+    text = response.text
+    assert response.status_code == 200
+    assert "gemma-4-31b-it" in text, "the banner must name the served model"
+    assert "read all 2 message(s)" in text
+    assert "Rules (regex) only" not in text, "a model answered, so do not claim rules only"
+    assert "mix both" not in text, "nothing was skipped, so nothing mixes"
+
+
+def test_sheet_banner_says_rules_only_and_shows_the_error_on_a_404(monkeypatch):
+    """The other half again: a retired model id must not read as a model answer."""
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "gemini")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-never-sent")
+    monkeypatch.setattr(
+        GemmaExtractor,
+        "_post",
+        lambda self, payload: httpx.Response(404, text="models/gemma is not found"),
+    )
+
+    client = TestClient(app)
+    text = client.post(
+        "/process",
+        data={"raw_text": CHAT, "target_date": "tomorrow"},
+        headers={"accept": "text/html"},
+        follow_redirects=True,
+    ).text
+    assert "Rules (regex) only" in text
+    assert "404" in text, "the cook must be told why the model did not answer"
+    # The model id may appear inside the quoted error, never as the answer.
+    assert "read all" not in text and "Mixed read" not in text
+
+
+def test_one_skipped_message_is_counted_in_the_banner_as_partial(monkeypatch):
+    """A partial answer must be visible as partial, not as a clean model run."""
+    partial = json.loads(_reply(_events_body()).text)
+    partial["candidates"][0]["content"]["parts"][0]["text"] = json.dumps(
+        {"results": [{"i": 0, "events": [{"meal": "lunch", "qty": 2, "action": "new"}]}]}
+    )
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "gemini")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-never-sent")
+    monkeypatch.setattr(
+        GemmaExtractor, "_post", lambda self, payload: httpx.Response(200, json=partial)
+    )
+
+    client = TestClient(app)
+    text = client.post(
+        "/process",
+        data={"raw_text": CHAT, "target_date": "tomorrow"},
+        headers={"accept": "text/html"},
+        follow_redirects=True,
+    ).text
+    assert "1 read by the on-device rules" in text
+    assert "mix both" in text

@@ -17,6 +17,12 @@ logs/
 # Tests write to a tmp path (see tests/conftest.py).
 evals/telemetry.jsonl
 
+# Offline eval output written by `tiffintally eval` (README and CI both run it).
+# Published numbers come from scripts/publish_results.py over evals/final/regex,
+# so a scratch run must not be committable by accident.
+evals/final/offline/
+evals/final/ci-offline/
+
 # Python artifacts
 __pycache__/
 *.py[cod]

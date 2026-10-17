@@ -138,6 +138,11 @@ def _open_session(request: Request) -> tuple[KitchenSession, bool]:
                     cutoff_t=time(22, 0),
                     extractor_label="restored from database",
                     used_fallback=True,
+                    extractor_notes=[
+                        "Restored from SQLite. Names are stored as tokens (C001, C002), "
+                        "so they read as tokens here: the token map lives in memory only "
+                        "and is gone after a restart."
+                    ],
                 )
                 return session, False
         except Exception as exc:

@@ -22,8 +22,14 @@
       {% elif model_messages %}
         <strong>{{ extractor_label }}</strong> read all {{ model_messages }} message(s).
       {% else %}
+        {% if extractor_label and extractor_label != "rules (regex)" %}
+        <strong>Restored, not re-extracted.</strong> This sheet was loaded from the
+        database ({{ extractor_label }}). No model was called for it, so no count below
+        came from a model.
+        {% else %}
         <strong>Rules (regex) only.</strong> No model was called for this sheet,
         so every count below came from the pattern rules, not from a model.
+        {% endif %}
       {% endif %}
       {% if extractor_notes %}
         <ul style="margin: 6px 0 0 18px; padding: 0;">

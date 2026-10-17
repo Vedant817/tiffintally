@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 from fastapi.testclient import TestClient
 
-from tiffintally.app import app
+from tiffintally.app import SESSIONS, app
 from tiffintally.db import (
     get_connection,
     init_db,
@@ -313,6 +313,43 @@ def test_bracketed_export_leaves_no_identifier_in_any_persisted_byte(monkeypatch
         blob = _persisted_bytes(db_path)
         leaked = [token for token in FORBIDDEN_IN_DB if token.encode() in blob]
         assert not leaked, f"identifier(s) written to disk: {leaked}"
+
+
+def test_restored_session_says_the_names_are_tokens(monkeypatch):
+    """A returning cook with persistence on must be told their names read as tokens.
+
+    Stored names are tokens now, so the restored sheet cannot show a real name.
+    Silently showing C001 looks like data loss; the note says what happened.
+    """
+    monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "off")
+
+    with TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "restore.db"
+        monkeypatch.setenv("TIFFINTALLY_DB_PATH", str(db_path))
+
+        cook = TestClient(app)
+        response = cook.post(
+            "/process",
+            data={"raw_text": BRACKETED_EXPORT, "target_date": "tomorrow"},
+            headers={"accept": "text/html"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        sid = cook.cookies.get("tt_sid")
+
+        # A fresh browser with the same cookie: the session is gone, the rows are not.
+        SESSIONS.pop(sid, None)
+        returning = TestClient(app)
+        returning.cookies.set("tt_sid", sid)
+        prep = returning.get("/prep", headers={"accept": "text/html"})
+        assert prep.status_code == 200
+        assert "restored from database" in prep.text
+        assert "Restored, not re-extracted" in prep.text
+        assert "stored as tokens" in prep.text
+        for name in ("Rohan", "Kulkarni", "Meera", "Iyer", "Sneha"):
+            assert name not in prep.text
 
 
 def test_a_bare_street_name_is_not_masked_and_the_readme_says_so(monkeypatch):
