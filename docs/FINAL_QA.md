@@ -115,6 +115,42 @@ Two things that URL is, and is not:
   sheet", because no key is configured on the service. That is the honest behaviour, and it
   is what `post.md` describes for a no-keys run.
 
+## CI on this branch
+
+Run `39041210343`, head `16fb083`: every step passes except one.
+
+| Step | Result |
+|---|---|
+| Lint, format, tests, probes, claims, leakage, rescore, daily invariants | success |
+| `tiffintally eval must leave RESULTS.md untouched` | success |
+| Verify no secret leakage | **failure** |
+
+The failure is not a finding. The step log says:
+
+```
+[error] GITHUB_TOKEN is now required to scan pull requests. You can use the
+automatically created token as shown in the README.
+```
+
+`gitleaks/gitleaks-action@v2` refuses to run on a `pull_request` event without a token, so the
+scan never started. The same step fails on every run of this branch, including the first one,
+before any of the later commits.
+
+The scan itself is clean, run locally with this repository's own config over exactly this
+branch's commits:
+
+```
+gitleaks detect --source . --config .gitleaks.toml --log-opts="origin/main..HEAD" --redact
+  INF 11 commits scanned
+  INF scanned ~78421 bytes (78.42 KB) in 271ms
+  INF no leaks found
+```
+
+PR #1 (`chore/pr-preview-testing`) already fixes this by passing `GITHUB_TOKEN` to the step and
+granting `pull-requests: read`. That fix is in `ci.yml`, which that PR owns, so it was
+deliberately not duplicated here: two copies of one workflow change is two merge conflicts.
+Merging PR #1 turns this step green for this branch as well. Re-check after that merge.
+
 ## Not done
 
 - **NOT DONE: Gemma measurement.** No key in the environment. Nothing in the repository
