@@ -54,7 +54,19 @@ def generate_briefing_script(sheet: DailyPrepSheet) -> str:
             f"{len(sheet.late_orders)} late messages aaye hain jinhe aap review screen par check kar sakti hain."
         )
 
-    parts.append("Sabhi packing labels ready hain. Shubh prabhat aur din accha rahe!")
+    # A message the cook has not confirmed yet is deliberately left out of the
+    # totals. Saying "nothing to cook" and "all labels ready" while orders are
+    # sitting in the review queue tells the cook the opposite of the truth, so
+    # name the pending count instead.
+    pending = len(sheet.unresolved_reviews) + len(sheet.late_orders)
+    if pending:
+        parts.append(
+            f"{pending} message(s) abhi aapke check ka intezaar kar rahi hain, isliye upar ka total "
+            "unke bina ka hai. Review screen par confirm kar dein."
+        )
+        parts.append("Confirm hone ke baad ke labels hi ready hain. Shubh prabhat!")
+    else:
+        parts.append("Sabhi packing labels ready hain. Shubh prabhat aur din accha rahe!")
     return " ".join(parts)
 
 

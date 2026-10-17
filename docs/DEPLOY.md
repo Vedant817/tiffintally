@@ -102,3 +102,29 @@ Required repository configuration:
 
 Free-tier service slots are shared. Several PRs open at once can exhaust them; the
 workflow fails loudly rather than silently skipping a deployment.
+
+## Public URL extractor decision (17 Oct 2026)
+
+`EXTRACTOR_BACKEND` is defined in `render.yaml` as `sync: false`, so the dashboard owns its
+value. **Recommended value for the public demo: `off`.**
+
+- With `EXTRACTOR_BACKEND=off`, every paste is read by the on-device regex rules. Nothing is
+  sent to any third party, and the page says "Rules (regex) only".
+- Left unset, `tiffintally/extract/gemma.py` selects the `gemini` backend the moment
+  `GOOGLE_API_KEY` is present. So adding a key later would silently change what a public URL
+  does with a visitor's pasted chat. Setting `off` keeps the demo on the rules no matter what
+  else is configured.
+- No `GOOGLE_API_KEY` is configured on the live service today, and that was verified by hand:
+  `POST https://tiffintally-lbn2.onrender.com/process` returns the rules-only banner.
+- `GEMMA_MODEL` is only read when the `gemini` backend is selected, so leaving both unset keeps
+  the current behaviour exactly.
+
+To exercise hosted extraction, set `EXTRACTOR_BACKEND=gemini` and add a key, and expect masked
+text to leave the instance and spend the owner's quota. That is a deliberate choice, not a
+default.
+
+Demo mode is on for the live service: `TIFFINTALLY_DEMO_MODE=true` and `TIFFINTALLY_PERSIST=0`,
+so a visitor's pasted chat is held in that browser session's memory and never written to disk.
+
+Free tier sleeps: a service that has been idle cold-starts on the next request, so open the
+public URL about a minute before recording a demo.

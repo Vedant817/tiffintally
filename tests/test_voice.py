@@ -90,3 +90,46 @@ def test_voice_cache_refreshes_after_a_late_cancel(tmp_path, monkeypatch):
     after = DailyPrepSheet(date="Tomorrow", total_thalis=10, total_lunch=10)
 
     assert voice_module.sheet_fingerprint(before) != voice_module.sheet_fingerprint(after)
+
+
+def test_brief_never_says_all_labels_ready_while_orders_await_review():
+    """The totals exclude unconfirmed messages, so the wording must say so.
+
+    A headerless paste lands every order in the review queue: the sheet totals 0
+    while two real orders wait. Claiming "nothing to cook, all labels ready"
+    there is the opposite of the truth, and it is the first thing a cook reads.
+    """
+    pending = OrderEvent(
+        customer="Ravi",
+        date="tomorrow",
+        meal="lunch",
+        qty=2,
+        action="new",
+        needs_review=True,
+        audit_flags=["unparsed_timestamp"],
+    )
+    sheet = DailyPrepSheet(
+        date="Tomorrow",
+        total_thalis=0,
+        total_lunch=0,
+        total_dinner=0,
+        unresolved_reviews=[pending],
+    )
+    script = generate_briefing_script(sheet)
+
+    assert "Sabhi packing labels ready hain" not in script
+    assert "1 message(s) abhi aapke check ka intezaar kar rahi hain" in script
+    assert "unke bina ka hai" in script, "the cook must know the total excludes them"
+    assert "total 0 thalis" in script, "the honest number is still stated"
+
+
+def test_brief_keeps_the_cheerful_closing_when_nothing_is_pending():
+    sheet = DailyPrepSheet(
+        date="Tomorrow",
+        total_thalis=3,
+        total_lunch=3,
+        total_dinner=0,
+    )
+    script = generate_briefing_script(sheet)
+    assert "Sabhi packing labels ready hain" in script
+    assert "intezaar" not in script

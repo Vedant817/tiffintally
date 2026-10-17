@@ -1,5 +1,22 @@
 # Pending work, and who can unblock it
 
+## Human-only steps, in the order they must happen
+
+1. Open <https://tiffintally-lbn2.onrender.com> a minute before recording, so the free-tier cold
+   start does not appear in the video.
+2. Take the prep-sheet screenshot. Paste `[YOUR SCREENSHOT: ...]` into `post.md`.
+3. Record the 2 to 3 minute video or make a GIF, paste `[YOUR DEMO VIDEO OR GIF: ...]`.
+4. Tick `[CHECKBOX: overall prize, Side Hustle theme.]`, and delete the checkbox line if you
+   would rather not enter.
+5. In the Render dashboard set `EXTRACTOR_BACKEND=off` (documented in `docs/DEPLOY.md`). The
+   value is currently unset and no key is configured, so the demo is already rules-only; setting
+   it makes that deliberate rather than accidental.
+6. Preview the post on DEV, confirm the tags render, then publish and set `published: false` to
+   `true` in `post.md` before or as you publish.
+7. Do not touch the code after publishing except for typos, and note any post-deadline commit in
+   the list at the end of `README.md`.
+
+
 One list, as of 17 Oct 2026, for `Vedant817/tiffintally` on branch `fix/honest-final`.
 "Decision taken" means the agent has already chosen what to do; nothing below is a
 request to change that choice without new evidence.
@@ -18,8 +35,8 @@ Status legend: **blocked** = needs a human, credential, or external service.
 | A3 | Prize categories | Choosing what to enter is the author's call, and two conditions are A1 and A2. | Both bracketed lines left verbatim in `post.md`. The agent does not fill them. |
 | A4 | Screenshot, 2-3 minute recording, or Render URL in the Demo section | Needs a browser and a person. | Bracketed placeholders left verbatim. |
 | A5 | Publish on DEV, tags, images, preview | Author action, and A1-A4 decide what the post can honestly say. | `post.md` has `published: false`. Nothing was published. |
-| A6 | Merge PR #2, then confirm the auto-deploy | The reviewer's call. `main` auto-deploys to production on merge. | Branch is green: `test`, `no-results-drift`, `preview` and the secret scan all pass, and the preview deployment was checked by hand. After merging, re-check production `/health` and the `/benchmarks` title before recording anything about the public URL. |
-| A7 | Add `EXTRACTOR_BACKEND` to `render.yaml` | `render.yaml` belongs to the deployment session, so it was not edited inside PR #2. | **PR #4**, four lines against `main`, preview deployment verified by hand. Until it merges, setting `GOOGLE_API_KEY` on the live service silently switches it to hosted extraction with no way to force `off`. |
+| A6 | Confirm production runs the merged `main` | Merged: PR #4 as `57e7622`, PR #2 as `5f2bb24`, both green, `main` CI green. | `main` auto-deploys on merge. Confirm the deployed `/benchmarks` title reads "Scorer Demo & Repair Rules" once the auto-deploy finishes, and record that, not the merge, as the evidence. |
+| A7 | Add `EXTRACTOR_BACKEND` to `render.yaml` | Was owned by the deployment session, so it was not edited inside PR #2. | **Done: PR #4 merged as `57e7622`.** The blueprint defines it as `sync: false`; the dashboard value is still the human's to set. See the decision in `docs/DEPLOY.md`. |
 | A8 | A real cook session with a consented export | Needs a person and consent. | `post.md` says plainly that no cook has used it. Not faked; the optional bracket stays for the author. |
 | A9 | Human-written holdout: collection, blind labelling, independent second label, split before scoring | Needs people, consent and provenance. | Detailed in section E below. No proxy dataset is presented as a holdout. |
 | A10 | Qwen adapter licence decision before any commercial use | A legal call, not an engineering one. | Documented as a research licence, non-commercial, with "Built with Qwen" attribution required if the adapter is ever distributed. |
