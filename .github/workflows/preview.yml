@@ -53,24 +53,19 @@ jobs:
               "repo": "https://github.com/" + os.environ["GITHUB_REPOSITORY"],
               "branch": branch,
               "runtime": "python",
-              "plan": "free",
               "region": "oregon",
               "autoDeployTrigger": "commit",
               "serviceDetails": {
                   "env": "python",
+                  # plan belongs here, not at the top level. A top-level "plan" is
+                  # ignored and the service lands on a paid default instead of free.
+                  "plan": "free",
                   "envSpecificDetails": {
                       "buildCommand": "pip install uv && uv sync --frozen --no-dev",
                       "startCommand": ".venv/bin/uvicorn tiffintally.app:app --host 0.0.0.0 --port $PORT",
                   },
                   "healthCheckPath": "",
               },
-              "envVars": [
-                  {"key": "PYTHON_VERSION", "value": "3.11.17"},
-                  {"key": "TIFFINTALLY_DEMO_MODE", "value": "true"},
-                  {"key": "TIFFINTALLY_PERSIST", "value": "0"},
-                  {"key": "TIFFINTALLY_TELEMETRY", "value": "0"},
-                  {"key": "GEMMA_MODEL", "value": "gemma-4-26b-a4b-it"},
-              ],
           }))
           PY
           )
@@ -90,6 +85,47 @@ jobs:
               -d "$payload" >/dev/null
           fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Apply environment variables
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ steps.service.outputs.id }}
+        run: |
+          set -euo pipefail
+          # Set after creation, not in the create payload: env vars in the create body
+          # are accepted and then silently dropped, which would leave the preview
+          # without demo mode and with persistence available.
+          vars=$(cat <<'JSON'
+          [{"key":"PYTHON_VERSION","value":"3.11.17"},
+           {"key":"TIFFINTALLY_DEMO_MODE","value":"true"},
+           {"key":"TIFFINTALLY_PERSIST","value":"0"},
+           {"key":"TIFFINTALLY_TELEMETRY","value":"0"},
+           {"key":"GEMMA_MODEL","value":"gemma-4-26b-a4b-it"}]
+          JSON
+          )
+          curl -sS -o /dev/null -X PUT "$RENDER_API/services/$SERVICE/env-vars" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$vars"
+
+      - name: Confirm demo mode is actually in effect
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ steps.service.outputs.id }}
+        run: |
+          set -euo pipefail
+          # A preview that silently lost demo mode would write sessions to disk on a
+          # public host. Verify rather than assume.
+          got=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+            "$RENDER_API/services/$SERVICE/env-vars" |
+            python3 -c 'import json,sys;print(",".join(sorted(v["envVar"]["key"]+"="+v["envVar"]["value"] for v in json.load(sys.stdin))))')
+          echo "env vars: $got"
+          for required in TIFFINTALLY_DEMO_MODE=true TIFFINTALLY_PERSIST=0; do
+            case ",$got," in
+              *",$required,"*) ;;
+              *) echo "::error::preview is missing $required; refusing to publish it"; exit 1 ;;
+            esac
+          done
 
       - name: Create GitHub deployment record
         id: ghdeploy
