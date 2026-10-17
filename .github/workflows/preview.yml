@@ -224,7 +224,19 @@ jobs:
           # "active" is not a valid deployment state. The accepted set is
           # queued/in_progress/pending/success/failure/error/inactive, and an
           # invalid one is rejected with a 422 that -o /dev/null swallowed.
-          body=$(printf '{"state":"success","environment_url":"%s","auto_inactive":false}' "$URL")
+          #
+          # Built with json.dumps rather than printf interpolation, matching the
+          # other two JSON bodies in this file. printf would not escape a quote or
+          # backslash in the URL and would emit a malformed body.
+          body=$(python3 - "$URL" <<'PY'
+          import json, sys
+          print(json.dumps({
+              "state": "success",
+              "environment_url": sys.argv[1],
+              "auto_inactive": False,
+          }))
+          PY
+          )
           resp=$(curl -sS --fail-with-body -X POST \
             "$GITHUB_API_URL/repos/${{ github.repository }}/deployments/${{ steps.ghdeploy.outputs.id }}/statuses" \
             -H "Authorization: Bearer $GH_TOKEN" \

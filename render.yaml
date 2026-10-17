@@ -42,3 +42,9 @@ services:
       # reports that honestly. Set it in the dashboard to exercise hosted extraction.
       - key: GOOGLE_API_KEY
         sync: false
+      # Which extractor answers on a public instance. Unset, the app picks gemini the
+      # moment GOOGLE_API_KEY is present, so adding a key silently changes what a
+      # public URL does with a visitor's pasted chat. Setting this to "off" keeps the
+      # demo on the on-device rules no matter what else is configured.
+      - key: EXTRACTOR_BACKEND
+        sync: false
