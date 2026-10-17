@@ -149,12 +149,17 @@ jobs:
           }))
           PY
           )
-          curl -sS -X POST "$GITHUB_API_URL/repos/${{ github.repository }}/deployments" \
+          response=$(curl -sS -X POST "$GITHUB_API_URL/repos/${{ github.repository }}/deployments" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/json" \
-            -d "$payload" |
-            python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])' > "$GITHUB_OUTPUT"
+            -d "$payload")
+          # GITHUB_OUTPUT needs key=value. Writing the bare id fails the step with
+          # "Invalid format" even though the deployment was created correctly.
+          echo "response=$response"
+          id=$(echo "$response" |
+            python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+          echo "id=$id" >> "$GITHUB_OUTPUT"
 
       - name: Deploy and wait for the preview to go live
         id: live
