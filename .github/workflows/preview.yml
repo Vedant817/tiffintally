@@ -149,7 +149,7 @@ jobs:
           }))
           PY
           )
-          curl -sS -X POST "$GITHUB_API/repos/${{ github.repository }}/deployments" \
+          curl -sS -X POST "$GITHUB_API_URL/repos/${{ github.repository }}/deployments" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/json" \
@@ -213,7 +213,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -sS -o /dev/null -X POST \
-            "$GITHUB_API/repos/${{ github.repository }}/deployments/${{ steps.ghdeploy.outputs.id }}/statuses" \
+            "$GITHUB_API_URL/repos/${{ github.repository }}/deployments/${{ steps.ghdeploy.outputs.id }}/statuses" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/json" \
