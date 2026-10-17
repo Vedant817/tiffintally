@@ -107,6 +107,8 @@ What is next
 
 A small set of real, human-written cook messages with hand labels. Until that exists, nothing here says how the app performs on real chats.
 
+The kitchen board keeps one corner radius, one accent, and no drop shadow, so it reads as a docket. That is the same point as [@kiwibreaksme on why generated UIs look off](https://dev.to/kiwibreaksme/why-ai-generated-uis-look-off-and-the-one-principle-that-fixes-it-4j20) and [Steven Gonsalvez on the landing-page default](https://dev.to/stevengonsalvez/impeccable-stop-your-ai-making-everything-look-like-a-saas-landing-page-2a4d). Leaving the chat on the laptop unless a model key is set is the same bet as [Srijan on not sending the data to a cloud API](https://dev.to/srijan_bhai/stop-leaking-data-to-cloud-apis-self-hosting-deepseek-locally-with-ollama-4701).
+
 ## Prize Categories
 
 This entry is for the overall Side Hustle prize, and for Best Use of Render.
