@@ -41,11 +41,16 @@ than papering over them. See `RESULTS.md`, `docs/KNOWN_LEAKS.md`, `docs/NUMBERS.
 | Branch | Owner | Work area |
 | --- | --- | --- |
 | `main` | shared | Integration branch. All PRs target this. |
-| `fix/honest-final` | concurrent session | Hosted-extraction correctness (model selection, response parsing). **Do not edit.** |
-| `chore/pr-preview-testing` | integration session | Deployment, PR previews, shared agent guidance, TestSprite readiness. |
+| `fix/honest-final` | concurrent session | Correctness of published claims, hosted extraction, persistence. Has merged `main` and carries open PR #2. **Do not edit.** |
+| `chore/pr-preview-testing` | integration session | Retired — merged into `main` via PR #1. |
+| `chore/render-runtime-key` | integration session | Retired — merged into `main` via PR #3. |
 
 More than one agent works this repository at a time. `AGENTS.md` §4 is binding: inspect
 Git state first, never discard uncommitted work, never touch another session's branch.
+
+The concurrent session merged `main` into its branch and its open PR now receives a
+preview deployment from `preview.yml` automatically. It does not need to run anything to
+get one.
 
 ## 4. Deployment and test readiness
 
@@ -139,9 +144,11 @@ As of the last update:
 | Item | State |
 | --- | --- |
 | Production deployment reachable over HTTPS | **Externally verified** — `https://tiffintally-lbn2.onrender.com/health` returns `200` |
-| PR preview deployment | **Externally verified** — PR #1 produced `https://tiffintally-pr-1.onrender.com`, returning `200` on `/health` |
+| PR preview deployment | **Externally verified on more than one PR** — PR #1 produced `https://tiffintally-pr-1.onrender.com` and PR #2 produced `https://tiffintally-pr-2.onrender.com`, both returning `200` on `/health` |
+| Preview isolation and privacy | **Externally verified** — a preview runs on its own service with `TIFFINTALLY_DEMO_MODE=true` and `TIFFINTALLY_PERSIST=0` confirmed by reading its environment back |
 | GitHub deployment signal | **Externally verified** — deployment record with `state=success` and `environment_url` set to the preview, plus a bot comment on the PR |
 | CI on a pull request | **Verified green** — `test`, `no-results-drift` and `preview` all pass |
+| Handoff to the concurrent session | **Verified** — it merged `main`, and its own PR receives a working preview without being asked to do anything |
 | TestSprite execution on a PR | **Not performed** — blocked on portal authorisation, see section 4 |
 
 Two pre-existing defects were found and fixed along the way, both of which had made the
@@ -158,4 +165,5 @@ Update this file when a milestone meaningfully changes: a deployment goes live o
 a blocker clears, a branch appears or retires, or the verified PR-testing status changes.
 Keep it factual and short. If a claim here cannot be checked, it does not belong here.
 
-**Last updated:** 2026-10-17 · **Updated by:** integration session (deployment + PR testing)
+**Last updated:** 2026-10-17 (handoff state: branches retired, second PR preview and
+handoff verified) · **Updated by:** integration session (deployment + PR testing)
