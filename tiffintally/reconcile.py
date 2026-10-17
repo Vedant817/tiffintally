@@ -566,6 +566,9 @@ def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealSt
             st.items = []
             st.mods = []
             st.is_paused = ev.action == "pause"
+        # Written on the event that was folded in, so a later brief does not
+        # have to guess from the flag list whether this row changed the total.
+        ev.applied_to_plate_count = True
         return
 
     if ev.action not in {"new", "change", "add"}:
@@ -581,6 +584,7 @@ def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealSt
     else:
         allocations.append((ev.customer, ev.qty))
 
+    applied = False
     for cust_name, qty in allocations:
         if qty <= 0:
             continue
@@ -603,6 +607,9 @@ def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealSt
                 if ev.note not in prior:
                     prior.append(ev.note)
                 st.notes = "; ".join(prior)
+            applied = True
+    if applied:
+        ev.applied_to_plate_count = True
 
 
 def reconcile_ledger(
