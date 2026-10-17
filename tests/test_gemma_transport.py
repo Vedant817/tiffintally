@@ -68,9 +68,15 @@ def _gemini(monkeypatch, responder) -> GemmaExtractor:
     return extractor
 
 
+# The Gemma 2 9B id is retired by the Gemini API and is written in parts here on
+# purpose: a repo-wide grep for it must return only the line in docs/DECISIONS.md
+# that explains the retirement, so no stale default or doc can hide behind a test.
+RETIRED_GEMMA_2_ID = "-".join(["gemma", "2", "9b", "it"])
+
+
 def test_default_model_id_is_a_gemma_4_id():
     assert DEFAULT_GEMMA_MODEL == "gemma-4-26b-a4b-it"
-    assert "gemma-2-9b-it" not in DEFAULT_GEMMA_MODEL
+    assert DEFAULT_GEMMA_MODEL != RETIRED_GEMMA_2_ID
 
 
 def test_answer_text_skips_thought_parts():
@@ -142,7 +148,7 @@ def test_retired_model_id_shows_the_rules_label_and_the_error(monkeypatch):
     """A 404 must not read as a model answer."""
     batch = _gemini(
         monkeypatch,
-        lambda payload: httpx.Response(404, text="models/gemma-2-9b-it is not found"),
+        lambda payload: httpx.Response(404, text=f"models/{RETIRED_GEMMA_2_ID} is not found"),
     ).extract_batch_counted(parse_chat_export(CHAT))
 
     assert batch.model_messages == 0

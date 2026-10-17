@@ -85,7 +85,7 @@ the exact command to run it later.
 | Check | Command | Result |
 |---|---|---|
 | Persistence leak | `uv run pytest tests/test_db_persistence.py -q` | PASS: 7 passed |
-| Retired model ids | `git grep -n "gemma-2-9b-it\|gemma-3" -- . ':!docs/review' ':!docs/planning' ':!evals/retracted'` | Two hits, both in `tests/test_gemma_transport.py`: one asserts the default is not that id, the other fakes its 404. No default, doc or config names it. |
+| Retired model ids | `git grep -n "gemma-2-9b-it" -- '*.py' '*.md' '*.yaml' '*.example'` | No code, config or current doc names it. Two kinds of hit remain on purpose: `docs/DECISIONS.md` ADR 008, which states the id was retired and answers 404, and the audit notes under `docs/review/` and `docs/planning/`, which are dated findings that identified the problem before it was fixed. The test that guards against regressing to that id now builds the string in parts so this grep stays meaningful. |
 | Scorer-demo wording | `Select-String -Path README.md,post.md -Pattern "self-heal" -CaseSensitive:$false` | No hits |
 | Post wording | `Select-String -Path post.md -Pattern "hallucinat\|high fidelity\|JSON schema generation\|zero-cost\|305 tests\|collaborative browser\|One-Click Deploy\|NEGATED_CANCELLATION\|SPLIT_ROOMMATE\|cd tiffin-tally"` | No hits |
 | Post numbers | `Select-String -Path post.md -Pattern "\d+(\.\d+)?%"` | No hits, so every number in the post is a count from `RESULTS.md`, from this pytest run, or a date |

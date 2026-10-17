@@ -41,7 +41,7 @@ ADR 002 and ADR 006 still name TabPFN, Tinker and a Render domain. Read them as 
 - **Decision:** Messages received after the cutoff hour/minute are marked with `is_late=True` and flagged distinctly on the prep sheet review for cook approval, rather than silently modifying kitchen quantities.
 
 ## ADR 008: Served Model Ids and Labelled Fallback (17 Oct 2026)
-- **Context:** The hosted default was a Gemma 2 9B id the Gemini API no longer serves. A 404 is terminal in this client, so every call fell back to the offline rules while the UI still named Gemma. Separately, Gemma 4 can answer with a `thought` part before the JSON part, and the parser read `parts[0]`, so a good reply parsed as empty and every message fell back.
+- **Context:** The hosted default was `gemma-2-9b-it`, which the Gemini API retired; it answers 404. A 404 is terminal in this client, so every call fell back to the offline rules while the UI still named Gemma. Separately, Gemma 4 can answer with a `thought` part before the JSON part, and the parser read `parts[0]`, so a good reply parsed as empty and every message fell back.
 - **Decision:** Default to `gemma-4-26b-a4b-it`. Concatenate only parts without `thought: true`. Strip a JSON code fence before parsing. On a 400, retry once without `responseMimeType` and record which mode answered, in `BatchResult.response_mime_mode` and in the eval metadata. A retired id must produce the rules label plus the HTTP error, never a model label.
 - **Consequences:** A 404 or a rejected MIME type is visible instead of silent. There is still no measurement: no `GOOGLE_API_KEY` was available, so the Gemma baseline stays `NOT RUN` and no accuracy is claimed anywhere. `EXTRACTOR_BACKEND` is the only way to force `off` on a host that also holds a key.
 
