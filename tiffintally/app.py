@@ -201,8 +201,39 @@ def remember_cookie(response, session: KitchenSession, is_new: bool, request: Re
     return response
 
 
+def _accept_q(accept: str, media: str) -> float | None:
+    """Quality of one media type, or None when the header does not list it."""
+    best: float | None = None
+    for part in accept.split(","):
+        bits = [bit.strip() for bit in part.split(";") if bit.strip()]
+        if not bits or bits[0].lower() != media:
+            continue
+        quality = 1.0
+        for param in bits[1:]:
+            if param.lower().startswith("q="):
+                try:
+                    quality = float(param[2:])
+                except ValueError:
+                    quality = 0.0
+        if best is None or quality > best:
+            best = quality
+    return best
+
+
 def wants_html(request: Request) -> bool:
-    return "text/html" in request.headers.get("accept", "")
+    """True when the client prefers HTML over JSON.
+
+    A header that merely mentions text/html is not enough: application/json
+    with a higher q stays on the JSON response.
+    """
+    accept = request.headers.get("accept", "")
+    html_q = _accept_q(accept, "text/html")
+    if html_q is None:
+        return False
+    json_q = _accept_q(accept, "application/json")
+    if json_q is None:
+        return True
+    return html_q >= json_q
 
 
 def csv_cell(value: object) -> str:
@@ -360,11 +391,7 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    https = (
-        request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower() == "https"
-    )
-    if https:
+    if _cookie_secure(request):
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
 
@@ -650,10 +677,13 @@ async def import_balances(request: Request, balance_file: UploadFile):
     try:
         rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"))))
         balances = {}
+        seen: set[str] = set()
         for row in rows:
             name = row["customer"].strip()
-            if not name or name.lower() in {key.lower() for key in balances}:
+            key = name.lower()
+            if not name or key in seen:
                 raise ValueError("Empty or duplicate customer")
+            seen.add(key)
             balances[name] = money(row["balance"])
     except (ValueError, KeyError, ArithmeticError) as exc:
         raise HTTPException(status_code=400, detail="Invalid customer,balance CSV") from exc

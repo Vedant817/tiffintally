@@ -598,7 +598,11 @@ def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealSt
             if ev.mods:
                 st.mods.extend(m for m in ev.mods if m not in st.mods)
             if ev.note:
-                st.notes = ev.note
+                # A later message must not drop an earlier allergy or request.
+                prior = [part for part in st.notes.split("; ") if part]
+                if ev.note not in prior:
+                    prior.append(ev.note)
+                st.notes = "; ".join(prior)
 
 
 def reconcile_ledger(

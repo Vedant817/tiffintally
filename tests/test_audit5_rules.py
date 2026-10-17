@@ -7,6 +7,8 @@ send the message to review. A silent plausible order is a failure.
 import pytest
 
 from tiffintally.extract.base import heuristic_extract
+from tiffintally.reconcile import _apply_event
+from tiffintally.schema import OrderEvent
 
 
 def _events(text: str):
@@ -160,3 +162,40 @@ def test_huge_and_zero_quantities_stay_flagged():
     for text in ("kal lunch 100", "kal lunch 0"):
         events = _events(text)
         assert any(event.needs_review for event in events)
+
+
+def test_a_later_note_keeps_the_earlier_one():
+    state: dict = {}
+    _apply_event(
+        OrderEvent(
+            customer="Ravi",
+            date="2026-10-18",
+            meal="lunch",
+            qty=1,
+            note="peanut allergy",
+        ),
+        state,
+    )
+    _apply_event(
+        OrderEvent(
+            customer="Ravi",
+            date="2026-10-18",
+            meal="lunch",
+            qty=1,
+            action="change",
+            note="no sugar",
+        ),
+        state,
+    )
+    _apply_event(
+        OrderEvent(
+            customer="Ravi",
+            date="2026-10-18",
+            meal="lunch",
+            qty=1,
+            action="change",
+            note="peanut allergy",
+        ),
+        state,
+    )
+    assert state[("ravi", "lunch")].notes == "peanut allergy; no sugar"

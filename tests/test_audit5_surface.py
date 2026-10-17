@@ -68,6 +68,24 @@ def test_html_balance_import_redirects_and_keeps_casing():
     assert machine.status_code == 200
     assert machine.json()["customers"] == 1
 
+    prefers_json = TestClient(app)
+    mixed = prefers_json.post(
+        "/ledger/balances",
+        files={"balance_file": ("balances.csv", csv, "text/csv")},
+        headers={"accept": "application/json, text/html;q=0.1"},
+    )
+    assert mixed.status_code == 200
+    assert mixed.json()["customers"] == 1
+
+    prefers_html = TestClient(app)
+    html_first = prefers_html.post(
+        "/ledger/balances",
+        files={"balance_file": ("balances.csv", csv, "text/csv")},
+        headers={"accept": "text/html, application/json;q=0.8"},
+        follow_redirects=False,
+    )
+    assert html_first.status_code == 303
+
 
 def test_html_alias_confirm_redirects():
     from starlette.testclient import TestClient
