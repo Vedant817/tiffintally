@@ -100,6 +100,42 @@ def parse_datetime(date_str: str, time_str: str) -> Optional[datetime]:
     return None
 
 
+HEADER_PATTERNS = (
+    ANDROID_HEADER_PATTERN,
+    DOT_HEADER_PATTERN,
+    ISO_HEADER_PATTERN,
+    IOS_HEADER_PATTERN,
+)
+
+
+def header_match(line: str):
+    """First header pattern that matches this line, or None."""
+    cleaned = clean_text(line)
+    for pattern in HEADER_PATTERNS:
+        match = pattern.match(cleaned)
+        if match:
+            return match
+    return None
+
+
+def split_sender(line: str) -> tuple[Optional[str], str]:
+    """Sender and body of one export line, using the parser's own header rules.
+
+    Returns (None, cleaned line) when the line is not a message header. Callers
+    that need the sender of a whole export must use this rather than splitting
+    on the first colon: in a bracketed export the first colon belongs to the
+    timestamp ("[17/10/2026, 9:00:00 pm] Rohan: ..."), not to the sender.
+    """
+    match = header_match(line)
+    if not match:
+        return None, clean_text(line)
+    remainder = match.groups()[2]
+    if ":" in remainder:
+        sender, body = remainder.split(":", 1)
+        return clean_text(sender), clean_text(body)
+    return "SYSTEM", clean_text(remainder)
+
+
 def is_media_message(text: str) -> bool:
     """Check if the text represents an omitted media attachment."""
     cleaned = clean_text(text).lower()
@@ -167,36 +203,28 @@ def parse_chat_export(content: str) -> List[ParsedMessage]:
             continue
 
         # Try Android, dot-date, ISO, then iOS.
-        android_match = ANDROID_HEADER_PATTERN.match(cleaned_line)
-        dot_match = DOT_HEADER_PATTERN.match(cleaned_line)
-        iso_match = ISO_HEADER_PATTERN.match(cleaned_line)
-        ios_match = IOS_HEADER_PATTERN.match(cleaned_line)
-
-        match = android_match or dot_match or iso_match or ios_match
+        match = header_match(cleaned_line)
         if match:
             # New message header detected
             flush_current()
 
-            d_str, t_str, remainder = match.groups()
+            d_str, t_str, _remainder = match.groups()
             parsed_ts = parse_datetime(d_str, t_str)
             current_timestamp = parsed_ts
             current_timestamp_unparsed = parsed_ts is None
             saw_header = True
             current_raw_lines.append(raw_line)
 
-            # Check if there is a sender separated by colon
-            # e.g., "Ravi: Kal lunch 2" vs system line "Messages and calls are..."
-            if ":" in remainder:
-                parts = remainder.split(":", 1)
-                current_sender = clean_text(parts[0])
-                message_body = clean_text(parts[1])
+            # A colon separates sender from body; no colon means a system line.
+            sender, message_body = split_sender(raw_line)
+            if sender == "SYSTEM":
+                current_sender = "SYSTEM"
+                current_text_lines.append(message_body)
+                current_is_system = True
+            else:
+                current_sender = sender or ""
                 current_text_lines.append(message_body)
                 current_is_system = False
-            else:
-                # System message line
-                current_sender = "SYSTEM"
-                current_text_lines.append(remainder)
-                current_is_system = True
         else:
             # Continuation of previous message (multiline)
             if saw_header:

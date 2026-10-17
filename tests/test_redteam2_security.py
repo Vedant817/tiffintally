@@ -225,7 +225,7 @@ def test_sessions_touch_on_access():
 
 
 def test_bad_key_marks_every_message_as_fallback(monkeypatch):
-    """A page labelled 'gemma-2-9b-it' while the regex did the work."""
+    """A page labelled with a hosted model id while the regex did the work."""
     from tiffintally.extract.gemma import GemmaExtractor
 
     monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "gemini")

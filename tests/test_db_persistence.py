@@ -4,15 +4,46 @@ from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from fastapi.testclient import TestClient
+
+from tiffintally.app import SESSIONS, app
 from tiffintally.db import (
     get_connection,
     init_db,
     is_persistence_enabled,
     load_kitchen_events,
+    mask_chat_text_for_storage,
     persist_correction,
     persist_upload_and_events,
 )
+from tiffintally.parser import split_sender
 from tiffintally.schema import OrderEvent
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# The export from the leak report: a bracketed WhatsApp export, so the first colon
+# belongs to the timestamp and not to the sender.
+BRACKETED_EXPORT = (
+    "[17/10/2026, 9:00:00 pm] Rohan Kulkarni: kal lunch 2, roommate Sneha ke liye bhi 1\n"
+    "[17/10/2026, 9:01:00 pm] Meera Iyer: kal dinner 1\n"
+    "[17/10/2026, 9:02:00 pm] Rohan Kulkarni: delivery flat 402 Sai Heights, Baner Road\n"
+    "[17/10/2026, 9:03:00 pm] Meera Iyer: 1600 gpay kiya, receipt sneha.iyer@example.com pe\n"
+    "[17/10/2026, 9:04:00 pm] Rohan Kulkarni: number 9876543210 par ping karo\n"
+    "[17/10/2026, 9:05:00 pm] Meera Iyer: mera number +91 91234 56789\n"
+)
+
+# None of these may survive in any persisted byte.
+FORBIDDEN_IN_DB = (
+    "9876543210",
+    "91234 56789",
+    "Rohan",
+    "Kulkarni",
+    "Meera",
+    "Iyer",
+    "Sneha",
+    "example.com",
+    "Sai Heights",
+)
 
 
 def test_sqlite_persistence_gated_by_default(monkeypatch):
@@ -168,14 +199,15 @@ def test_sqlite_persistence_roundtrip(monkeypatch):
             assert up_row["kitchen_id"] == "kitchen_test_123"
             assert up_row["msg_count"] == 2
 
-        # Verify loaded events
+        # Verify loaded events. Stored names come back as tokens: the database
+        # never held the real name, so it cannot give it back.
         loaded = load_kitchen_events("kitchen_test_123", db_path=db_path)
         assert len(loaded) == 2
-        assert loaded[0].customer == "Ravi Sharma"
+        assert loaded[0].customer.startswith("C")
         assert loaded[0].meal == "lunch"
         assert loaded[0].qty == 2
         assert loaded[0].payment_amount == Decimal("160.00")
-        assert loaded[1].customer == "Anita P"
+        assert loaded[1].customer.startswith("C")
         assert loaded[1].action == "cancel"
 
 
@@ -200,6 +232,150 @@ def test_persist_correction(monkeypatch):
         with get_connection(db_path) as conn:
             row = conn.execute("SELECT * FROM corrections WHERE id = ?", (cid,)).fetchone()
             assert row is not None
-            assert row["customer"] == "Vikram"
+            # Stored as a token, like every other customer field on disk.
+            assert row["customer"].startswith("C")
             assert row["corrected_meal"] == "lunch"
             assert row["corrected_qty"] == 1
+
+
+# --- the leak this file exists for ---------------------------------------------
+
+
+def test_sender_comes_from_the_parser_not_the_first_colon():
+    """A bracketed export's first colon is inside the timestamp."""
+    assert split_sender("[17/10/2026, 9:00:00 pm] Rohan Kulkarni: kal lunch 2") == (
+        "Rohan Kulkarni",
+        "kal lunch 2",
+    )
+    assert split_sender("[17/10/2026, 9:00:00 pm] Messages and calls are encrypted") == (
+        "SYSTEM",
+        "Messages and calls are encrypted",
+    )
+    masked = mask_chat_text_for_storage("[17/10/2026, 9:00:00 pm] Rohan Kulkarni: kal lunch 2")
+    assert "Rohan" not in masked and "Kulkarni" not in masked
+    assert masked.startswith("[17/10/2026, 9:00:00 pm] C")
+
+
+def _persisted_bytes(db_path: Path) -> bytes:
+    """Every byte on disk for one database, including the WAL and shared memory."""
+    parts = [db_path]
+    parts += [Path(f"{db_path}-wal"), Path(f"{db_path}-shm")]
+    return b"".join(path.read_bytes() for path in parts if path.exists())
+
+
+def test_bracketed_export_leaves_no_identifier_in_any_persisted_byte(monkeypatch):
+    """Regression: the leak report's export must leave no name, phone or email."""
+    monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "off")
+
+    with TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "leak.db"
+        monkeypatch.setenv("TIFFINTALLY_DB_PATH", str(db_path))
+
+        client = TestClient(app)
+        response = client.post(
+            "/process", data={"raw_text": BRACKETED_EXPORT, "target_date": "tomorrow"}
+        )
+        assert response.status_code == 200
+        assert db_path.exists()
+
+        with get_connection(db_path) as conn:
+            tables = [
+                row["name"]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+                )
+            ]
+            contents = {name: conn.execute(f"SELECT * FROM {name}").fetchall() for name in tables}
+
+        # Not a vacuous scan: the upload and its orders really are on disk.
+        assert contents["uploads"], "nothing was persisted, so the scan proves nothing"
+        assert contents["orders"], "no order rows, so customer masking was never exercised"
+        stored = {
+            "orders.customer": [row["customer"] for row in contents["orders"]],
+            "orders.secondary_customer": [row["secondary_customer"] for row in contents["orders"]],
+            "orders.payment_note": [row["payment_note"] for row in contents["orders"]],
+            "uploads.raw_text": [row["raw_text"] for row in contents["uploads"]],
+        }
+        assert any(value for value in stored["orders.secondary_customer"]), (
+            "the fixture must produce a secondary customer for this test to mean anything"
+        )
+        assert any("gpay" in (note or "") for note in stored["orders.payment_note"]), (
+            "the fixture must produce a payment note for this test to mean anything"
+        )
+        for field, values in stored.items():
+            for value in values:
+                assert not value or value.startswith("C") or "gpay" in value or "kal" in value, (
+                    f"{field} looks unmasked: {value!r}"
+                )
+
+        blob = _persisted_bytes(db_path)
+        leaked = [token for token in FORBIDDEN_IN_DB if token.encode() in blob]
+        assert not leaked, f"identifier(s) written to disk: {leaked}"
+
+
+def test_restored_session_says_the_names_are_tokens(monkeypatch):
+    """A returning cook with persistence on must be told their names read as tokens.
+
+    Stored names are tokens now, so the restored sheet cannot show a real name.
+    Silently showing C001 looks like data loss; the note says what happened.
+    """
+    monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "off")
+
+    with TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "restore.db"
+        monkeypatch.setenv("TIFFINTALLY_DB_PATH", str(db_path))
+
+        cook = TestClient(app)
+        response = cook.post(
+            "/process",
+            data={"raw_text": BRACKETED_EXPORT, "target_date": "tomorrow"},
+            headers={"accept": "text/html"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        sid = cook.cookies.get("tt_sid")
+
+        # A fresh browser with the same cookie: the session is gone, the rows are not.
+        SESSIONS.pop(sid, None)
+        returning = TestClient(app)
+        returning.cookies.set("tt_sid", sid)
+        prep = returning.get("/prep", headers={"accept": "text/html"})
+        assert prep.status_code == 200
+        assert "restored from database" in prep.text
+        assert "Restored, not re-extracted" in prep.text
+        assert "stored as tokens" in prep.text
+        for name in ("Rohan", "Kulkarni", "Meera", "Iyer", "Sneha"):
+            assert name not in prep.text
+
+
+def test_a_bare_street_name_is_not_masked_and_the_readme_says_so(monkeypatch):
+    """Pinned boundary: flat numbers and the name after them go; a street alone stays.
+
+    Widening the pattern to catch "Baner Road" would also swallow ordinary
+    words in an order message, so the limit is documented instead of hidden.
+    """
+    monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "off")
+
+    with TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "street.db"
+        monkeypatch.setenv("TIFFINTALLY_DB_PATH", str(db_path))
+        client = TestClient(app)
+        assert (
+            client.post(
+                "/process", data={"raw_text": BRACKETED_EXPORT, "target_date": "tomorrow"}
+            ).status_code
+            == 200
+        )
+
+        blob = _persisted_bytes(db_path)
+        assert b"Baner Road" in blob, (
+            "the street name is masked now; update README.md and drop this assertion"
+        )
+        assert b"Sai Heights" not in blob
+        assert "street names can remain" in (REPO_ROOT / "README.md").read_text(encoding="utf-8")

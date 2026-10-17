@@ -17,7 +17,7 @@ Strict compares complete event sets on meal, quantity, action, canonical mods, p
 
 The legacy synthetic test has known sibling-template leakage and template-authored labels. dev2 is agent-authored development data; legacy dev is a training subset. Wilson intervals treat rows as independent and do not correct that leakage. See docs/KNOWN_LEAKS.md and the per-template comparison output.
 
-Base, few-shot base, adapter and hosted baselines: NOT RUN (needs approval or credentials). The historical adapter aggregates lack complete per-row outputs and cannot be independently rescored. Real/human-written holdout: NOT RUN (verified human provenance and labels missing). Cost: NOT MEASURED.
+Base, few-shot base, adapter and hosted baselines: NOT RUN (needs approval or credentials). Gemma baseline: NOT RUN (no GOOGLE_API_KEY in the environment, so there is no hosted-model run to compare against these rows). The historical adapter aggregates lack complete per-row outputs and cannot be independently rescored. Real/human-written holdout: NOT RUN (verified human provenance and labels missing). Cost: NOT MEASURED.
 
 <!-- measured-results:end -->
 

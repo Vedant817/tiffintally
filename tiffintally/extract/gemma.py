@@ -1,7 +1,7 @@
 """Hosted extraction chosen from Modal credentials, Google key, OpenAI/Ollama, or off.
 
 Modal is selected when its endpoint and bearer token are configured.
-Google credentials select hosted Gemma (default: gemma-2-9b-it).
+Google credentials select hosted Gemma (default: gemma-4-26b-a4b-it).
 OpenAI credentials or local base URL select OpenAI-compatible endpoints (Ollama / vLLM / Groq).
 Otherwise, local rules run. Response labels report what actually ran.
 """
@@ -22,12 +22,14 @@ from tiffintally.extract.base import (
     log_model_call,
     parse_and_validate_llm_json,
 )
-from tiffintally.privacy import Pseudonymizer
+from tiffintally.privacy import Pseudonymizer, referenced_people
 from tiffintally.schema import OrderEvent
 from tiffintally.security import InputGuardrail, enforce_business_bounds
 
-# Default model id for the Google AI Studio path (open-weight Gemma 2 model)
-DEFAULT_GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-2-9b-it")
+# Default model id for the Google AI Studio path (open-weight Gemma 4 model).
+# The Gemma 2 9B id this replaced is retired by the Gemini API: it answers 404,
+# which is a terminal status here, so every call silently fell back to the rules.
+DEFAULT_GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-4-26b-a4b-it")
 DEFAULT_MODAL_URL = os.getenv("MODAL_EXTRACTOR_URL", "").strip()
 MODAL_EXTRACTOR_TOKEN = os.getenv("MODAL_EXTRACTOR_TOKEN", "").strip()
 GEMMA_API_ENDPOINT = (
@@ -41,7 +43,7 @@ DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL_NAME", "qwen2.5:3b").strip()
 
 # Which hosted model answers:
 #   modal  - fine-tuned Qwen adapter on Modal
-#   gemini - Google AI Studio Gemini API (e.g. gemma-2-9b-it)
+#   gemini - Google AI Studio Gemini API (e.g. gemma-4-26b-a4b-it)
 #   openai - Any OpenAI-compatible endpoint (Ollama http://localhost:11434/v1, vLLM, Groq)
 #   off    - deterministic regex rules
 EXTRACTOR_BACKEND = os.getenv("EXTRACTOR_BACKEND", "").strip().lower()
@@ -60,6 +62,32 @@ REQUEST_TIMEOUT = float(os.getenv("EXTRACT_TIMEOUT", "30"))
 MAX_ATTEMPTS = 2
 TERMINAL_STATUSES = {400, 401, 403, 404, 422}
 
+# A reply can arrive inside a ``` fence even when responseMimeType asked for JSON.
+_JSON_FENCE = re.compile(r"\A```(?:json)?\s*|\s*```\Z", re.IGNORECASE)
+
+
+def strip_code_fences(text: str) -> str:
+    """Drop a leading ```json and a trailing ``` so json.loads can try the reply."""
+    return _JSON_FENCE.sub("", (text or "").strip())
+
+
+def answer_text(body: dict) -> str:
+    """The answer parts of a Gemini reply, skipping any "thinking" part.
+
+    Gemma 4 can answer with a reasoning part before the JSON part. Reading
+    parts[0] returned the reasoning, so the batch parsed as empty and every
+    message fell back to the rules.
+    """
+    candidates = body.get("candidates") or []
+    parts: List[dict] = []
+    if candidates:
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+    return "".join(
+        str(part.get("text") or "")
+        for part in parts
+        if isinstance(part, dict) and not part.get("thought")
+    )
+
 
 @dataclass
 class BatchResult:
@@ -72,6 +100,7 @@ class BatchResult:
     errors: List[str] = field(default_factory=list)
     served_model: Optional[str] = None
     latency_ms: float = 0.0
+    response_mime_mode: Optional[str] = None
 
 
 class GemmaExtractor:
@@ -121,6 +150,9 @@ class GemmaExtractor:
         else:
             self.endpoint = DEFAULT_MODAL_URL or os.getenv("MODAL_EXTRACTOR_URL", "").strip()
         self.api_key_header = api_key_header
+        # Which request mode the last Gemini call used. Recorded so a served
+        # model that rejects responseMimeType is visible instead of silent.
+        self.response_mime_mode: Optional[str] = "json" if self.backend == "gemini" else None
 
     def unavailable_reason(self) -> Optional[str]:
         """Why this extractor cannot run, or None when it can."""
@@ -162,7 +194,7 @@ class GemmaExtractor:
     def _is_modal_endpoint(self) -> bool:
         return "modal.run" in self.endpoint or "modal.host" in self.endpoint
 
-    def _request_payload(self, messages: List[dict]) -> dict:
+    def _request_payload(self, messages: List[dict], response_mime: bool = True) -> dict:
         if self._is_modal_endpoint():
             return {
                 "model": self.model_name,
@@ -190,6 +222,9 @@ class GemmaExtractor:
                 "temperature": 0.0,
             }
 
+        generation_config = {"temperature": 0}
+        if response_mime:
+            generation_config["responseMimeType"] = "application/json"
         return {
             "contents": [
                 {
@@ -208,7 +243,7 @@ class GemmaExtractor:
                     ],
                 }
             ],
-            "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+            "generationConfig": generation_config,
         }
 
     def _parse_response(
@@ -238,12 +273,10 @@ class GemmaExtractor:
             choices = body.get("choices", [])
             raw_out = choices[0].get("message", {}).get("content", "") if choices else ""
         else:
-            candidates = body.get("candidates", [])
-            parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
-            raw_out = parts[0].get("text", "") if parts else ""
+            raw_out = answer_text(body)
 
         try:
-            doc = json.loads(raw_out) if raw_out.strip() else {}
+            doc = json.loads(strip_code_fences(raw_out)) if raw_out.strip() else {}
         except Exception:
             doc = {}
         rows = doc.get("results") if isinstance(doc, dict) else None
@@ -313,10 +346,7 @@ class GemmaExtractor:
             return result
         self.pseudonymizer.register_senders(m.sender for _, m in usable)
         for _, message in usable:
-            referenced = re.findall(
-                r"\b(?:roommate|friend|dost)\s+([A-Za-z]{3,})\b", message.text, re.I
-            )
-            self.pseudonymizer.register_senders(referenced)
+            self.pseudonymizer.register_senders(referenced_people(message.text))
 
         reason = self.unavailable_reason()
         if reason:
@@ -358,6 +388,7 @@ class GemmaExtractor:
         else:
             result.model_name = "rules (regex)"
         result.served_model = self.served_model
+        result.response_mime_mode = self.response_mime_mode
         result.latency_ms = (time.perf_counter() - batch_start) * 1000.0
         return result
 
@@ -390,9 +421,10 @@ class GemmaExtractor:
         """Returns (events, model_message_indices, fallback_message_indices, error)."""
         start = time.perf_counter()
         last_error = None
+        response_mime = True
         for attempt in range(MAX_ATTEMPTS):
             try:
-                resp = self._post(self._request_payload(prepared))
+                resp = self._post(self._request_payload(prepared, response_mime=response_mime))
                 if resp.status_code == 200:
                     body = resp.json()
                     by_index, dropped = self._parse_response(resp, prepared, source)
@@ -469,6 +501,12 @@ class GemmaExtractor:
                     return events, model_rows, dropped, None
 
                 last_error = f"HTTP {resp.status_code}: {resp.text[:150]}"
+                if resp.status_code == 400 and response_mime and self.backend == "gemini":
+                    # A served model can reject responseMimeType. Ask once
+                    # without it and record which mode actually answered.
+                    response_mime = False
+                    self.response_mime_mode = "none"
+                    continue
                 if resp.status_code in TERMINAL_STATUSES:
                     break
                 if resp.status_code == 429:

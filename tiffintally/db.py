@@ -3,7 +3,9 @@ Durable database persistence layer for TiffinTally.
 
 Provides ACID transactional persistence using SQLite (WAL mode).
 Persistence is gated behind TIFFINTALLY_PERSIST=1 (off by default and off in demo mode).
-Stores only masked text (never raw phone numbers or unmasked chat text) to protect customer privacy.
+When it is on, stored chat lines and stored names are masked through one
+Pseudonymizer per upload. What that masks and what it does not is written down
+in README.md; the test in tests/test_db_persistence.py pins both halves.
 """
 
 from __future__ import annotations
@@ -18,7 +20,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Generator, List, Optional
 
-from tiffintally.privacy import PHONE_PATTERN, Pseudonymizer
+from tiffintally.parser import parse_chat_export, split_sender
+from tiffintally.privacy import Pseudonymizer, referenced_people
 from tiffintally.schema import OrderEvent
 
 logger = logging.getLogger(__name__)
@@ -35,22 +38,37 @@ def is_persistence_enabled() -> bool:
     return os.getenv("TIFFINTALLY_PERSIST", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def mask_chat_text_for_storage(text: str) -> str:
-    """Mask phone numbers, addresses, emails and personal identifiers before storage."""
+def mask_chat_text_for_storage(text: str, pseudonymizer: Optional[Pseudonymizer] = None) -> str:
+    """Mask every stored line using the parser's sender, not the first colon.
+
+    Splitting a line on its first ":" cut inside a bracketed export's
+    timestamp ("[17/10/2026, 9:00:00 pm] Rohan: ..."), so the sender was never
+    registered and the name stayed in the clear. Every sender and every
+    roommate named in the text is registered on one pseudonymizer before the
+    lines are masked, so a name, a phone number, an email or a flat number is
+    replaced wherever in the upload it appears.
+    """
     if not text:
         return ""
-    p = Pseudonymizer()
+    p = pseudonymizer or Pseudonymizer()
+    for message in parse_chat_export(text):
+        if not message.is_system:
+            p.register_senders([message.sender])
+        p.register_senders(referenced_people(message.text))
     masked_lines = []
     for line in text.splitlines():
-        if ":" in line:
-            sender, rest = line.split(":", 1)
-            _, masked_rest = p.mask_text(sender.strip(), rest)
-            p_sender = p.get_or_create_pseudo_id(sender.strip())
-            masked_lines.append(f"{p_sender}: {masked_rest}")
-        else:
-            _, masked_line = p.mask_text("Customer", line)
-            masked_lines.append(masked_line)
+        sender, _body = split_sender(line)
+        _pseudo_sender, masked_line = p.mask_text(sender or "Guest", line)
+        masked_lines.append(masked_line)
     return "\n".join(masked_lines)
+
+
+def mask_identifier(value: Optional[str], p: Pseudonymizer) -> Optional[str]:
+    """Mask a stored name, email or phone number with the upload's token map."""
+    if not value:
+        return value
+    _pseudo, masked = p.mask_text(value, value)
+    return masked
 
 
 def get_db_path() -> Path:
@@ -169,7 +187,10 @@ def persist_upload_and_events(
     upload_id = uuid.uuid4().hex
     init_db(db_path)
 
-    stored_upload_text = mask_chat_text_for_storage(raw_text)
+    # One token map for the whole upload, so a customer named in the chat, in an
+    # order row and in a payment note all resolve to the same token.
+    p = Pseudonymizer()
+    stored_upload_text = mask_chat_text_for_storage(raw_text, p)
 
     with get_connection(db_path) as conn:
         # Ensure kitchen exists
@@ -184,11 +205,7 @@ def persist_upload_and_events(
         )
         # Record extracted orders (masked text only)
         for ev in events:
-            masked_order_raw = mask_chat_text_for_storage(ev.raw_text)
-            p = Pseudonymizer()
-            customer_clean = PHONE_PATTERN.sub(
-                lambda m: p.get_or_create_pseudo_id(m.group(0)), ev.customer
-            )
+            masked_order_raw = mask_chat_text_for_storage(ev.raw_text, p)
             conn.execute(
                 """
                 INSERT INTO orders (
@@ -201,7 +218,7 @@ def persist_upload_and_events(
                 (
                     upload_id,
                     kitchen_id,
-                    customer_clean,
+                    mask_identifier(ev.customer, p),
                     masked_order_raw,
                     ev.date or "tomorrow",
                     ev.meal,
@@ -213,9 +230,9 @@ def persist_upload_and_events(
                     1 if ev.needs_review else 0,
                     float(ev.confidence or 1.0),
                     json.dumps(ev.audit_flags or []),
-                    ev.secondary_customer,
+                    mask_identifier(ev.secondary_customer, p),
                     float(ev.payment_amount) if ev.payment_amount is not None else None,
-                    ev.payment_note,
+                    mask_identifier(ev.payment_note, p),
                 ),
             )
 
@@ -237,9 +254,9 @@ def persist_correction(
         return 0
 
     init_db(db_path)
-    masked_raw = mask_chat_text_for_storage(raw_text)
     p = Pseudonymizer()
-    customer_clean = PHONE_PATTERN.sub(lambda m: p.get_or_create_pseudo_id(m.group(0)), customer)
+    masked_raw = mask_chat_text_for_storage(raw_text, p)
+    customer_clean = mask_identifier(customer, p)
 
     with get_connection(db_path) as conn:
         cursor = conn.execute(

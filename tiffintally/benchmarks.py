@@ -1,8 +1,15 @@
-"""AI Lab Benchmarking, Evaluation Metrics, and Self-Healing Auto-Repair Loop.
+"""Scorer demo with repair rules, over four hand-written sentences.
 
-Evaluates LLM and extractor responses against ground-truth rubrics, computes
-standard AI lab metrics (Precision, Recall, F1, Strict/Lenient Accuracy, Guardrails),
-and executes an iterative self-correction retry loop until the target threshold passes.
+What this is: a metric scorer (precision, recall, F1, strict/lenient accuracy,
+schema adherence, safety) plus a list of hand-written repair rules. The stop
+test is a composite score computed against a gold event supplied by the caller,
+so it needs labels. It is not wired into the paste path: pasting a chat never
+calls anything in this module.
+
+The repair rules were written against the same four sentences the suites score,
+so passing here is a demonstration of the scorer, not evidence of extraction
+quality. The adversarial suite does not reach the threshold and is expected
+not to.
 """
 
 from __future__ import annotations
@@ -41,7 +48,7 @@ class EvaluationDiagnosis(BaseModel):
 
 
 class IterationAttempt(BaseModel):
-    """Single attempt in the iterative retry loop."""
+    """One scoring attempt in the demo loop."""
 
     attempt_number: int
     predicted_events: List[Dict[str, Any]]
@@ -53,7 +60,7 @@ class IterationAttempt(BaseModel):
 
 
 class BenchmarkExecutionRecord(BaseModel):
-    """Complete audit record of the evaluate-fix-retry benchmark execution."""
+    """Audit record of one scorer run over a caller-supplied gold event."""
 
     prompt_text: str
     target_threshold: float
@@ -182,7 +189,12 @@ def auto_repair_events(
     diagnosed_flaws: List[str],
     attempt: int,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Self-correcting repair engine addressing specific diagnosed failures."""
+    """Hand-written repair rules, matched against this one sentence.
+
+    Each rule below was written for a phrase that appears in one of the four
+    suites. They are not general corrections, and passing with them says
+    nothing about unseen messages.
+    """
     repaired: List[Dict[str, Any]] = [dict(ev) for ev in predicted]
     actions_taken: List[str] = []
     text_lower = raw_text.lower()
@@ -301,19 +313,21 @@ def evaluate_and_heal_loop(
     threshold: float = 90.0,
     max_retries: int = 5,
 ) -> BenchmarkExecutionRecord:
-    """Core evaluation, auto-fixing, and retry-until-pass benchmark loop.
+    """Score a prediction against a caller-supplied gold event and repair it.
 
-    1. Evaluates response against gold benchmark.
-    2. Computes precision, recall, F1, strict/lenient accuracy, and safety.
-    3. If below threshold: automatically diagnoses failure points.
-    4. Auto-repairs the response using targeted heuristic critiques.
-    5. Retries evaluation and repeats until threshold is satisfied.
+    1. Scores the prediction against the gold event.
+    2. Computes precision, recall, F1, strict/lenient accuracy and safety.
+    3. If below threshold: names the field-level failures.
+    4. Applies the hand-written repair rules for these suite sentences.
+    5. Re-scores, up to max_retries times.
+
+    No network call happens here. With no initial_prediction it starts from the
+    offline rules, not from a model.
     """
     gold_list = [gold_event] if isinstance(gold_event, dict) else gold_event
 
-    # Initial response generation if none provided
+    # Initial prediction: the offline rules, or a caller-supplied fake flaw.
     if initial_prediction is None:
-        # Simulate initial raw LLM response (or raw heuristic)
         raw_events = heuristic_extract(raw_text, sender=gold_list[0].get("customer", "Customer"))
         current_prediction = [e.model_dump(mode="json") for e in raw_events]
     else:
@@ -390,7 +404,7 @@ def evaluate_and_heal_loop(
 
 
 # --------------------------------------------------------------------------- #
-# Standard AI Lab Benchmark Suites
+# Four hand-written sentences, each with its own gold event
 # --------------------------------------------------------------------------- #
 
 STANDARD_BENCHMARK_SUITES = [
