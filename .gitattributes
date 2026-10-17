@@ -17,6 +17,8 @@
 *.html text eol=lf
 
 *.png binary
+*.mp4 binary
+*.webm binary
 *.jpg binary
 *.jpeg binary
 *.gif binary

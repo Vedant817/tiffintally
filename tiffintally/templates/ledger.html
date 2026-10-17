@@ -3,23 +3,21 @@
 {% block title %}Customer Dues Ledger | TiffinTally{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+<div class="page-head">
   <div>
-    <h1 style="font-size: 1.6rem;">Customer Dues Ledger</h1>
-    <p style="color: var(--text-muted); font-size: 0.9rem;">
+    <p class="kicker">Money</p>
+    <h1>Customer dues ledger</h1>
+    <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 6px;">
       Track orders, payments received, and pending balances.
     </p>
   </div>
   <div>
-    <a href="/prep" class="btn btn-secondary">
-      🍲 Back to Prep Sheet
-    </a>
+    <a href="/prep" class="btn btn-secondary">Back to Prep Sheet</a>
   </div>
 </div>
 
-<div class="card" style="background: #e8f5e9; border-left: 4px solid #2e7d32;">
-  <div style="display: flex; align-items: center; gap: 8px;">
-    <span style="font-size: 1.2rem;">🔒</span>
+<div class="card banner">
+  <div>
     <div>
       <strong>Strict Outbound Messaging Safety:</strong>
       <p style="font-size: 0.85rem; color: #1b5e20; margin-top: 2px;">
@@ -90,7 +88,7 @@
                     data-text="{{ entry.draft_reminder }}"
                     onclick="copyReminder(this)"
                     style="padding: 4px 10px; font-size: 0.8rem;">
-              📋 Copy Draft
+              Copy Draft
             </button>
           {% else %}
             <span class="badge badge-success">Dues Clear</span>

@@ -258,6 +258,7 @@ def test_sheet_banner_names_the_model_that_answered(monkeypatch):
     assert response.status_code == 200
     assert "gemma-4-31b-it" in text, "the banner must name the served model"
     assert "read all 2 message(s)" in text
+    assert 'class="banner warn"' not in text
     assert "Rules (regex) only" not in text, "a model answered, so do not claim rules only"
     assert "mix both" not in text, "nothing was skipped, so nothing mixes"
 
@@ -280,6 +281,7 @@ def test_sheet_banner_says_rules_only_and_shows_the_error_on_a_404(monkeypatch):
         follow_redirects=True,
     ).text
     assert "Rules (regex) only" in text
+    assert 'class="banner warn"' in text, "a failed model must not look like a clean rules run"
     assert "404" in text, "the cook must be told why the model did not answer"
     # The model id may appear inside the quoted error, never as the answer.
     assert "read all" not in text and "Mixed read" not in text
@@ -306,3 +308,4 @@ def test_one_skipped_message_is_counted_in_the_banner_as_partial(monkeypatch):
     ).text
     assert "1 read by the on-device rules" in text
     assert "mix both" in text
+    assert 'class="banner warn"' in text

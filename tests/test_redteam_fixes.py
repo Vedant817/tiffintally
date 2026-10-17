@@ -80,6 +80,7 @@ def test_process_does_not_add_phantom_standing_orders():
     # Stronger than the old `assert "fallback" in resp.text`: the sheet must
     # name the rules *and* must not name any model that did not run.
     assert "Rules (regex) only" in resp.text
+    assert 'class="banner warn"' not in resp.text
     assert "No model was called" in resp.text
     for claimed in ("gemma", "qwen", "llama", "mistral"):
         assert claimed not in resp.text.lower()

@@ -2,17 +2,16 @@
 
 ## Human-only steps, in the order they must happen
 
-1. Open <https://tiffintally-lbn2.onrender.com> a minute before recording, so the free-tier cold
-   start does not appear in the video.
-2. Take the prep-sheet screenshot. Paste `[YOUR SCREENSHOT: ...]` into `post.md`.
-3. Record the 2 to 3 minute video or make a GIF, paste `[YOUR DEMO VIDEO OR GIF: ...]`.
-4. Tick `[CHECKBOX: overall prize, Side Hustle theme.]`, and delete the checkbox line if you
-   would rather not enter.
-5. In the Render dashboard set `EXTRACTOR_BACKEND=off` (documented in `docs/DEPLOY.md`). The
-   value is currently unset and no key is configured, so the demo is already rules-only; setting
-   it makes that deliberate rather than accidental.
-6. Preview the post on DEV, confirm the tags render, then publish and set `published: false` to
-   `true` in `post.md` before or as you publish.
+1. Done 18 Oct 2026: the demo was recorded locally, not on the cold Render instance, and the
+   opening caption says so.
+2. Done: `docs/demo/prep-sheet.png` and `docs/demo/ledger.png` are in `post.md`.
+3. Done: `docs/demo/tiffintally-demo.mp4` and `tiffintally-demo.srt` are linked from `post.md`.
+4. Done: the post enters the overall Side Hustle prize and Best Use of Render. No other category.
+5. Still human-only: in the Render dashboard set `EXTRACTOR_BACKEND=off` (documented in
+   `docs/DEPLOY.md`). The value is currently unset and no key is configured, so the demo is
+   already rules-only; setting it makes that deliberate rather than accidental.
+6. Publish the DEV post, then set `published: true` in `post.md` in the same commit as the
+   public URL, or note the URL in the README if the deadline has passed.
 7. Do not touch the code after publishing except for typos, and note any post-deadline commit in
    the list at the end of `README.md`.
 
@@ -32,8 +31,8 @@ Status legend: **blocked** = needs a human, credential, or external service.
 |---|---|---|---|
 | A1 | Gemma baseline measurement | No `GOOGLE_API_KEY` in the process, user or machine environment, and no `.env`. | Stays `NOT RUN`. The measurement path is ready and tested with mocked HTTP, so the only missing piece is the key. Command in section C. |
 | A2 | One end-to-end `POST /process` with a real key | Same as A1. | The Best Use of Gemma line in `post.md` stays deleted until a committed run exists under `evals/final/baselines/gemini/`. |
-| A3 | Prize categories | Choosing what to enter is the author's call, and two conditions are A1 and A2. | Both bracketed lines left verbatim in `post.md`. The agent does not fill them. |
-| A4 | Screenshot, 2-3 minute recording, or Render URL in the Demo section | Needs a browser and a person. | Bracketed placeholders left verbatim. |
+| A3 | Prize categories | Choosing what to enter is the author's call, and two conditions are A1 and A2. | Done 18 Oct 2026 for the categories that are real: overall Side Hustle, and Best Use of Render. Gemma stays out until A1 and A2 exist. |
+| A4 | Screenshot, 2-3 minute recording, or Render URL in the Demo section | Needs a browser and a person. | Done 18 Oct 2026. `post.md` links `docs/demo/prep-sheet.png`, `ledger.png`, and the captioned `tiffintally-demo.mp4`. The live URL was already there. |
 | A5 | Publish on DEV, tags, images, preview | Author action, and A1-A4 decide what the post can honestly say. | `post.md` has `published: false`. Nothing was published. |
 | A6 | Confirm production runs the merged `main` | Merged: PR #4 as `57e7622`, PR #2 as `5f2bb24`, both green, `main` CI green. | `main` auto-deploys on merge. Confirm the deployed `/benchmarks` title reads "Scorer Demo & Repair Rules" once the auto-deploy finishes, and record that, not the merge, as the evidence. |
 | A7 | Add `EXTRACTOR_BACKEND` to `render.yaml` | Was owned by the deployment session, so it was not edited inside PR #2. | **Done: PR #4 merged as `57e7622`.** The blueprint defines it as `sync: false`; the dashboard value is still the human's to set. See the decision in `docs/DEPLOY.md`. |
