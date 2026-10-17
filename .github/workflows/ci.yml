@@ -10,6 +10,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  # gitleaks-action needs to read pull requests when the event is pull_request,
+  # and refuses to run without it.
+  pull-requests: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -63,6 +69,11 @@ jobs:
       - name: Verify no secret leakage
         uses: gitleaks/gitleaks-action@v2
         env:
+          # gitleaks-action v2 requires a token to scan a pull_request event and
+          # errors out without one, so the step never scanned anything and every
+          # pull request run failed here. Same fix as chore/pr-preview-testing,
+          # applied here so this branch can be verified on its own.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
           GITLEAKS_ENABLE_COMMENTS: false
 
