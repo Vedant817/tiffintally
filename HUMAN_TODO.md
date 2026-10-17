@@ -6,6 +6,14 @@
 - GPU budget: ZERO calls. No training or hosted Modal inference is authorized.
   Reruns need `approved: gpu calls <N>`; training needs `approved: train` from Vedant.
 - Supply GOOGLE_API_KEY through the environment for a free-tier baseline if wanted.
+- Gemma baseline: NOT RUN (no key). Nothing in this repository measures a hosted
+  Gemma run, so no Gemma accuracy is claimed. To measure it, set GOOGLE_API_KEY
+  and run, with no other changes:
+  `GEMMA_MODEL=gemma-4-26b-a4b-it uv run python scripts/run_baselines.py --system gemini --dataset data/synthetic/test.jsonl --out evals/final/baselines --execute`
+  then `uv run python scripts/publish_results.py`. Frozen test set only; one
+  request per row. Report whatever it scores, including if the rules win. Do not
+  change the prompt or the parser after seeing the output; a mechanical parser
+  fix (for example a thought part) is allowed once, and must be said out loud.
 - Redeploy or stop the Modal app yourself and verify unauthenticated requests fail.
 - Decide the Qwen research licence story before any commercial use.
 - Review the branch, numerical evidence, policy and secondary allocation convention.

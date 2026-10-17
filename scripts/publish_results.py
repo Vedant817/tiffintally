@@ -70,6 +70,8 @@ def generated():
         "Wilson intervals treat rows as independent and do not correct that leakage. "
         "See docs/KNOWN_LEAKS.md and the per-template comparison output.\n\n"
         "Base, few-shot base, adapter and hosted baselines: NOT RUN (needs approval or credentials). "
+        "Gemma baseline: NOT RUN (no GOOGLE_API_KEY in the environment, so there is no hosted-model "
+        "run to compare against these rows). "
         "The historical adapter aggregates lack complete per-row outputs and cannot be independently rescored. "
         "Real/human-written holdout: NOT RUN (verified human provenance and labels missing). "
         f"Cost: NOT MEASURED.\n\n{END}"
