@@ -81,16 +81,28 @@ def generate_briefing_script(sheet: DailyPrepSheet, cook_name: Optional[str] = N
             f"{len(sheet.late_orders)} late messages aaye hain jinhe aap review screen par check kar sakti hain."
         )
 
-    # A message the cook has not confirmed yet is deliberately left out of the
-    # totals. Saying "nothing to cook" and "all labels ready" while orders are
-    # sitting in the review queue tells the cook the opposite of the truth, so
-    # name the pending count instead.
+    # Some rows stay in the review queue after they have already been packed
+    # (an allergy note the rules could not canonicalise). `applied_to_plate_count`
+    # is set when that row is folded in. Guessing from the flag name would call
+    # a packed peanut note "excluded" and would also miss a mixed queue.
     pending = len(sheet.unresolved_reviews) + len(sheet.late_orders)
     if pending:
-        parts.append(
-            f"{pending} message(s) abhi aapke check ka intezaar kar rahi hain, isliye upar ka total "
-            "unke bina ka hai. Review screen par confirm kar dein."
+        counted = any(
+            event.applied_to_plate_count and event.qty > 0 for event in sheet.unresolved_reviews
         )
+        if counted:
+            parts.append(
+                f"{pending} message(s) abhi aapke check ka intezaar kar rahi hain. "
+                "Inme se kuch plates upar ke total mein pehle se shamil hain. "
+                "Jo lines count nahi hui, woh is number mein tab tak nahi hain "
+                "jab tak aap confirm na kar dein. Review screen par confirm kar dein."
+            )
+        else:
+            parts.append(
+                f"{pending} message(s) abhi aapke check ka intezaar kar rahi hain, isliye upar ka total "
+                "unke bina ka hai. Review screen par confirm kar dein."
+            )
+        # Still pending, so the cheerful "all labels ready" close stays off.
         parts.append("Confirm hone ke baad ke labels hi ready hain. Shubh prabhat!")
     else:
         parts.append("Sabhi packing labels ready hain. Shubh prabhat aur din accha rahe!")
@@ -111,6 +123,12 @@ def sheet_fingerprint(sheet: DailyPrepSheet) -> str:
             "mods": [m.model_dump() for m in sheet.special_mods],
             "cancels": [c.customer for c in sheet.cancellations],
             "late": len(sheet.late_orders),
+            "pending": len(sheet.unresolved_reviews) + len(sheet.late_orders),
+            "applied_reviews": sum(
+                1
+                for event in sheet.unresolved_reviews
+                if event.applied_to_plate_count and event.qty > 0
+            ),
         },
         sort_keys=True,
     )
