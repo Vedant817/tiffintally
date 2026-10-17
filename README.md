@@ -8,6 +8,21 @@ in chat remain claims until the cook confirms receipt. Opening and closing
 balances can be carried between chats using CSV. Exporting separate chats remains
 manual work; no WhatsApp integration or first cook session is claimed.
 
+## Try it
+
+**Live:** <https://tiffintally-lbn2.onrender.com>
+
+The deployed instance runs in demo mode: sheets, reviews and payment confirmations stay
+in memory for your browser session and are never written to disk, so anything you paste
+into it is discarded when you close the tab. No model key is configured there, so it
+answers with the local rules path and says so in the UI rather than pretending a hosted
+model replied.
+
+## Stack
+
+Python 3.11 · FastAPI · Jinja2 templates · SQLite (opt-in) · pytest · Hypothesis · ruff ·
+Render (hosting) · GitHub Actions (CI and pull-request previews).
+
 ## Run locally
 
 ```bash
@@ -22,6 +37,51 @@ a Google key (defaulting to the open-weight `gemma-2-9b-it` model on Google AI S
 or local rules. The UI reports what actually answered, including mixed fallback.
 The Qwen research adapter is non-commercial; its licence is separate from this
 repository's MIT code licence. Built with open-weight models when configured.
+
+## Automated testing
+
+Every pull request is verified in three independent layers.
+
+**1. CI — `.github/workflows/ci.yml`.** Runs on every PR and every push to `main`:
+
+| Gate | What it protects |
+| --- | --- |
+| `ruff check` + `ruff format --check` | style and import hygiene |
+| `pytest` | the full suite: parsing, daily policy, ledger, privacy, security, persistence, telemetry |
+| `pytest tests/probes` | offline regression probes kept as executable evidence |
+| `scripts/check_claims.py` | every published number still matches the claims registry |
+| `scripts/leakage_report.py --check-known` | known data leakage has not changed silently |
+| `scripts/compare.py` | saved predictions still rescore identically |
+| `test_daily_invariants.py` × 4 seeds | sheet/ledger invariants under randomised dates and orders |
+| `gitleaks` | no secret reaches the repository |
+
+CI deliberately runs with `EXTRACTOR_BACKEND=off`: a hosted call in CI once spent GPU
+credit on every push. A green CI run is evidence the suite passed — it is not, by itself,
+evidence that a browser-level run against a deployment happened.
+
+**2. Per-PR preview deployment — `.github/workflows/preview.yml`.** Each non-draft PR gets
+its own Render service (`tiffintally-pr-<number>`), its own URL, built from the PR's exact
+commit. The workflow waits until the deployment is live *and* actually returns `200` on
+`/health`, registers it as a GitHub deployment, and comments the URL on the PR. Preview
+services are removed when the PR closes so free-tier slots are not exhausted. This is the
+real, running artefact of the branch under review — not the production deployment.
+
+**3. Third-party browser testing.** A separate automated UI test service runs generated
+scenarios against the live deployment and reports back on the PR. Its setup and current
+status are documented in `docs/TESTSPRITE_SETUP.md`.
+
+## Deployment
+
+Production is a Render free web service described by `render.yaml`, auto-deploying from
+`main`. `GET /health` returns `{"status":"ok","version":"0.1.0"}`. Full notes, including
+what is *not* deployed, are in `docs/DEPLOY.md`.
+
+## Contributing and agent guidance
+
+Read [`AGENTS.md`](AGENTS.md) before changing anything — it carries the shared engineering
+rules, the concurrency rules for multiple agents working this repository at once, and the
+PR verification workflow. [`docs/DEVELOPMENT_HANDOFF.md`](docs/DEVELOPMENT_HANDOFF.md) is
+the current cross-session status board.
 
 ## Data and evidence
 

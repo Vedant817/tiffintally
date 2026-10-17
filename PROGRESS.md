@@ -21,7 +21,7 @@ Ordered by the 15 Oct self-review (`docs/review/REDTEAM2.md`).
 | # | Finding | State |
 | :--- | :--- | :--- |
 | F1 | No open model actually runs; default id no longer served | **done** — Modal-hosted extractor |
-| F2 | No demo link or video | Render prepared, **awaiting deploy** |
+| F2 | No demo link or video | **demo link done** — live on Render; video still needed |
 | F3 | Post off-template, missing tags and Prize Categories | **done** |
 | F4 | `eval` rewrites the honest RESULTS.md | **done** |
 | F5 | Extractor turns complaints and pauses into orders | **done** |
@@ -37,8 +37,12 @@ Ordered by the 15 Oct self-review (`docs/review/REDTEAM2.md`).
 ## Blocked on a human
 
 - [ ] Push to `origin/main`
-- [ ] Render deploy (free, no card) → live URL for the post
-- [ ] `.tech` DNS → Render custom domain
+- [x] Render deploy (free, no card) → live URL for the post — **done**:
+  <https://tiffintally-lbn2.onrender.com>, `/health` returns `200 {"status":"ok","version":"0.1.0"}`.
+  No model key is set on that service, so it answers with the rules path and says so.
+  See `docs/DEPLOY.md`.
+- [ ] `.tech` DNS → Render custom domain (the app is live on the `onrender.com` host;
+      no domain is attached yet)
 - [ ] 60–90s screen recording
 - [ ] First-user session with a real cook (consent, no PII in repo)
 

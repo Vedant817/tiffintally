@@ -1,0 +1,225 @@
+name: PR Preview
+
+# Creates a real, isolated deployment of the pull request's own code and reports it to
+# GitHub as a deployment. Automated PR testing (TestSprite) listens for this event.
+#
+# Why this exists instead of a platform "preview" button: the Render free tier does not
+# include pull-request previews, so the preview service is managed through the Render
+# API from CI. Each open PR gets its own service and its own URL, and the service is
+# removed again when the PR closes.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  deployments: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  RENDER_API: https://api.render.com/v1
+
+jobs:
+  preview:
+    # Drafts are excluded so a half-finished branch does not consume a preview service.
+    if: github.event.action != 'closed' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve or create preview service
+        id: service
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          WORKSPACE_ID: ${{ vars.RENDER_WORKSPACE_ID }}
+          PR: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          name="tiffintally-pr-${PR}"
+          list=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" "$RENDER_API/services?limit=100")
+          id=$(echo "$list" | python3 -c "import json,sys;print(next((s['id'] for s in json.load(sys.stdin) if s['name']=='$name'),''))")
+
+          payload=$(python3 - "$WORKSPACE_ID" "$name" "$BRANCH" <<'PY'
+          import json, os, sys
+          workspace, name, branch = sys.argv[1], sys.argv[2], sys.argv[3]
+          print(json.dumps({
+              "ownerId": workspace,
+              "name": name,
+              "type": "web_service",
+              "repo": "https://github.com/" + os.environ["GITHUB_REPOSITORY"],
+              "branch": branch,
+              "runtime": "python",
+              "plan": "free",
+              "region": "oregon",
+              "autoDeployTrigger": "commit",
+              "serviceDetails": {
+                  "env": "python",
+                  "envSpecificDetails": {
+                      "buildCommand": "pip install uv && uv sync --frozen --no-dev",
+                      "startCommand": ".venv/bin/uvicorn tiffintally.app:app --host 0.0.0.0 --port $PORT",
+                  },
+                  "healthCheckPath": "",
+              },
+              "envVars": [
+                  {"key": "PYTHON_VERSION", "value": "3.11.17"},
+                  {"key": "TIFFINTALLY_DEMO_MODE", "value": "true"},
+                  {"key": "TIFFINTALLY_PERSIST", "value": "0"},
+                  {"key": "TIFFINTALLY_TELEMETRY", "value": "0"},
+                  {"key": "GEMMA_MODEL", "value": "gemma-4-26b-a4b-it"},
+              ],
+          }))
+          PY
+          )
+
+          if [ -z "$id" ]; then
+            echo "Creating preview service $name"
+            resp=$(curl -sS -X POST "$RENDER_API/services" \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$payload")
+            id=$(echo "$resp" | python3 -c 'import json,sys;print(json.load(sys.stdin)["service"]["id"])')
+          else
+            echo "Reusing preview service $name ($id) for new commits on $BRANCH"
+            curl -sS -X PATCH "$RENDER_API/services/$id" \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$payload" >/dev/null
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub deployment record
+        id: ghdeploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SERVICE: ${{ steps.service.outputs.id }}
+        run: |
+          set -euo pipefail
+          payload=$(python3 - "${{ github.event.pull_request.number }}" "${{ github.head_ref }}" "${{ github.event.pull_request.head.sha }}" "$SERVICE" <<'PY'
+          import json, sys
+          number, ref, sha, service = sys.argv[1:5]
+          print(json.dumps({
+              "ref": ref,
+              "sha": sha,
+              "environment": f"pr-{number}",
+              "auto_merge": False,
+              "required_contexts": [],
+              "payload": {"service_id": service, "preview": "true"},
+          }))
+          PY
+          )
+          curl -sS -X POST "$GITHUB_API/repos/${{ github.repository }}/deployments" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "$payload" |
+            python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])' > "$GITHUB_OUTPUT"
+
+      - name: Deploy and wait for the preview to go live
+        id: live
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ steps.service.outputs.id }}
+        run: |
+          set -euo pipefail
+          curl -sS -X POST "$RENDER_API/services/$SERVICE/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY" >/dev/null
+          echo "url=" >> "$GITHUB_OUTPUT"
+          for i in $(seq 1 60); do
+            sleep 10
+            status=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+              "$RENDER_API/services/$SERVICE/deploys?limit=1" |
+              python3 -c 'import json,sys;d=json.load(sys.stdin);print(d[0]["deploy"]["status"] if d else "none")')
+            echo "poll $i: $status"
+            if [ "$status" = "live" ]; then
+              curl -sS -H "Authorization: Bearer $RENDER_API_KEY" "$RENDER_API/services/$SERVICE" |
+                python3 -c 'import json,sys;u=json.load(sys.stdin)["service"]["serviceDetails"]["url"];print("url="+u)' >> "$GITHUB_OUTPUT"
+              break
+            fi
+            if [ "$status" = "build_failed" ] || [ "$status" = "update_failed" ] || [ "$status" = "canceled" ]; then
+              echo "::error::preview deploy reached terminal status '$status'"
+              exit 1
+            fi
+          done
+          if ! grep -q '^url=https' "$GITHUB_OUTPUT"; then
+            echo "::error::preview did not go live in time"
+            exit 1
+          fi
+
+      - name: Wait until the preview actually responds
+        env:
+          URL: ${{ steps.live.outputs.url }}
+        run: |
+          set -euo pipefail
+          # A free instance idles out and takes ~30s to accept its first request, so
+          # "live" is not yet "reachable". Poll the real endpoint.
+          for i in $(seq 1 30); do
+            if code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "$URL/health" || true); then
+              echo "poll $i: /health -> $code"
+              if [ "$code" = "200" ]; then
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "::error::preview never returned 200 on /health"
+          exit 1
+
+      - name: Mark the GitHub deployment active with the preview URL
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          URL: ${{ steps.live.outputs.url }}
+        run: |
+          set -euo pipefail
+          curl -sS -o /dev/null -X POST \
+            "$GITHUB_API/repos/${{ github.repository }}/deployments/${{ steps.ghdeploy.outputs.id }}/statuses" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "{\"state\":\"active\",\"environment_url\":\"$URL\",\"auto_inactive\":false}"
+
+      - name: Comment the preview URL on the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          URL: ${{ steps.live.outputs.url }}
+        run: |
+          set -euo pipefail
+          marker='<!-- preview-deployment -->'
+          body=$(printf '### Preview deployment for this PR\n\n%s\n\n\n<sub>%s</sub>' "$URL" "$marker")
+          ids=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            --paginate -q ".[] | select(.body | contains(\"$marker\")) | .id")
+          if [ -n "$ids" ]; then
+            echo "$ids" | head -n1 | while read -r id; do
+              gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$id" -f body="$body" >/dev/null
+            done
+            echo "$ids" | tail -n +2 | while read -r id; do
+              [ -n "$id" ] && gh api -X DELETE "repos/${{ github.repository }}/issues/comments/$id" >/dev/null
+            done
+          else
+            gh api -X POST "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+              -f body="$body" >/dev/null
+          fi
+
+  teardown:
+    # Free-tier service slots are limited, so a closed PR must give its service back.
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove the preview service
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          name="tiffintally-pr-${PR}"
+          id=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" "$RENDER_API/services?limit=100" |
+            python3 -c "import json,sys;print(next((s['id'] for s in json.load(sys.stdin) if s['name']=='$name'),''))")
+          if [ -z "$id" ]; then
+            echo "No preview service for PR #$PR"
+            exit 0
+          fi
+          echo "Deleting preview service $name ($id)"
+          curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer $RENDER_API_KEY" "$RENDER_API/services/$id"
