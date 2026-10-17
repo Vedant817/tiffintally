@@ -17,11 +17,11 @@ EXTRACTOR_BACKEND=off uv run tiffintally eval --out evals/final/offline
 uv run python scripts/publish_results.py --check
 ```
 
-The configured backend is selected from Modal endpoint credentials, a Google key,
+The configured backend is selected from Modal endpoint credentials (fine-tuned open-weight Qwen2.5-3B),
+a Google key (defaulting to the open-weight `gemma-2-9b-it` model on Google AI Studio), an OpenAI-compatible endpoint (e.g. local Ollama),
 or local rules. The UI reports what actually answered, including mixed fallback.
-This round makes no hosted calls and does not establish deployment readiness.
 The Qwen research adapter is non-commercial; its licence is separate from this
-repository's MIT code licence. Built with Qwen when that backend is configured.
+repository's MIT code licence. Built with open-weight models when configured.
 
 ## Data and evidence
 
@@ -32,13 +32,20 @@ text, not a blind human holdout. Frozen legacy files remain untouched. See
 
 ## Privacy
 
-Sheets and payment confirmations are scoped to a browser session in server memory.
-Each paste uses an in-memory token map: sender display names, first-name aliases,
-names following roommate/friend/dost, and recognized phone, email and numbered-address
-patterns are masked. Other names and addresses can still be transmitted; masking
-is not anonymization. The web app does not read the former shared SQLite map. There is no authenticated cook account or encrypted
-persistent ledger. Unknown personal information can reach a configured hosted
-model. Raw customer exports belong only under ignored `data/private/`.
+By default and in demo mode (`TIFFINTALLY_DEMO_MODE=1` or `TIFFINTALLY_PERSIST=0`), sheets, reviews,
+and payment confirmations live strictly in ephemeral server memory for the browser session and are
+never written to disk.
+
+Persistent storage in SQLite (`data/tiffintally.db`) is an explicit opt-in gated behind `TIFFINTALLY_PERSIST=1`.
+When persistence is enabled, `uploads.raw_text` and `orders.raw_text` store **only masked text**:
+phone numbers, street/apartment addresses, emails, and customer display names are masked with
+sequential pseudo-tokens (`C001`, `C002`, etc.) before insertion. Raw customer phone numbers and
+unmasked chat exports are **never stored** in the database file.
+
+Each paste uses an in-memory token map to mask identifiers before sending messages to any configured
+hosted model. Masking covers common Indian phone formats, street addresses, and sender aliases.
+However, unrecognised personal information can still leave the device if a hosted model is enabled.
+Raw customer exports belong strictly under ignored local paths (`data/private/`).
 
 ## Measured results
 

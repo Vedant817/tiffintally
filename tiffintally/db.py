@@ -2,8 +2,8 @@
 Durable database persistence layer for TiffinTally.
 
 Provides ACID transactional persistence using SQLite (WAL mode).
-Ensures all raw uploads, extracted orders, ledger adjustments, and active learning
-corrections are permanently stored to disk and survive server restarts.
+Persistence is gated behind TIFFINTALLY_PERSIST=1 (off by default and off in demo mode).
+Stores only masked text (never raw phone numbers or unmasked chat text) to protect customer privacy.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Generator, List, Optional
 
+from tiffintally.privacy import PHONE_PATTERN, Pseudonymizer
 from tiffintally.schema import OrderEvent
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,31 @@ logger = logging.getLogger(__name__)
 # Default database location in data/
 DEFAULT_DB_DIR = Path("data")
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "tiffintally.db"
+
+
+def is_persistence_enabled() -> bool:
+    """Return True only when TIFFINTALLY_PERSIST=1 and NOT in demo mode."""
+    if os.getenv("TIFFINTALLY_DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        return False
+    return os.getenv("TIFFINTALLY_PERSIST", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def mask_chat_text_for_storage(text: str) -> str:
+    """Mask phone numbers, addresses, emails and personal identifiers before storage."""
+    if not text:
+        return ""
+    p = Pseudonymizer()
+    masked_lines = []
+    for line in text.splitlines():
+        if ":" in line:
+            sender, rest = line.split(":", 1)
+            _, masked_rest = p.mask_text(sender.strip(), rest)
+            p_sender = p.get_or_create_pseudo_id(sender.strip())
+            masked_lines.append(f"{p_sender}: {masked_rest}")
+        else:
+            _, masked_line = p.mask_text("Customer", line)
+            masked_lines.append(masked_line)
+    return "\n".join(masked_lines)
 
 
 def get_db_path() -> Path:
@@ -130,11 +156,20 @@ def persist_upload_and_events(
     events: List[OrderEvent],
     db_path: Optional[Path] = None,
 ) -> str:
-    """Durably record raw chat upload and extracted order events into SQLite."""
+    """Durably record chat upload and extracted order events into SQLite.
+
+    Gated behind TIFFINTALLY_PERSIST=1 (off by default and off in demo mode).
+    Stores only masked text in uploads.raw_text and orders.raw_text.
+    """
+    if not is_persistence_enabled():
+        return ""
+
     import uuid
 
     upload_id = uuid.uuid4().hex
     init_db(db_path)
+
+    stored_upload_text = mask_chat_text_for_storage(raw_text)
 
     with get_connection(db_path) as conn:
         # Ensure kitchen exists
@@ -142,13 +177,18 @@ def persist_upload_and_events(
             "INSERT OR IGNORE INTO kitchens (id, name) VALUES (?, ?)",
             (kitchen_id, f"Kitchen {kitchen_id[:8]}"),
         )
-        # Record upload
+        # Record upload (masked text only, never raw PII or raw phone numbers)
         conn.execute(
             "INSERT INTO uploads (id, kitchen_id, filename, raw_text, msg_count) VALUES (?, ?, ?, ?, ?)",
-            (upload_id, kitchen_id, filename or "paste", raw_text, len(events)),
+            (upload_id, kitchen_id, filename or "paste", stored_upload_text, len(events)),
         )
-        # Record extracted orders
+        # Record extracted orders (masked text only)
         for ev in events:
+            masked_order_raw = mask_chat_text_for_storage(ev.raw_text)
+            p = Pseudonymizer()
+            customer_clean = PHONE_PATTERN.sub(
+                lambda m: p.get_or_create_pseudo_id(m.group(0)), ev.customer
+            )
             conn.execute(
                 """
                 INSERT INTO orders (
@@ -161,8 +201,8 @@ def persist_upload_and_events(
                 (
                     upload_id,
                     kitchen_id,
-                    ev.customer,
-                    ev.raw_text,
+                    customer_clean,
+                    masked_order_raw,
                     ev.date or "tomorrow",
                     ev.meal,
                     ev.qty,
@@ -193,7 +233,13 @@ def persist_correction(
     db_path: Optional[Path] = None,
 ) -> int:
     """Durably record active learning correction into SQLite and append to corrections.jsonl."""
+    if not is_persistence_enabled():
+        return 0
+
     init_db(db_path)
+    masked_raw = mask_chat_text_for_storage(raw_text)
+    p = Pseudonymizer()
+    customer_clean = PHONE_PATTERN.sub(lambda m: p.get_or_create_pseudo_id(m.group(0)), customer)
 
     with get_connection(db_path) as conn:
         cursor = conn.execute(
@@ -205,8 +251,8 @@ def persist_correction(
             """,
             (
                 kitchen_id,
-                customer,
-                raw_text,
+                customer_clean,
+                masked_raw,
                 corrected_meal,
                 corrected_qty,
                 corrected_action,
@@ -222,8 +268,8 @@ def persist_correction(
         record = {
             "id": correction_id,
             "kitchen_id": kitchen_id,
-            "customer": customer,
-            "raw_text": raw_text,
+            "customer": customer_clean,
+            "raw_text": masked_raw,
             "corrected_meal": corrected_meal,
             "corrected_qty": corrected_qty,
             "corrected_action": corrected_action,
@@ -239,6 +285,13 @@ def persist_correction(
 
 def load_kitchen_events(kitchen_id: str, db_path: Optional[Path] = None) -> List[OrderEvent]:
     """Retrieve saved order events for a kitchen from SQLite."""
+    if not is_persistence_enabled():
+        return []
+
+    path = db_path or get_db_path()
+    if not path.exists():
+        return []
+
     init_db(db_path)
     with get_connection(db_path) as conn:
         rows = conn.execute(

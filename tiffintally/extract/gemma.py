@@ -1,7 +1,7 @@
 """Hosted extraction chosen from Modal credentials, Google key, OpenAI/Ollama, or off.
 
 Modal is selected when its endpoint and bearer token are configured.
-Google credentials select Gemini (default: gemini-2.0-flash).
+Google credentials select hosted Gemma (default: gemma-2-9b-it).
 OpenAI credentials or local base URL select OpenAI-compatible endpoints (Ollama / vLLM / Groq).
 Otherwise, local rules run. Response labels report what actually ran.
 """
@@ -26,8 +26,8 @@ from tiffintally.privacy import Pseudonymizer
 from tiffintally.schema import OrderEvent
 from tiffintally.security import InputGuardrail, enforce_business_bounds
 
-# Default model id for the Gemini path (free-tier Google AI Studio model)
-DEFAULT_GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemini-2.0-flash")
+# Default model id for the Google AI Studio path (open-weight Gemma 2 model)
+DEFAULT_GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-2-9b-it")
 DEFAULT_MODAL_URL = os.getenv("MODAL_EXTRACTOR_URL", "").strip()
 MODAL_EXTRACTOR_TOKEN = os.getenv("MODAL_EXTRACTOR_TOKEN", "").strip()
 GEMMA_API_ENDPOINT = (
@@ -41,7 +41,7 @@ DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL_NAME", "qwen2.5:3b").strip()
 
 # Which hosted model answers:
 #   modal  - fine-tuned Qwen adapter on Modal
-#   gemini - Google AI Studio Gemini API (e.g. gemini-2.0-flash or gemma-2-9b-it)
+#   gemini - Google AI Studio Gemini API (e.g. gemma-2-9b-it)
 #   openai - Any OpenAI-compatible endpoint (Ollama http://localhost:11434/v1, vLLM, Groq)
 #   off    - deterministic regex rules
 EXTRACTOR_BACKEND = os.getenv("EXTRACTOR_BACKEND", "").strip().lower()
