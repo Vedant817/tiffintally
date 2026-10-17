@@ -41,7 +41,9 @@ jobs:
           set -euo pipefail
           name="tiffintally-pr-${PR}"
           list=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" "$RENDER_API/services?limit=100")
-          id=$(echo "$list" | python3 -c "import json,sys;print(next((s['id'] for s in json.load(sys.stdin) if s['name']=='$name'),''))")
+          # Each element is {"cursor": ..., "service": {...}} — the fields are nested,
+          # not flat. Reading them flat raises KeyError and the job dies in the first step.
+          id=$(echo "$list" | python3 -c "import json,sys;print(next((s['service']['id'] for s in json.load(sys.stdin) if s['service']['name']=='$name'),''))")
 
           payload=$(python3 - "$WORKSPACE_ID" "$name" "$BRANCH" <<'PY'
           import json, os, sys
@@ -252,7 +254,7 @@ jobs:
           set -euo pipefail
           name="tiffintally-pr-${PR}"
           id=$(curl -sS -H "Authorization: Bearer $RENDER_API_KEY" "$RENDER_API/services?limit=100" |
-            python3 -c "import json,sys;print(next((s['id'] for s in json.load(sys.stdin) if s['name']=='$name'),''))")
+            python3 -c "import json,sys;print(next((s['service']['id'] for s in json.load(sys.stdin) if s['service']['name']=='$name'),''))")
           if [ -z "$id" ]; then
             echo "No preview service for PR #$PR"
             exit 0
