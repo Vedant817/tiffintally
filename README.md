@@ -34,9 +34,9 @@ text, not a blind human holdout. Frozen legacy files remain untouched. See
 
 ## Privacy
 
-By default and in demo mode (`TIFFINTALLY_DEMO_MODE=1` or `TIFFINTALLY_PERSIST=0`), sheets, reviews,
-and payment confirmations live strictly in ephemeral server memory for the browser session and are
-never written to disk.
+By default (`TIFFINTALLY_PERSIST` unset or `0`) and in demo mode (`TIFFINTALLY_DEMO_MODE=1`),
+sheets, reviews, and payment confirmations live strictly in ephemeral server memory for the browser
+session and are never written to disk.
 
 Persistent storage in SQLite (`data/tiffintally.db`) is an explicit opt-in gated behind `TIFFINTALLY_PERSIST=1`.
 When persistence is enabled, one `Pseudonymizer` per upload replaces, before any write:
@@ -85,3 +85,9 @@ The legacy synthetic test has known sibling-template leakage and template-author
 Base, few-shot base, adapter and hosted baselines: NOT RUN (needs approval or credentials). Gemma baseline: NOT RUN (no GOOGLE_API_KEY in the environment, so there is no hosted-model run to compare against these rows). The historical adapter aggregates lack complete per-row outputs and cannot be independently rescored. Real/human-written holdout: NOT RUN (verified human provenance and labels missing). Cost: NOT MEASURED.
 
 <!-- measured-results:end -->
+
+## Commits after the submission deadline
+
+Repository created 13 Oct 2026. Any commit after 19 Oct 12:29 PM IST is listed here:
+
+-
