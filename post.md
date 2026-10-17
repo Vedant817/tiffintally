@@ -55,11 +55,13 @@ Both lines are what that command prints today, 17 October 2026. I have not measu
 
 ## Demo
 
-Live: <https://tiffintally-lbn2.onrender.com>. It runs in demo mode, so nothing a visitor pastes is written to disk, and with no model key configured the app answers with its on-device rules and the page says so.
+Live: <https://tiffintally-lbn2.onrender.com>. It runs in demo mode, so nothing a visitor pastes is written to disk, and with no model key configured the app answers with its on-device rules and the page says so. The stills and the video below are a local recording of this commit, on that same rules path. The names in the paste are made up. The recording does not press "Confirm received" on the payment claim.
 
-[YOUR SCREENSHOT: the prep sheet and ledger after pasting the sample chat]
+![Prep sheet after the made-up paste: seven lunch thalis, two lines held for review](https://raw.githubusercontent.com/Vedant817/tiffintally/main/docs/demo/prep-sheet.png)
 
-[YOUR DEMO VIDEO OR GIF: a 2 to 3 minute recording of paste, review queue, prep sheet and ledger. Optional: the live URL above already works without it.]
+![Ledger for the same paste. Vikram's 1,500 rupees stays claimed, not confirmed](https://raw.githubusercontent.com/Vedant817/tiffintally/main/docs/demo/ledger.png)
+
+Captioned recording, about three minutes, no audio: [tiffintally-demo.mp4](https://github.com/Vedant817/tiffintally/blob/main/docs/demo/tiffintally-demo.mp4) ([download](https://raw.githubusercontent.com/Vedant817/tiffintally/main/docs/demo/tiffintally-demo.mp4), [captions](https://github.com/Vedant817/tiffintally/blob/main/docs/demo/tiffintally-demo.srt)).
 
 Run it locally:
 
@@ -80,7 +82,7 @@ Open http://127.0.0.1:8000, paste an export and read the prep sheet. With no key
 
 ## How I Built It
 
-Stack: FastAPI, Pydantic, uv, pytest. The suite has 364 passing tests and 4 expected failures, and CI on main was green before this branch.
+Stack: FastAPI, Pydantic, uv, pytest. On 18 October 2026, `EXTRACTOR_BACKEND=off uv run --frozen pytest -q` in this tree reported 368 passed and 4 expected failures (`xfailed`). That number is from the local run. The GitHub Actions result for the commit is the check on the pull request, not this sentence.
 
 Extraction backends, chosen by environment variables:
 
@@ -107,9 +109,7 @@ A small set of real, human-written cook messages with hand labels. Until that ex
 
 ## Prize Categories
 
-Overall prize, Side Hustle theme.
-
-[CHECKBOX: overall prize, Side Hustle theme.]
+This entry is for the overall Side Hustle prize, and for Best Use of Render.
 
 Best Use of Render
 

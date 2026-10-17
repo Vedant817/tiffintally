@@ -1,0 +1,71 @@
+1
+00:00:00,000 --> 00:00:08,016
+TiffinTally turns a pasted WhatsApp export into tomorrow's tiffin counts. This take is the restyled app on this machine, still on the rules path.
+
+2
+00:00:08,391 --> 00:00:17,391
+This public copy has no model key, so the on-device rules do the reading. A paste stays in this browser session and is not written to disk.
+
+3
+00:00:17,813 --> 00:00:27,813
+These names are made up. Ravi, Priya, Karan and Pooja order lunch. Karan also asks for one plate for roommate Tanvi. Vikram claims a payment.
+
+4
+00:00:27,813 --> 00:00:37,829
+Two lines are uncertain on purpose. Ravi adds a peanut-allergy note. Priya asks to cancel one thali after a roommate left, without saying whose plate.
+
+5
+00:00:38,204 --> 00:00:46,219
+The cook's name is Aunty, so a message from Aunty is not turned into an order. The cutoff is 10:00 pm. These lines are all before it.
+
+6
+00:00:46,219 --> 00:00:49,219
+Processing now. Python applies the messages in time order for tomorrow. Nothing is sent to WhatsApp.
+
+7
+00:00:49,719 --> 00:00:58,735
+The banner says Rules (regex) only. No model was called, so every count on this sheet came from the pattern rules.
+
+8
+00:00:59,094 --> 00:01:09,110
+The morning brief is text only. There is no audio, because no voice key is configured. It says seven lunch thalis, and it names the onion and rice notes.
+
+9
+00:01:09,110 --> 00:01:19,110
+It also says two messages are still waiting. Some of those plates are already inside the total. The line that was not counted stays out until the cook confirms it.
+
+10
+00:01:19,469 --> 00:01:28,485
+Seven lunch packs, no dinner, and no cancellation applied. Priya's cancel was not subtracted, because it never said which plate to remove.
+
+11
+00:01:28,860 --> 00:01:37,860
+Notes the rules recognised go on the station alert: no onion for Pooja, rice instead of roti for Priya, and no onion from Ravi's second line.
+
+12
+00:01:38,235 --> 00:01:48,250
+Human Review still shows both uncertain lines. Ravi's allergy note was packed and labelled, and it stays here because 'peanut allergy' is not a standard modification.
+
+13
+00:01:48,250 --> 00:01:57,266
+Priya's cancel stays in review and was not applied. In demo mode, Save Correction changes this sheet only. It does not write a file.
+
+14
+00:01:57,625 --> 00:02:07,641
+The labels split Karan's two plates into Karan 1 and Tanvi 1. Ravi is 2, Pooja is 2, and Priya is 1. The peanut words sit on Ravi's label.
+
+15
+00:02:07,704 --> 00:02:17,735
+The dues ledger uses the same plate counts, at 80 rupees a thali. It does not bill a meal twice, and it does not invent a customer who did not write in.
+
+16
+00:02:18,094 --> 00:02:29,110
+Vikram's 1,500 rupees is a payment claim, not a receipt. The balance stays open until the cook checks the real account and presses Confirm received. This recording does not press it.
+
+17
+00:02:29,469 --> 00:02:37,485
+Copy Draft only copies a reminder onto the clipboard. The app has no WhatsApp sending key, so it never sends a message.
+
+18
+00:02:37,485 --> 00:02:45,485
+That is the demo: a paste, the review queue, the prep sheet, and the ledger. Made-up names, rules only, nothing stored.

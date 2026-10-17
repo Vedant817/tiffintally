@@ -39,7 +39,7 @@ def test_cook_lines_are_skipped_when_her_name_is_given():
         data={"raw_text": raw, "target_date": "tomorrow"},
     )
     assert "were not counted as orders" not in unnamed.text
-    assert "TOTAL THALIS" in skipped
+    assert "Total thalis" in skipped
 
 
 def test_html_balance_import_redirects_and_keeps_casing():
@@ -143,7 +143,7 @@ def test_paste_between_one_and_two_megabytes_is_accepted():
     assert len(body.encode()) < MAX_UPLOAD_BYTES
     resp = TestClient(app).post("/process", data={"raw_text": body, "target_date": "tomorrow"})
     assert resp.status_code == 200
-    assert "Kitchen Prep Sheet" in resp.text
+    assert "Prep sheet" in resp.text
 
 
 def test_custom_gold_list_of_numbers_is_400():

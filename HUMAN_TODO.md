@@ -2,17 +2,16 @@
 
 ## Human-only steps, in the order they must happen
 
-1. Open <https://tiffintally-lbn2.onrender.com> a minute before recording, so the free-tier cold
-   start does not appear in the video.
-2. Take the prep-sheet screenshot. Paste `[YOUR SCREENSHOT: ...]` into `post.md`.
-3. Record the 2 to 3 minute video or make a GIF, paste `[YOUR DEMO VIDEO OR GIF: ...]`.
-4. Tick `[CHECKBOX: overall prize, Side Hustle theme.]`, and delete the checkbox line if you
-   would rather not enter.
-5. In the Render dashboard set `EXTRACTOR_BACKEND=off` (documented in `docs/DEPLOY.md`). The
-   value is currently unset and no key is configured, so the demo is already rules-only; setting
-   it makes that deliberate rather than accidental.
-6. Preview the post on DEV, confirm the tags render, then publish and set `published: false` to
-   `true` in `post.md` before or as you publish.
+1. Done 18 Oct 2026: the demo was recorded locally, not on the cold Render instance, and the
+   opening caption says so.
+2. Done: `docs/demo/prep-sheet.png` and `docs/demo/ledger.png` are in `post.md`.
+3. Done: `docs/demo/tiffintally-demo.mp4` and `tiffintally-demo.srt` are linked from `post.md`.
+4. Done: the post enters the overall Side Hustle prize and Best Use of Render. No other category.
+5. Still human-only: in the Render dashboard set `EXTRACTOR_BACKEND=off` (documented in
+   `docs/DEPLOY.md`). The value is currently unset and no key is configured, so the demo is
+   already rules-only; setting it makes that deliberate rather than accidental.
+6. Publish the DEV post, then set `published: true` in `post.md` in the same commit as the
+   public URL, or note the URL in the README if the deadline has passed.
 7. Do not touch the code after publishing except for typos, and note any post-deadline commit in
    the list at the end of `README.md`.
 

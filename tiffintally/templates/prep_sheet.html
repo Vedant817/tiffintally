@@ -3,18 +3,17 @@
 {% block title %}Daily Prep Sheet | TiffinTally{% endblock %}
 
 {% block content %}
-<div class="no-print" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+<div class="page-head no-print">
   <div>
-    <h1 style="font-size: 1.6rem;">Kitchen Prep Sheet: {{ sheet.date }}</h1>
-    <p style="color: var(--text-muted); font-size: 0.9rem;">
+    <p class="kicker">Kitchen docket</p>
+    <h1>Prep sheet {{ sheet.date }}</h1>
+    <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 6px;">
       Reconciled at {{ current_time }}
     </p>
     {# Honest accounting. A sheet must never read as if a model ran when the
        rules did the work, and a fallback must say why without naming a model
        that was never called. #}
-    <div style="margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 0.85rem;
-                border-left: 4px solid {% if fallback_messages %}#c62828{% else %}#2e7d32{% endif %};
-                background: {% if fallback_messages %}#fdecea{% else %}#e8f5e9{% endif %};">
+    <div class="banner {% if model_messages and fallback_messages %}warn{% endif %}">
       {% if model_messages and fallback_messages %}
         <strong>Mixed read:</strong>
         {{ model_messages }} message(s) read by <strong>{{ extractor_label }}</strong>,
@@ -55,21 +54,21 @@
     </ul>
     {% endif %}
   </div>
-  <div style="display: flex; gap: 10px;">
+  <div class="actions">
     <button onclick="window.print()" class="btn btn-outline">
-      🖨️ Print Kitchen Sheet & Labels
+      Print Kitchen Sheet & Labels
     </button>
     <a href="/ledger" class="btn btn-secondary">
-      💰 View Customer Ledger
+      View Customer Ledger
     </a>
   </div>
 </div>
 
 <!-- Voice Briefing Player. The ElevenLabs label appears only when audio exists. -->
-<div class="card no-print" style="background: linear-gradient(135deg, #fff8e1 0%, #fff 100%); border-left: 4px solid #ffb300;">
-  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
-    <h3 style="font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
-      🎙️ Morning Kitchen Audio Brief{% if voice_brief.audio_path %} (ElevenLabs){% endif %}
+<div class="card brief no-print">
+  <div class="row-between" style="margin-bottom: 8px;">
+    <h3 style="font-size: 1.15rem;">
+      Morning Kitchen Audio Brief{% if voice_brief.audio_path %} (ElevenLabs){% endif %}
       {% if voice_brief.used_tts_api %}
         <span class="badge badge-success">Audio Ready</span>
       {% else %}
@@ -81,7 +80,7 @@
     </span>
   </div>
 
-  <p style="font-size: 0.92rem; margin-bottom: 12px; color: #444; font-style: italic;">
+  <p class="said">
     "{{ voice_brief.transcript }}"
   </p>
 
@@ -98,22 +97,22 @@
 </div>
 
 <!-- Key Numbers Summary -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
-  <div class="card" style="margin-bottom: 0; text-align: center;">
-    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">TOTAL THALIS</div>
-    <div style="font-size: 2.2rem; font-weight: 800; color: var(--primary);">{{ sheet.total_thalis }}</div>
+<div class="plates">
+  <div class="plate plate-total">
+    <strong>{{ sheet.total_thalis }}</strong>
+    <span>Total thalis</span>
   </div>
-  <div class="card" style="margin-bottom: 0; text-align: center;">
-    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">LUNCH PACKS</div>
-    <div style="font-size: 2.2rem; font-weight: 800; color: #2e7d32;">{{ sheet.total_lunch }}</div>
+  <div class="plate plate-lunch">
+    <strong>{{ sheet.total_lunch }}</strong>
+    <span>Lunch packs</span>
   </div>
-  <div class="card" style="margin-bottom: 0; text-align: center;">
-    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">DINNER PACKS</div>
-    <div style="font-size: 2.2rem; font-weight: 800; color: #1565c0;">{{ sheet.total_dinner }}</div>
+  <div class="plate plate-dinner">
+    <strong>{{ sheet.total_dinner }}</strong>
+    <span>Dinner packs</span>
   </div>
-  <div class="card" style="margin-bottom: 0; text-align: center;">
-    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">CANCELLATIONS</div>
-    <div style="font-size: 2.2rem; font-weight: 800; color: #c62828;">{{ sheet.cancellations|length }}</div>
+  <div class="plate plate-cancel">
+    <strong>{{ sheet.cancellations|length }}</strong>
+    <span>Cancellations</span>
   </div>
 </div>
 
@@ -145,7 +144,7 @@
 {% if sheet.special_mods %}
 <div class="card" style="border-left: 4px solid var(--warning); background: var(--warning-bg);">
   <h3 style="font-size: 1.05rem; color: #b76e00; margin-bottom: 10px;">
-    ⚠️ Station Alert: Special Dietary Modifications ({{ sheet.special_mods|length }})
+    Station alert: special dietary modifications ({{ sheet.special_mods|length }})
   </h3>
   <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
     {% for mod in sheet.special_mods %}
@@ -160,9 +159,9 @@
 
 <!-- Review Section (Low Confidence & Late Orders & Guardrail Alerts) -->
 {% if sheet.unresolved_reviews or sheet.late_orders %}
-<div class="card no-print" style="border: 2px dashed #ff9800; background: #fffde7;">
+<div class="card no-print" style="border-color: var(--warning-border); background: var(--warning-light);">
   <h3 style="font-size: 1.05rem; color: #e65100; margin-bottom: 6px;">
-    🔍 Human Review & Corrections Needed ({{ sheet.unresolved_reviews|length + sheet.late_orders|length }})
+    Human Review & Corrections Needed ({{ sheet.unresolved_reviews|length + sheet.late_orders|length }})
   </h3>
   <p style="font-size: 0.85rem; color: #666; margin-bottom: 12px;">
     Highlighted items are either low-confidence, received after kitchen cutoff, or flagged by security guardrails. Save Correction puts your meal, quantity, and action on this sheet.
@@ -208,7 +207,7 @@
               data-index="{{ loop.index }}"
               onclick="saveCorrectionFromBtn(this)"
               style="padding: 4px 10px; font-size: 0.8rem;">
-        💾 Save Correction
+        Save Correction
       </button>
       <span id="saved-msg-{{ loop.index }}" style="font-size: 0.8rem; color: green; display: none;">Saved!</span>
     </div>
