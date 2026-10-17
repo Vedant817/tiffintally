@@ -50,6 +50,10 @@ class OrderEvent(BaseModel):
         default=1.0, ge=0.0, le=1.0, description="Extraction confidence score (0.0 to 1.0)"
     )
     raw_text: str = Field(default="", description="Original raw message text")
+    note: Optional[str] = Field(
+        default=None,
+        description="Original wording the rules could not turn into a canonical mod. Shown to the cook.",
+    )
     timestamp: Optional[str] = Field(default=None, description="ISO timestamp message was received")
     is_late: bool = Field(
         default=False, description="Flag indicating whether message was received after cutoff"
@@ -99,8 +103,6 @@ class DailyPrepSheet(BaseModel):
     total_lunch: int = 0
     total_dinner: int = 0
     total_thalis: int = 0
-    forecast_recommended: Optional[int] = None
-    forecast_reasoning: Optional[str] = None
     packing_labels: List[PackingLabel] = Field(default_factory=list)
     special_mods: List[SpecialMod] = Field(default_factory=list)
     late_orders: List[OrderEvent] = Field(default_factory=list)

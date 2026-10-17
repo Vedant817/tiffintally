@@ -348,6 +348,7 @@ def test_restored_session_says_the_names_are_tokens(monkeypatch):
         assert "restored from database" in prep.text
         assert "Restored, not re-extracted" in prep.text
         assert "stored as tokens" in prep.text
+        assert "names are tokens after restart" in prep.text.lower()
         for name in ("Rohan", "Kulkarni", "Meera", "Iyer", "Sneha"):
             assert name not in prep.text
 
@@ -379,3 +380,43 @@ def test_a_bare_street_name_is_not_masked_and_the_readme_says_so(monkeypatch):
         )
         assert b"Sai Heights" not in blob
         assert "street names can remain" in (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def test_every_file_under_data_is_scanned_including_private(monkeypatch, tmp_path):
+    """Persistence is experimental. A session must not leave a real name on disk.
+
+    The SQLite file is not the only write. Corrections land under data/private/.
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+    monkeypatch.setattr("tiffintally.extract.gemma.EXTRACTOR_BACKEND", "off")
+    db_path = tmp_path / "data" / "kitchen.db"
+    monkeypatch.setenv("TIFFINTALLY_DB_PATH", str(db_path))
+
+    cook = TestClient(app)
+    assert (
+        cook.post(
+            "/process", data={"raw_text": BRACKETED_EXPORT, "target_date": "tomorrow"}
+        ).status_code
+        == 200
+    )
+    saved = cook.post(
+        "/api/corrections",
+        json={
+            "customer": "Rohan Kulkarni",
+            "raw_text": "kal lunch 2, roommate Sneha ke liye bhi 1",
+            "corrected_meal": "lunch",
+            "corrected_qty": 2,
+            "corrected_action": "new",
+        },
+    )
+    assert saved.status_code == 200
+
+    data_root = tmp_path / "data"
+    files = [path for path in data_root.rglob("*") if path.is_file()]
+    assert files, "a persist-mode session wrote nothing, so the scan proves nothing"
+    assert any("private" in path.parts for path in files), "data/private/ was not scanned"
+    blob = b"".join(path.read_bytes() for path in files)
+    leaked = [token for token in FORBIDDEN_IN_DB if token.encode() in blob]
+    assert not leaked, f"identifier(s) written under data/: {leaked}"

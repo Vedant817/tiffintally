@@ -1,6 +1,6 @@
 {
   "system": "regex",
-  "code_sha": "1c421c72a6c3ad1d7c53f725c516b30a954f28c1",
+  "code_sha": "c91f3302d1dd80f1aa6df2c4fe46ec4324ad4a01",
   "prompt_sha256": "7e9e1c1ec8d9e6535abedb695bef6dccfc0d65906b77e308f8ab6b6669aeed42",
   "dataset_sha256": "6e9f49ed006fc638210a64fc9a1246e6378fb87c68e10e0932e77a142e9509bd",
   "adapter_id": null,
@@ -10,5 +10,5 @@
   "dtype": null,
   "decoding": "deterministic rules",
   "n": 50,
-  "date": "2026-10-16T11:09:21.361904+00:00"
+  "date": "2026-10-17T18:03:06.827565+00:00"
 }

@@ -17,6 +17,7 @@ dependencies = [
     "numpy>=1.26.0,<3",
     "modal>=1.6.1,<2",
     "sentry-sdk>=2.72.0,<3",
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -371,7 +372,7 @@ def find_quantities(text: str) -> List[Tuple[int, int, str]]:
 def _meal_spans(text: str) -> List[Tuple[int, int, str]]:
     """(start, end, meal) for every lunch/dinner mention, Roman or Devanagari."""
     pattern = re.compile(
-        r"\b(lunch|dinner|dopahar|dopahar\s*ka\s*khana|raat|raat\s*ka\s*khana)\b"
+        r"\b(lunch|dinner|dopahar|dopahar\s*ka\s*khana|raat|raat\s*ka\s*khana|shaam|shaam\s*ko|evening)\b"
         r"|दोपहर|लंच"
         r"|रात",
         re.IGNORECASE,
@@ -387,7 +388,7 @@ def _meal_spans(text: str) -> List[Tuple[int, int, str]]:
                 "lunch"
                 if "dopahar" in normalised
                 else "dinner"
-                if "raat" in normalised
+                if "raat" in normalised or "shaam" in normalised or normalised == "evening"
                 else normalised
             )
         spans.append((match.start(), match.end(), meal))
@@ -430,6 +431,8 @@ def _nearest_quantity(
             value = _match_number(raw)
             if value is None:
                 continue
+            if _SIDE_AFTER_QTY.match(text[qe : qe + 24]):
+                continue
             if qe <= s and s - qe <= 24:
                 distance = s - qe
             elif s <= qs and qs - e <= 24:
@@ -445,20 +448,91 @@ def _has_plate_word(text: str) -> bool:
     return any(word in text for word in _PLATE_WORDS)
 
 
+# One negation helper. "no onion" is a mod, not a cancelled lunch. "don't cancel"
+# is stripped before this runs. A meal is bound only when the negation governs
+# that meal word, inside a short window, not a food word.
+_NEGATION_RE = re.compile(
+    r"\b(?:no|don'?t|do\s+not|nahi\s+chahiye|mat|skip|cancel|rehat)\b",
+    re.IGNORECASE,
+)
+_NEGATION_FOOD = re.compile(
+    r"\s+(?:onion|pyaz|pyaaz|garlic|lahsun|lehsun|lasun|oil|sugar|rice|mirchi|roti|chapati)\b",
+    re.IGNORECASE,
+)
+_BETWEEN_NEGATION = {
+    "send",
+    "bhej",
+    "bhejna",
+    "bhejo",
+    "bhejna",
+    "kar",
+    "karna",
+    "please",
+    "the",
+    "a",
+    "me",
+    "mujhe",
+    "ko",
+    "se",
+    "for",
+    "from",
+    "tomorrow",
+    "today",
+    "kal",
+    "aaj",
+}
+_SIDE_AFTER_QTY = re.compile(
+    r"\s*(?:extra\s+|aur\s+)?\d{0,2}\s*(?:roti|rotli|paratha|sabzi|chapati|piece)\b",
+    re.IGNORECASE,
+)
+_REQUEST_LEXICON = re.compile(
+    r"\b(?:allergy|allergic|diabetic|sugar|jain|kam|less|extra|without|bina|nahi|only|sirf|no)\b",
+    re.IGNORECASE,
+)
+_WEEKDAY_TO_WEEKDAY = re.compile(
+    rf"\b{_WEEKDAY_PATTERN}\s+to\s+{_WEEKDAY_PATTERN}\b",
+    re.IGNORECASE,
+)
+_RANGE_WORD = re.compile(r"\b(?:hafte|hafta|hafton|weeks?|daily|roz)\b", re.IGNORECASE)
+_DECREMENT = re.compile(
+    r"\b(?:ek|one)\s+(?:thali|plate|dabba)\s+kam\b"
+    r"|\b(?:thali|plate|dabba)\s+kam\b"
+    r"|\b(?:ek|one)\s+kam\s+(?:kar|karo|do)\b"
+    r"|\bcancel\s+(?:one|ek|a|1)\s+(?:thali|plate|dabba)\b"
+    r"|\b(?:one|ek)\s+less\s+(?:thali|plate|dabba)\b",
+    re.IGNORECASE,
+)
+
+
 def _cancelled_meals(text: str, spans: List[Tuple[int, int, str]]) -> set[str]:
-    """Bind a cancel word to the meal just before it, else the meal just after it."""
-    cancels = [
-        match.start()
-        for match in re.finditer(r"\b(cancel|skip|nahi\s+chahiye|mat\s+bhejna|rehat)\b", text)
-    ]
+    """Meals a negation governs. Shared by English and Hinglish, not per phrase."""
     bound: set[str] = set()
-    for pos in cancels:
-        before = [meal for start, _, meal in spans if 0 <= pos - start <= 24]
-        after = [meal for start, _, meal in spans if 0 < start - pos <= 24]
-        if before:
-            bound.add(before[-1])
-        elif after:
-            bound.add(after[0])
+    for match in _NEGATION_RE.finditer(text):
+        word = match.group(0).lower()
+        after = text[match.end() : match.end() + 40]
+        if word == "no" and _NEGATION_FOOD.match(after):
+            continue
+        # "lunch skip dinner 1" cancels lunch, the meal the word governs,
+        # not the dinner that follows it.
+        if word in {"skip", "cancel", "mat", "rehat"} or "nahi" in word:
+            before = [
+                meal
+                for start, end, meal in spans
+                if end <= match.start() and match.start() - end <= 16
+            ]
+            if before:
+                bound.add(before[-1])
+                continue
+        tokens = re.findall(r"[a-zA-Z\u0900-\u097F']+", after)
+        tokens = [token for token in tokens if token not in _BETWEEN_NEGATION]
+        if tokens:
+            head = tokens[0]
+            for start, end, meal in spans:
+                fragment = text[start:end].lower()
+                if head in fragment or fragment.startswith(head[:4]):
+                    if 0 < start - match.start() <= 32:
+                        bound.add(meal)
+                        break
     return bound
 
 
@@ -574,18 +648,23 @@ def _find_delta(text: str) -> Optional[Tuple[Optional[str], Tuple[int, int]]]:
         return None
     start, end = match.span()
     after = text[end : end + 24]
-    if re.match(r"\s*\d{0,2}\s*(roti|rotli|paratha|sabzi|chapati|piece)", after, re.IGNORECASE):
+    if _SIDE_AFTER_QTY.match(after):
         return None
     return (match.group(1) or match.group(2) or match.group(3)), (start, end)
 
 
-def _canonical_mods(text: str) -> List[str]:
+@lru_cache(maxsize=1)
+def _mod_pattern_table() -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
+    """Canonical mods and their phrases. Read once, not once per message."""
     patterns_path = Path(__file__).resolve().parents[2] / "data/vocab/mod_patterns.json"
     patterns = json.loads(patterns_path.read_text(encoding="utf-8"))
+    return tuple((canonical, tuple(phrases)) for canonical, phrases in patterns.items())
+
+
+def _canonical_mods(text: str) -> List[str]:
+    patterns = _mod_pattern_table()
     mods = [
-        canonical
-        for canonical, phrases in patterns.items()
-        if any(phrase in text for phrase in phrases)
+        canonical for canonical, phrases in patterns if any(phrase in text for phrase in phrases)
     ]
     # Compositional grammar using food/negation tokens evidenced in training.
     if re.search(r"प्याज\s+नहीं", text) and "no onion" not in mods:
@@ -839,8 +918,58 @@ def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
     meals_present = {meal for _, _, meal in meal_spans}
     has_lunch = "lunch" in meals_present
     has_dinner = "dinner" in meals_present
-    cancel_words = re.search(r"\b(cancel|skip|nahi\s+chahiye|mat\s+bhejna|rehat)\b", lower)
-    has_cancel = bool(cancel_words)
+    cancelled = _cancelled_meals(lower, meal_spans)
+    has_cancel = bool(cancelled) or bool(
+        re.search(r"\b(cancel|skip|nahi\s+chahiye|mat\s+bhejna|rehat)\b", lower)
+    )
+
+    # A date span is not one day's order. "to" alone is the Hindi particle
+    # "to", so only a weekday-to-weekday span or an explicit range word counts.
+    if _WEEKDAY_TO_WEEKDAY.search(lower) or (
+        _RANGE_WORD.search(lower) and (meal_spans or _has_plate_word(lower))
+    ):
+        return review("date_range")
+
+    # A question with no plate count is not an order.
+    asks = lower.rstrip().endswith("?") or bool(
+        re.search(r"\b(?:kitne\s+baje|kab aayega|kab milega|\bkya\b)\b", lower)
+    )
+    plate_qty = [
+        item
+        for item in find_quantities(lower)
+        if _match_number(item[2]) is not None
+        and not _SIDE_AFTER_QTY.match(lower[item[1] : item[1] + 24])
+    ]
+    if asks and not plate_qty:
+        return review("question")
+
+    # "cancel one thali" and "ek thali kam" name a change in count, not a meal
+    # and not a brand-new plate. Without a meal word, do not invent lunch.
+    if _DECREMENT.search(lower):
+        return review("unscoped_decrement")
+
+    both = re.search(r"\bdono\s+time\b", lower)
+    if both:
+        pair = re.search(
+            rf"\b(\d{{1,2}}|{_NUMBER_ALT})\s+\1\b",
+            lower,
+            re.IGNORECASE,
+        )
+        qty = _match_number(pair.group(1)) if pair else None
+        if qty is None:
+            return review("both_meals_unclear")
+        ev = OrderEvent(
+            customer=sender,
+            date=spoken_date,
+            meal="both",
+            qty=qty,
+            items=["thali"],
+            mods=_canonical_mods(lower),
+            action="new",
+            raw_text=raw_text,
+            confidence=0.85,
+        )
+        return [flag(ev)]
 
     # Devanagari "nahin" is a negation, not a cancellation.
     devanagari_nahin = re.search(r"नहीं|नही", lower)
@@ -852,21 +981,31 @@ def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
 
     mods = _canonical_mods(lower)
 
-    # Secondary customer: "roommate Priya ke liye bhi ek" is one plate more.
+    # Secondary customer: a roommate word, or a capitalised name in this export.
+    # A lowercase "ke liye bhi" with no name we can trust goes to review.
     secondary_cust = None
     sec_match = re.search(
         r"(?:roommate|friend|dost)\s+([A-Za-z]+)\s+ke liye\s+(?:bhi\s+)?(?:ek|1)?",
         raw_text,
         re.IGNORECASE,
     )
+    named = re.search(r"\b([A-Z][a-z]{2,})\s+ke liye\s+bhi\b", raw_text)
     if sec_match:
         secondary_cust = sec_match.group(1).title()
+    elif named and named.group(1).lower() not in {"kal", "aaj", "bhi", "aunty"}:
+        secondary_cust = named.group(1)
+    elif re.search(r"\bke liye\s+bhi\b", lower):
+        return review("secondary_unresolved")
 
-    # An order change: "change it to 3", "2 nahi 3".
-    quantity_correction = re.search(r"\d+\s+nahi\s+\d+", lower)
-    if "change" in lower or quantity_correction:
-        change_match = re.findall(r"\d+", lower)
-        new_qty = int(change_match[-1]) if change_match else 1
+    # An order change: "change it to 3", "2 nahi, 3", "2 ki jagah 3".
+    quantity_correction = re.search(r"\d+\s+nahi\s*,?\s*\d+", lower)
+    instead = re.search(r"\b(?:ki\s+jagah|badle|instead)\s+(\d+)\b", lower)
+    if "change" in lower or quantity_correction or instead:
+        if instead:
+            new_qty = int(instead.group(1))
+        else:
+            change_match = re.findall(r"\d+", lower)
+            new_qty = int(change_match[-1]) if change_match else 1
         meal = "dinner" if has_dinner and not has_lunch else "lunch"
         ev = OrderEvent(
             customer=sender,
@@ -881,8 +1020,6 @@ def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
             secondary_customer=secondary_cust,
         )
         return [flag(ev)]
-
-    cancelled = _cancelled_meals(lower, meal_spans) if has_cancel else set()
 
     # Both meals named in one message: one event per meal.
     if has_lunch and has_dinner:
@@ -941,6 +1078,10 @@ def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
     # A single meal, or a bare plate count.
     if meal_spans:
         meal = meal_spans[0][2]
+    elif has_cancel:
+        # "cancel one thali" already returned above. Any other cancel that
+        # never named a meal must not be stored as "cancel all lunch".
+        return review("cancel_without_meal")
     else:
         meal = "dinner" if has_dinner else "lunch"
 
@@ -988,6 +1129,36 @@ def _heuristic_single(raw_text: str, sender: str) -> List[OrderEvent]:
     return [flag(ev)]
 
 
+def _mark_unrecognised(event: OrderEvent, raw_text: str, lower: str) -> None:
+    """Carry request words no canonical mod consumed, so the cook still sees them."""
+    if event.action not in {"new", "change"} or event.qty <= 0:
+        return
+    consumed: List[Tuple[int, int]] = []
+    for _canonical, phrases in _mod_pattern_table():
+        for phrase in phrases:
+            start = 0
+            while True:
+                idx = lower.find(phrase, start)
+                if idx < 0:
+                    break
+                consumed.append((idx, idx + len(phrase)))
+                start = idx + len(phrase)
+    for match in re.finditer(r"\d+\s+nahi\s*,?\s*\d+", lower):
+        consumed.append(match.span())
+    residual = False
+    for match in _REQUEST_LEXICON.finditer(lower):
+        if any(start <= match.start() and match.end() <= end for start, end in consumed):
+            continue
+        residual = True
+        break
+    if not residual:
+        return
+    event.note = raw_text
+    event.needs_review = True
+    if "unrecognised_request" not in event.audit_flags:
+        event.audit_flags.append("unrecognised_request")
+
+
 def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
     """Retain both intents in a message containing an order and a payment."""
     events = _heuristic_single(raw_text, sender)
@@ -1012,4 +1183,5 @@ def heuristic_extract(raw_text: str, sender: str) -> List[OrderEvent]:
         if event.action in {"new", "change", "add"} and (event.qty == 0 or event.qty > 20):
             event.needs_review = True
             event.audit_flags.append("invalid_order_quantity")
+        _mark_unrecognised(event, raw_text, lower)
     return events

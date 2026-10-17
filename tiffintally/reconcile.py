@@ -17,6 +17,7 @@ from datetime import datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional, Set, Tuple
 
+from tiffintally.clock import now as kitchen_now
 from tiffintally.dates import resolve_day_label
 from tiffintally.schema import (
     CustomerLedger,
@@ -65,6 +66,7 @@ class CustomerMealState:
         self.qty = 0
         self.items: List[str] = []
         self.mods: List[str] = []
+        self.notes: str = ""
         self.is_paused: bool = False
 
 
@@ -310,7 +312,7 @@ def _replay_day(
     food, but only the cook knows whether she has already packed it.
     """
     as_of = parse_timestamp(as_of) if isinstance(as_of, str) else as_of
-    as_of = as_of or datetime.now()
+    as_of = as_of or kitchen_now()
     events = [ev.model_copy(deep=True) for ev in events]
     for event in events:
         audit = InputGuardrail().sanitize(event.raw_text)
@@ -427,7 +429,10 @@ def _replay_day(
             continue
 
         # A row the cook has to judge is not applied to the sheet.
-        if (
+        # An order whose only flag is an unrecognised request still packs,
+        # with the customer's words on the label, and stays in the review list.
+        request_only = set(ev.audit_flags) <= {"unrecognised_request"} and bool(ev.note)
+        if not request_only and (
             ev.needs_review
             or ev.confidence < 0.70
             or any(f.startswith(("prompt_injection", "excessive_quantity")) for f in ev.audit_flags)
@@ -479,7 +484,7 @@ def _replay_day(
                     qty=st.qty,
                     items=st.items or ["thali"],
                     mods=st.mods,
-                    notes="",
+                    notes=st.notes,
                     is_late=False,
                 )
             )
@@ -534,7 +539,7 @@ def plates_by_day(
     accept_late_cancels: bool = False,
 ):
     states = _final_states(
-        events, target_date, as_of or datetime.now(), cutoff_time, cook_names, accept_late_cancels
+        events, target_date, as_of or kitchen_now(), cutoff_time, cook_names, accept_late_cancels
     )
     return {key: state.qty for key, state in states.items()}
 
@@ -592,6 +597,8 @@ def _apply_event(ev: OrderEvent, state_map: Dict[Tuple[str, str], CustomerMealSt
             st.is_paused = False
             if ev.mods:
                 st.mods.extend(m for m in ev.mods if m not in st.mods)
+            if ev.note:
+                st.notes = ev.note
 
 
 def reconcile_ledger(
@@ -613,16 +620,27 @@ def reconcile_ledger(
     not from a sum of events, so a change is not billed twice and a cancelled
     meal is not billed at all.
     """
-    as_of = as_of or datetime.now()
-    prev_bals = previous_balances or {}
+    as_of = as_of or kitchen_now()
+    raw_prev = previous_balances or {}
 
     price_per_thali = money(price_per_thali)
-    prev_bals = {key.strip().lower(): money(value) for key, value in prev_bals.items()}
+    prev_bals: Dict[str, Decimal] = {}
+    # The lookup key is lowercase. The label keeps the spelling from the CSV,
+    # so an imported "Priya Sharma" is not shown as "priya sharma".
+    display_names: Dict[str, str] = {}
+    for key, value in raw_prev.items():
+        norm = key.strip().lower()
+        if norm not in display_names:
+            display_names[norm] = key.strip()
+        prev_bals[norm] = money(value)
     states = _final_states(events, target_date, as_of, cutoff_time, cook_names, accept_late_cancels)
 
     ledgers: Dict[str, CustomerLedger] = {
-        name.strip().lower(): CustomerLedger(
-            customer=name, price_per_thali=price_per_thali, total_billed=amount, balance_due=amount
+        name: CustomerLedger(
+            customer=display_names[name],
+            price_per_thali=price_per_thali,
+            total_billed=amount,
+            balance_due=amount,
         )
         for name, amount in prev_bals.items()
     }

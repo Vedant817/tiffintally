@@ -32,6 +32,9 @@ EXTRACTOR_BACKEND=off uv run tiffintally eval --out evals/final/offline
 uv run python scripts/publish_results.py --check
 ```
 
+`tiffintally eval` regenerates the frozen **test** split only. Train, dev2 and test
+together are `EXTRACTOR_BACKEND=off uv run python scripts/regex_report.py`.
+
 The configured backend is selected from Modal endpoint credentials (a fine-tuned Qwen2.5-3B adapter),
 a Google key (defaulting to the open-weight `gemma-4-26b-a4b-it` model on Google AI Studio), an OpenAI-compatible endpoint (e.g. local Ollama),
 or local rules. The UI reports what actually answered, including mixed fallback.
@@ -99,6 +102,7 @@ sheets, reviews, and payment confirmations live strictly in ephemeral server mem
 session and are never written to disk.
 
 Persistent storage in SQLite (`data/tiffintally.db`) is an explicit opt-in gated behind `TIFFINTALLY_PERSIST=1`.
+It is experimental: after a restart the sheet shows tokens, and the cutoff, target date, price and corrections are not restored. The reverse map is not encrypted. See `docs/KNOWN_GAPS.md`.
 When persistence is enabled, one `Pseudonymizer` per upload replaces, before any write:
 
 - every sender name in the export, its first word, and any roommate named in a message (`roommate Sneha`), with sequential tokens (`C001`, `C002`, and so on);
@@ -108,7 +112,7 @@ When persistence is enabled, one `Pseudonymizer` per upload replaces, before any
 
 Two limits, both stated rather than glossed over. A street name with no flat or building number in front of it (`Baner Road`) is not matched, so street names can remain in the masked text. Masking is pattern based, so an address phrased in a way no pattern recognises is not removed either. Because the stored customer name is already a token, a kitchen reloading from the database sees `C001`, not a name.
 
-`tests/test_db_persistence.py` pastes a bracketed export and then reads every table plus the WAL and shared-memory bytes, asserting that no name, phone number, email address or building name is on disk. It also asserts that a bare street name is still there, so this section cannot quietly drift into a stronger claim than the code supports.
+`tests/test_db_persistence.py` pastes a bracketed export and then reads the SQLite file (every table, plus the WAL and shared-memory bytes) and every file written under `data/`, including `data/private/`. That scan asserts that no name, phone number, email address or building name from the fixture is in those bytes. It also asserts that a bare street name is still there, so this section cannot quietly drift into a stronger claim than the code supports. The scan does not say that no name can ever reach disk: a street name can, and a session that is not the fixture is not what the test reads.
 
 Each paste uses an in-memory token map to mask identifiers before sending messages to any configured
 hosted model. Masking covers common Indian phone formats, street addresses, and sender aliases.
@@ -131,8 +135,8 @@ The saved synthetic results describe the cleaned rules only; they establish neit
 
 | System | Split | Metric | Correct / n | Accuracy | Wilson interval | Source |
 |---|---|---|---|---|---|---|
-| regex | train | strict | 206 / 342 | 60.2% | 55.0 to 65.3 | evals/final/regex/train.jsonl |
-| regex | train | lenient | 253 / 342 | 74.0% | 69.1 to 78.3 | evals/final/regex/train.jsonl |
+| regex | train | strict | 220 / 342 | 64.3% | 59.1 to 69.2 | evals/final/regex/train.jsonl |
+| regex | train | lenient | 260 / 342 | 76.0% | 71.2 to 80.2 | evals/final/regex/train.jsonl |
 | regex | dev2 | strict | 57 / 60 | 95.0% | 86.3 to 98.3 | evals/final/regex/dev2.jsonl |
 | regex | dev2 | lenient | 57 / 60 | 95.0% | 86.3 to 98.3 | evals/final/regex/dev2.jsonl |
 | regex | test | strict | 35 / 50 | 70.0% | 56.2 to 80.9 | evals/final/regex/test.jsonl |

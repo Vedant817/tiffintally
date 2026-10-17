@@ -7,12 +7,14 @@ Caches generated MP3s locally and provides instant text fallback when unkeyed or
 import hashlib
 import json
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 import httpx
 from pydantic import BaseModel
 
+from tiffintally.clock import now as kitchen_now
 from tiffintally.schema import DailyPrepSheet
 
 DEFAULT_VOICE_ID = os.getenv(
@@ -30,11 +32,36 @@ class VoiceBriefResult(BaseModel):
     message: str
 
 
-def generate_briefing_script(sheet: DailyPrepSheet) -> str:
+def _demo_mode() -> bool:
+    return os.getenv("TIFFINTALLY_DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def spoken_day(sheet_date: str) -> str:
+    """Say kal when the sheet is for tomorrow, aaj when it is for today."""
+    raw = (sheet_date or "").strip()
+    if raw.lower() in {"tomorrow", "kal"}:
+        return "Kal"
+    if raw.lower() in {"today", "aaj", "tonight"}:
+        return "Aaj"
+    try:
+        day = datetime.strptime(raw[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return raw
+    today = kitchen_now().date()
+    if day == today + timedelta(days=1):
+        return "Kal"
+    if day == today:
+        return "Aaj"
+    return f"{day.day} {day.strftime('%B')}"
+
+
+def generate_briefing_script(sheet: DailyPrepSheet, cook_name: Optional[str] = None) -> str:
     """Generate a warm, natural conversational Hinglish morning briefing for the kitchen cook."""
     parts = []
+    name = (cook_name or "").strip()
+    greeting = f"Namaste {name}!" if name else "Namaste!"
     parts.append(
-        f"Namaste Aunty! Aaj {sheet.date} ke liye total {sheet.total_thalis} thalis pack karni hain."
+        f"{greeting} {spoken_day(sheet.date)} ke liye total {sheet.total_thalis} thalis pack karni hain."
     )
     if sheet.total_lunch > 0:
         parts.append(f"Lunch ke {sheet.total_lunch} orders hain.")
@@ -100,16 +127,29 @@ class VoiceBriefService:
         self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
         self.voice_id = voice_id or DEFAULT_VOICE_ID
         self.session_id = session_id
-        BRIEFINGS_DIR.mkdir(parents=True, exist_ok=True)
+        self.demo = _demo_mode()
+        # Demo mode must not create data/briefings. A public paste is not a file.
+        if not self.demo:
+            BRIEFINGS_DIR.mkdir(parents=True, exist_ok=True)
 
     def is_available(self) -> bool:
         return bool(self.api_key and len(self.api_key.strip()) > 5)
 
     def generate_morning_brief(
-        self, sheet: DailyPrepSheet, force_refresh: bool = False
+        self, sheet: DailyPrepSheet, force_refresh: bool = False, cook_name: Optional[str] = None
     ) -> VoiceBriefResult:
-        transcript = generate_briefing_script(sheet)
+        transcript = generate_briefing_script(sheet, cook_name=cook_name)
         char_count = len(transcript)
+        if self.demo:
+            # A public paste must not create or read data/briefings.
+            return VoiceBriefResult(
+                audio_path=None,
+                transcript=transcript,
+                character_count=char_count,
+                used_tts_api=False,
+                voice_id=self.voice_id,
+                message="Written summary (no audio, no key configured)",
+            )
 
         safe_session = "".join(c for c in self.session_id if c.isalnum())[:16] or "shared"
         safe_date = sheet.date.replace(":", "-").replace(" ", "_")
@@ -134,7 +174,7 @@ class VoiceBriefService:
                 character_count=char_count,
                 used_tts_api=False,
                 voice_id=self.voice_id,
-                message="ElevenLabs API key not set; fallback text transcript available",
+                message="Written summary (no audio, no key configured)",
             )
 
         # Call ElevenLabs API
