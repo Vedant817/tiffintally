@@ -113,6 +113,31 @@ to merge before recording any demo is now measured rather than argued.
 No model key is configured on the preview either, so the preview answers with the rules path and
 says so. That is the same honest behaviour production shows.
 
+## The EXTRACTOR_BACKEND pull request, verified on its own deployment
+
+PR #4 (`chore/render-explicit-backend`) adds `EXTRACTOR_BACKEND: sync: false` to the blueprint,
+four lines, no default moved. Its own preview deployment was checked by hand:
+
+```
+GET  https://tiffintally-pr-4.onrender.com/health     -> 200 {"status":"ok","version":"0.1.0"}
+GET  https://tiffintally-pr-4.onrender.com/            -> 200
+GET  https://tiffintally-pr-4.onrender.com/benchmarks  -> 200
+```
+
+CI on that branch, on `main`: `test` success, `no-results-drift` success, `preview` success,
+secret scan clean. Locally on `main`: 305 passed, 4 xfailed.
+
+## What merging PR #2 does to the public demo
+
+`main` auto-deploys to <https://tiffintally-lbn2.onrender.com> on merge. Production is still on
+`main` today, so its `/benchmarks` is titled "AI Benchmark & Self-Healing Lab | TiffinTally"
+(checked by hand just now). After PR #2 merges and the auto-deploy completes, production should
+serve the same corrected wording that `https://tiffintally-pr-2.onrender.com` already serves.
+
+That check is the one thing still standing between the repository and a Render prize claim, and
+it belongs to whoever merges. Do not record it as done until `/health` answers 200 and the
+`/benchmarks` title reads "Scorer Demo & Repair Rules" on the production host.
+
 ## Production deployment, checked after the QA run
 
 The QA run above happened before any deployment existed. One is now live, so this
