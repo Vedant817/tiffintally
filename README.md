@@ -49,6 +49,14 @@ hosted model. Masking covers common Indian phone formats, street addresses, and 
 However, unrecognised personal information can still leave the device if a hosted model is enabled.
 Raw customer exports belong strictly under ignored local paths (`data/private/`).
 
+## Scorer demo on /benchmarks
+
+`/benchmarks` scores one extraction against a gold event and applies a set of hand-written
+repair rules. It is a demonstration of the scorer: it needs labels, it starts from the offline
+rules or an injected fake flaw, its repair rules were written for the same four sentences it
+scores, and the adversarial suite does not reach the threshold. Pasting a chat never calls it,
+and it is not a claim about extraction quality.
+
 ## Measured results
 
 <!-- measured-results:start -->

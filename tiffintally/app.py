@@ -828,6 +828,8 @@ async def run_benchmark_eval(
 
     initial_pred = None
     if inject_flaw:
+        # A hand-built wrong event, so the scorer has something to react to.
+        # This is not a model output and no model is asked for one.
         initial_pred = [
             {
                 "customer": gold_data.get("customer", "Customer"),

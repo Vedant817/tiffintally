@@ -24,16 +24,16 @@ A Google Form would be cleaner, but customers ignore itâ€”they already have
 4. **Maintains a dues ledger** where payment claims in chat remain unconfirmed until the cook verifies receipt.
 5. **Generates a clean kitchen prep sheet** with packing lines and dietary modification warnings.
 
-### The Honest-Evals Angle: Standing Apart from the Crowd
+### What the evaluation lab does and does not do
 
-Other submissions in this space have claimed flawless accuracy on synthetic WhatsApp chats or showcased TabPFN plate forecasts that claim to save thousands of rupees a month.
+`/benchmarks` scores one extraction against a gold event and applies a set of hand-written repair rules. It is a demo of the scorer, not a quality claim:
 
-When we actually audited messy WhatsApp text against open-weight models, we discovered the unvarnished reality:
-- Models frequently hallucinate on **negated cancellations**: *"don't send lunch"* gets misparsed as *`meal: lunch, qty: 1`*.
-- Hindi number words (*"ek"*, *"do"*, *"teen"*) and roommate split orders (*"cancel for Rahul, keep mine"*) lead to missed plates.
-- Dietary restrictions (*"bina mirch"*, *"jain"*) often get dropped, risking allergic or religious customer conflicts.
+- It needs gold labels, so it cannot run over real traffic.
+- It starts from the offline rules or from an injected fake flaw. It never asks a model.
+- Its repair rules were written for the same four sentences it scores, so a pass demonstrates the scorer, not general accuracy. One of the four does not pass.
+- Pasting a chat never calls it.
 
-Instead of hiding behind cherry-picked synthetic numbers, TiffinTally introduces an **AI Benchmark & Self-Healing Evaluation Lab** (`/benchmarks`). It continuously evaluates open-weight model outputs across 7 quantitative metrics (Precision, Recall, Micro F1, Strict/Lenient Accuracy, Schema Adherence, and Guardrail Safety). When an extraction falls below the target benchmark threshold (score under 0.90), an automated self-healing retry loop applies diagnostic repair heuristics until the output passes before any prep sheet hits the kitchen.
+The measured numbers in `RESULTS.md` come from `scripts/publish_results.py` rescoring saved per-row outputs, not from this page.
 
 ---
 
@@ -57,7 +57,7 @@ uv run tiffintally serve
 
 Visit `http://127.0.0.1:8000` to paste a WhatsApp export and inspect the generated prep sheet and ledger.
 
-Visit `http://127.0.0.1:8000/benchmarks` to access the interactive **AI Evaluation Lab** and test automated self-healing retries against real edge-case suites.
+Visit `http://127.0.0.1:8000/benchmarks` for the scorer demo: one sentence, its gold event, the score, and what the repair rules change.
 
 ### One-Click Deploy on Render
 
@@ -75,7 +75,7 @@ TiffinTally includes an official Render Blueprint specification (`render.yaml`).
 
 Key architectural modules:
 - [`tiffintally/extract/gemma.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/extract/gemma.py): Multi-backend model router supporting Google AI Studio (`gemma-4-26b-a4b-it`), Modal (`Qwen2.5-3B`), local OpenAI/Ollama, or offline regex rules.
-- [`tiffintally/benchmarks.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/benchmarks.py): Quantitative metrics calculator, diagnostic repair rules, and self-healing retry loop.
+- [`tiffintally/benchmarks.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/benchmarks.py): Metric scorer and the hand-written repair rules used by the `/benchmarks` demo.
 - [`tiffintally/privacy.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/privacy.py): In-memory pseudonymization replacing Indian mobile numbers, street addresses, and personal names with sequential tokens (`C001`, `C002`).
 - [`tiffintally/db.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/db.py): ACID SQLite persistence layer gated behind `TIFFINTALLY_PERSIST=1`, storing only masked text to ensure unmasked phone numbers never touch disk.
 - [`tiffintally/reconcile.py`](https://github.com/Vedant817/tiffintally/blob/main/tiffintally/reconcile.py): Daily order reconciliation, cutoff enforcement, and packing slip generation.
@@ -98,15 +98,9 @@ Small kitchen businesses handle real customer phone numbers, home addresses, and
 - **Default Ephemeral Mode**: By default and in demo mode (`TIFFINTALLY_PERSIST=0`), no chats, customer names, or orders are written to disk. All state resides in ephemeral server memory for the browser session.
 - **Strict Masking on Disk**: When persistence is explicitly turned on (`TIFFINTALLY_PERSIST=1`), both `uploads.raw_text` and `orders.raw_text` are sanitized using `Pseudonymizer`. Real phone numbers like `+91 98765 43210` are replaced with tokens (`C001`, `C002`). Binary inspection tests in CI verify that raw phone numbers never appear anywhere in the `.db` file.
 
-### 3. AI Evaluation Lab & Automated Self-Healing
+### 3. Scorer Demo
 
-The hardest part of parsing chat exports with an LLM is handling negated instructions, roommate splits, and dietary restrictions:
-- We built `/benchmarks` with 4 test suites:
-  1. *Negated Intent*: *"kal lunch mat bhejna"* (don't send lunch) vs extra orders.
-  2. *Dietary Allergens*: *"bina pyaz lahsun / jain thali"* (no onion/garlic).
-  3. *Roommate Splits*: *"cancel for Rahul, add one for me"*.
-  4. *Adversarial Guardrails*: Prompt injection and delimiter escaping attempts.
-- When an open model extraction fails, TiffinTally's repair heuristics diagnose the error type (`MODS_MISMATCH`, `NEGATED_CANCELLATION`, `SPLIT_ROOMMATE`), heal the event payload, and iterate until passing the target threshold (score >= 0.90).
+`/benchmarks` scores one sentence against its gold event using precision, recall, F1, strict and lenient match, schema and safety, then applies a few hand-written repair rules. Two properties matter and both are stated on the page: the rules were written for those same sentences, and the adversarial suite does not reach the threshold.
 
 ---
 
@@ -120,16 +114,16 @@ The hardest part of parsing chat exports with an LLM is handling negated instruc
 
 ## My Agent Session
 
-TiffinTally was built, refactored, and verified with deep autonomous testing:
+TiffinTally was built, refactored, and verified with automated tests:
 - Over 305 automated pytest unit and invariant tests covering edge-case parsers, privacy boundaries, and database gating.
-- Full collaborative browser verification using real browser sessions to navigate the UI, test flawed extractions, and watch the self-healing retry loop achieve passing benchmark scores in real time.
+- Every number in `RESULTS.md` and the README table is produced by `scripts/publish_results.py` rescoring saved per-row outputs; `scripts/check_claims.py` fails the build on an unregistered number.
 
 ---
 
 ## Prize Categories
 
 ### Best Use of Gemma
-TiffinTally uses Google's open-weight **Gemma 4 26B** (`gemma-4-26b-a4b-it`) via Google AI Studio as its default hosted extraction engine. It routes pseudonymized Hinglish WhatsApp orders through Gemma's JSON schema generation API, extracting meal counts, dietary constraints, and cancellation intents with high fidelity.
+TiffinTally's hosted backend targets Google's open-weight **Gemma 4 26B** (`gemma-4-26b-a4b-it`) on Google AI Studio. No Gemma run has been measured yet: `RESULTS.md` records the Gemma baseline as NOT RUN for want of a key, so no accuracy is claimed here. The extractor is written so a judge can check it: it names the model that actually answered, skips reasoning parts, and falls back to the rules with the HTTP error shown rather than claiming a model answered.
 
 ### Best Use of Render
 TiffinTally provides a zero-setup `render.yaml` Blueprint to deploy the FastAPI application on Render's cloud platform with Python 3.11, automatic dependency resolution with `uv`, demo mode isolation, and health check monitoring.
