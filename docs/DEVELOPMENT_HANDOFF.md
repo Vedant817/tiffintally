@@ -136,11 +136,21 @@ Ordered by product value, not by tooling convenience:
 
 As of the last update:
 
-- Production deployment verified reachable over HTTPS — **externally verified**.
-- PR preview deployment pipeline — **implemented and exercised end-to-end**; see the PR
-  that introduced it for the recorded run.
-- TestSprite execution on a PR — **not yet performed** (blocked on portal authorisation,
-  §4). No TestSprite result is claimed anywhere in this repository.
+| Item | State |
+| --- | --- |
+| Production deployment reachable over HTTPS | **Externally verified** — `https://tiffintally-lbn2.onrender.com/health` returns `200` |
+| PR preview deployment | **Externally verified** — PR #1 produced `https://tiffintally-pr-1.onrender.com`, returning `200` on `/health` |
+| GitHub deployment signal | **Externally verified** — deployment record with `state=success` and `environment_url` set to the preview, plus a bot comment on the PR |
+| CI on a pull request | **Verified green** — `test`, `no-results-drift` and `preview` all pass |
+| TestSprite execution on a PR | **Not performed** — blocked on portal authorisation, see section 4 |
+
+Two pre-existing defects were found and fixed along the way, both of which had made the
+pull-request path unusable. `gitleaks-action` had no token on `pull_request` events, so
+**no PR in this repository could ever reach a green check**. And the preview workflow
+posted an invalid deployment state, so every deployment record had no status and no URL.
+
+**No TestSprite result is claimed anywhere in this repository.** Nothing here should be
+read as evidence that a third-party suite has run.
 
 ## 9. Update protocol
 
