@@ -64,7 +64,8 @@ class OrderEvent(BaseModel):
     needs_review: bool = Field(default=False, description="Flag indicating manual review required")
     applied_to_plate_count: bool = Field(
         default=False,
-        description="Set when reconcile folds this event into the plate count. "
+        description="Set when reconcile folds this event's plates into the count. "
+        "Cancels and pauses stay unmarked: they remove plates. "
         "The morning brief reads this mark instead of guessing from audit flags.",
     )
 

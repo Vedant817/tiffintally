@@ -87,7 +87,9 @@ def generate_briefing_script(sheet: DailyPrepSheet, cook_name: Optional[str] = N
     # a packed peanut note "excluded" and would also miss a mixed queue.
     pending = len(sheet.unresolved_reviews) + len(sheet.late_orders)
     if pending:
-        counted = any(event.applied_to_plate_count for event in sheet.unresolved_reviews)
+        counted = any(
+            event.applied_to_plate_count and event.qty > 0 for event in sheet.unresolved_reviews
+        )
         if counted:
             parts.append(
                 f"{pending} message(s) abhi aapke check ka intezaar kar rahi hain. "
@@ -123,7 +125,9 @@ def sheet_fingerprint(sheet: DailyPrepSheet) -> str:
             "late": len(sheet.late_orders),
             "pending": len(sheet.unresolved_reviews) + len(sheet.late_orders),
             "applied_reviews": sum(
-                1 for event in sheet.unresolved_reviews if event.applied_to_plate_count
+                1
+                for event in sheet.unresolved_reviews
+                if event.applied_to_plate_count and event.qty > 0
             ),
         },
         sort_keys=True,

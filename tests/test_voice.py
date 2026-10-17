@@ -247,6 +247,75 @@ def test_brief_mixed_queue_does_not_exclude_the_packed_review():
     assert "total 2 thalis" in script
 
 
+def test_brief_does_not_call_an_applied_cancel_plates_already_in_the_total():
+    """A cancel that already changed the count is not a plate sitting inside it.
+
+    The only flag is an unrecognised note, so the row still packs (here: it
+    removes the lunch) and stays in review. qty 0 must not flip the
+    "plates already included" sentence, even if a caller set the mark.
+    """
+    order = OrderEvent(
+        customer="Ravi",
+        date="2026-10-19",
+        meal="lunch",
+        qty=2,
+        action="new",
+        raw_text="Kal lunch 2",
+        timestamp="2026-10-18 18:00:00",
+        line_index=0,
+    )
+    cancel = OrderEvent(
+        customer="Ravi",
+        date="2026-10-19",
+        meal="lunch",
+        qty=0,
+        action="cancel",
+        needs_review=True,
+        audit_flags=["unrecognised_request"],
+        note="roommate left",
+        raw_text="Roommate left, cancel lunch.",
+        timestamp="2026-10-18 18:05:00",
+        line_index=1,
+    )
+    sheet = reconcile_orders(
+        [order, cancel],
+        target_date="2026-10-19",
+        as_of=datetime(2026, 10, 18, 18, 0),
+    )
+
+    review_cancel = next(
+        event for event in sheet.unresolved_reviews if event.action == "cancel"
+    )
+    assert review_cancel.applied_to_plate_count is False
+    assert sheet.total_thalis == 0
+    assert all(label.customer != "Ravi" for label in sheet.packing_labels)
+
+    script = generate_briefing_script(sheet)
+    assert COUNTED_REVIEW_CLAUSE not in script
+    assert "unke bina ka hai" in script
+    assert "Sabhi packing labels ready hain" not in script
+
+    # A hand-built sheet that marks a zero-qty cancel must not use the plate sentence.
+    marked_cancel = DailyPrepSheet(
+        date="Tomorrow",
+        total_thalis=0,
+        unresolved_reviews=[
+            OrderEvent(
+                customer="Ravi",
+                date="tomorrow",
+                meal="lunch",
+                qty=0,
+                action="cancel",
+                needs_review=True,
+                applied_to_plate_count=True,
+            )
+        ],
+    )
+    marked_script = generate_briefing_script(marked_cancel)
+    assert COUNTED_REVIEW_CLAUSE not in marked_script
+    assert "unke bina ka hai" in marked_script
+
+
 def test_brief_keeps_the_cheerful_closing_when_nothing_is_pending():
     sheet = DailyPrepSheet(
         date="Tomorrow",
