@@ -215,18 +215,23 @@ jobs:
           echo "::error::preview never returned 200 on /health"
           exit 1
 
-      - name: Mark the GitHub deployment active with the preview URL
+      - name: Mark the GitHub deployment as live
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           URL: ${{ steps.live.outputs.url }}
         run: |
           set -euo pipefail
-          curl -sS -o /dev/null -X POST \
+          # "active" is not a valid deployment state. The accepted set is
+          # queued/in_progress/pending/success/failure/error/inactive, and an
+          # invalid one is rejected with a 422 that -o /dev/null swallowed.
+          body=$(printf '{"state":"success","environment_url":"%s","auto_inactive":false}' "$URL")
+          resp=$(curl -sS --fail-with-body -X POST \
             "$GITHUB_API_URL/repos/${{ github.repository }}/deployments/${{ steps.ghdeploy.outputs.id }}/statuses" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/json" \
-            -d "{\"state\":\"active\",\"environment_url\":\"$URL\",\"auto_inactive\":false}"
+            -d "$body")
+          echo "deployment status: $resp"
 
       - name: Comment the preview URL on the pull request
         env:
