@@ -1,7 +1,7 @@
 services:
   - type: web
     name: tiffintally
-    env: python
+    runtime: python
     region: oregon
     plan: free
     buildCommand: uv sync
@@ -10,8 +10,13 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.17
+      # Demo mode keeps persistence off, so a public instance writes nothing to disk.
       - key: TIFFINTALLY_DEMO_MODE
         value: "true"
+      # off = rules only, nothing leaves the server. gemini = hosted Gemma.
+      - key: EXTRACTOR_BACKEND
+        sync: false
+      # Only read when EXTRACTOR_BACKEND is gemini. Leave it unset for a rules-only demo.
       - key: GOOGLE_API_KEY
         sync: false
       - key: GEMMA_MODEL

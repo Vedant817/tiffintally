@@ -17,9 +17,9 @@ Follow these steps if you later deploy TiffinTally. A custom domain is optional 
 
 ## 1. Prerequisites
 
-1. Public GitHub repository: `https://github.com/<your-username>/tiffintally`
+1. Public GitHub repository: `https://github.com/Vedant817/tiffintally`
 2. Free Render account at [render.com](https://render.com)
-3. Free `.tech` domain from Hacktoberfest promos (or student developer pack)
+3. Optional, and only after a deploy exists: a domain you control
 
 ---
 
@@ -51,7 +51,7 @@ Follow these steps if you later deploy TiffinTally. A custom domain is optional 
 Once the deployment shows "Live", test the endpoint:
 ```bash
 curl https://tiffintally.onrender.com/health
-# Response: {"status":"healthy","version":"0.1.0"}
+# Response today, run locally: {"status":"ok","version":"0.1.0"}
 ```
 
 ---
@@ -63,7 +63,6 @@ curl https://tiffintally.onrender.com/health
 1. In the Render Dashboard, go to your service settings.
 2. Under **Custom Domains**, click **Add Custom Domain**.
 3. Enter a domain you control.
-4. Render will display DNS target records (e.g. `CNAME` pointing to `tiffintally.onrender.com` or an `A` record).
-5. Go to your domain registrar (where you claimed the `.tech` domain):
-   - Add a `CNAME` record for `@` or `www` pointing to `tiffintally.onrender.com`.
-6. Render automatically provisions a free Let's Encrypt TLS/SSL certificate.
+4. Render will display DNS target records (for example a `CNAME` pointing to the service hostname, or an `A` record).
+5. At your domain registrar, add a `CNAME` for `@` or `www` pointing at the hostname Render gave you.
+6. Render provisions a TLS certificate automatically once the domain resolves.
