@@ -92,6 +92,27 @@ the exact command to run it later.
 | Blueprint | `uv run python -c "import yaml;print(yaml.safe_load(open('render.yaml')))"` and `Select-String -Path render.yaml -Pattern "gemma-2"` | Parses; `runtime: python`, `EXTRACTOR_BACKEND` sync false; no `gemma-2` |
 | Deploy guide | `Select-String -Path docs/DEPLOY.md -Pattern "TABPFN\|TINKER\|ELEVENLABS"` | No hits |
 
+## Preview deployment of this branch
+
+`preview.yml` deployed this branch's own commit to its own service, and the checks on the pull
+request report it live. Verified by hand against that URL, not copied from the job log:
+
+```
+GET  https://tiffintally-pr-2.onrender.com/health     -> 200 {"status":"ok","version":"0.1.0"}
+GET  https://tiffintally-pr-2.onrender.com/            -> 200
+GET  https://tiffintally-pr-2.onrender.com/benchmarks  -> 200
+POST https://tiffintally-pr-2.onrender.com/process     -> 200, banner "Rules (regex) only. No model was called for this sheet."
+```
+
+The difference that matters: production (<https://tiffintally-lbn2.onrender.com>) still serves
+`main`, so its `/benchmarks` is titled "AI Benchmark & Self-Healing Lab". The preview of this
+branch is titled "Scorer Demo & Repair Rules | TiffinTally", which is the wording this branch
+fixes. The fix is therefore verified on a real deployment of this branch's code, and the reason
+to merge before recording any demo is now measured rather than argued.
+
+No model key is configured on the preview either, so the preview answers with the rules path and
+says so. That is the same honest behaviour production shows.
+
 ## Production deployment, checked after the QA run
 
 The QA run above happened before any deployment existed. One is now live, so this
