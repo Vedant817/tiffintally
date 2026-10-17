@@ -1,23 +1,44 @@
+# Blueprint for the production web service.
+#
+# The build and start commands below are the ones the live service actually runs.
+# `uv` is installed explicitly because it is not guaranteed to be present in the
+# build image, and the lockfile is used as-is so a deploy cannot silently resolve a
+# different dependency set than the one the suite was tested against.
+#
+# Per-pull-request preview services are created by .github/workflows/preview.yml,
+# which uses these same commands. The Render free tier has no preview feature, so
+# the preview service is managed through the API instead.
 services:
   - type: web
     name: tiffintally
+    # Blueprint services use `runtime`. The REST API uses a different key for the same
+    # thing (`serviceDetails.env`), which is why the two disagree; this file is a
+    # blueprint, so it is `runtime` here.
     runtime: python
     region: oregon
     plan: free
-    buildCommand: uv sync
-    startCommand: uv run uvicorn tiffintally.app:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: .venv/bin/uvicorn tiffintally.app:app --host 0.0.0.0 --port $PORT
+    # Left empty deliberately: health checks are a paid-plan feature, so reachability
+    # is verified externally against /health rather than by Render.
+    healthCheckPath: ""
+    autoDeployTrigger: commit
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.17
-      # Demo mode keeps persistence off, so a public instance writes nothing to disk.
+      # Demo mode keeps sheets, reviews and payment confirmations in ephemeral
+      # per-session memory and writes nothing to disk. Persistence is a separate,
+      # explicit opt-in behind TIFFINTALLY_PERSIST=1.
       - key: TIFFINTALLY_DEMO_MODE
         value: "true"
-      # off = rules only, nothing leaves the server. gemini = hosted Gemma.
-      - key: EXTRACTOR_BACKEND
-        sync: false
-      # Only read when EXTRACTOR_BACKEND is gemini. Leave it unset for a rules-only demo.
-      - key: GOOGLE_API_KEY
-        sync: false
+      - key: TIFFINTALLY_PERSIST
+        value: "0"
+      # No Sentry DSN is configured, so do not let a hosted tracer initialise.
+      - key: TIFFINTALLY_TELEMETRY
+        value: "0"
       - key: GEMMA_MODEL
         value: "gemma-4-26b-a4b-it"
+      # Optional. Without a key the app answers with the local rules path and the UI
+      # reports that honestly. Set it in the dashboard to exercise hosted extraction.
+      - key: GOOGLE_API_KEY
+        sync: false

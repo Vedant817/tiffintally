@@ -69,10 +69,9 @@ jobs:
       - name: Verify no secret leakage
         uses: gitleaks/gitleaks-action@v2
         env:
-          # gitleaks-action v2 requires a token to scan a pull_request event and
-          # errors out without one, so the step never scanned anything and every
-          # pull request run failed here. Same fix as chore/pr-preview-testing,
-          # applied here so this branch can be verified on its own.
+          # Since gitleaks-action v2 requires a token to scan a pull request.
+          # Without it every pull_request run failed at this step, which meant no PR
+          # in this repository could ever reach a green check.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
           GITLEAKS_ENABLE_COMMENTS: false
