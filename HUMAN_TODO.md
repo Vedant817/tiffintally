@@ -10,8 +10,9 @@
 5. Still human-only: in the Render dashboard set `EXTRACTOR_BACKEND=off` (documented in
    `docs/DEPLOY.md`). The value is currently unset and no key is configured, so the demo is
    already rules-only; setting it makes that deliberate rather than accidental.
-6. Publish the DEV post, then set `published: true` in `post.md` in the same commit as the
-   public URL, or note the URL in the README if the deadline has passed.
+6. Done 18 Oct 2026: the DEV post is public and marked some_ai.
+   https://dev.to/vedant817/tiffintally-a-whatsapp-to-prep-sheet-tool-for-tiffin-cooks-and-an-honest-look-at-its-evals-22i7
+   `post.md` has `published: true` and that URL.
 7. Do not touch the code after publishing except for typos, and note any post-deadline commit in
    the list at the end of `README.md`.
 
@@ -33,7 +34,7 @@ Status legend: **blocked** = needs a human, credential, or external service.
 | A2 | One end-to-end `POST /process` with a real key | Same as A1. | The Best Use of Gemma line in `post.md` stays deleted until a committed run exists under `evals/final/baselines/gemini/`. |
 | A3 | Prize categories | Choosing what to enter is the author's call, and two conditions are A1 and A2. | Done 18 Oct 2026 for the categories that are real: overall Side Hustle, and Best Use of Render. Gemma stays out until A1 and A2 exist. |
 | A4 | Screenshot, 2-3 minute recording, or Render URL in the Demo section | Needs a browser and a person. | Done 18 Oct 2026. `post.md` links `docs/demo/prep-sheet.png`, `ledger.png`, and the captioned `tiffintally-demo.mp4`. The live URL was already there. |
-| A5 | Publish on DEV, tags, images, preview | Author action, and A1-A4 decide what the post can honestly say. | `post.md` has `published: false`. Nothing was published. |
+| A5 | Publish on DEV, tags, images, preview | Author action, and A1-A4 decide what the post can honestly say. | Done 18 Oct 2026. Published, tags `devchallenge`, `hf26challenge`, `opensource`, `python`. |
 | A6 | Confirm production runs the merged `main` | Merged: PR #4 as `57e7622`, PR #2 as `5f2bb24`, both green, `main` CI green. | `main` auto-deploys on merge. Confirm the deployed `/benchmarks` title reads "Scorer Demo & Repair Rules" once the auto-deploy finishes, and record that, not the merge, as the evidence. |
 | A7 | Add `EXTRACTOR_BACKEND` to `render.yaml` | Was owned by the deployment session, so it was not edited inside PR #2. | **Done: PR #4 merged as `57e7622`.** The blueprint defines it as `sync: false`; the dashboard value is still the human's to set. See the decision in `docs/DEPLOY.md`. |
 | A8 | A real cook session with a consented export | Needs a person and consent. | `post.md` says plainly that no cook has used it. Not faked; the optional bracket stays for the author. |
