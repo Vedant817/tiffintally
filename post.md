@@ -1,6 +1,7 @@
 ---
 title: "TiffinTally: a WhatsApp-to-prep-sheet tool for tiffin cooks, and an honest look at its evals"
-published: false
+published: true
+url: https://dev.to/vedant817/tiffintally-a-whatsapp-to-prep-sheet-tool-for-tiffin-cooks-and-an-honest-look-at-its-evals-22i7
 tags: devchallenge, hf26challenge, opensource, python
 ---
 
