@@ -10,7 +10,7 @@
 5. Still human-only: in the Render dashboard set `EXTRACTOR_BACKEND=off` (documented in
    `docs/DEPLOY.md`). The value is currently unset and no key is configured, so the demo is
    already rules-only; setting it makes that deliberate rather than accidental.
-6. Done 18 Oct 2026: the DEV post is public and marked some_ai.
+6. Done 18 Oct 2026: the DEV post is public. Its AI disclosure says an agent helped write it.
    https://dev.to/vedant817/tiffintally-a-whatsapp-to-prep-sheet-tool-for-tiffin-cooks-and-an-honest-look-at-its-evals-22i7
    `post.md` has `published: true` and that URL.
 7. Do not touch the code after publishing except for typos, and note any post-deadline commit in
