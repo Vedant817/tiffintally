@@ -159,6 +159,29 @@ def test_retired_model_id_shows_the_rules_label_and_the_error(monkeypatch):
     assert [ev.meal for ev in batch.events] == ["lunch", "dinner"]
 
 
+def test_gemini_model_version_labels_the_batch(monkeypatch):
+    body = json.loads(_reply(_events_body()).text)
+    del body["model"]
+    body["modelVersion"] = "gemma-4-26b-a4b-it"
+    batch = _gemini(
+        monkeypatch, lambda payload: httpx.Response(200, json=body)
+    ).extract_batch_counted(parse_chat_export(CHAT))
+
+    assert batch.model_name == "gemma-4-26b-a4b-it"
+    assert batch.model_messages > 0
+
+
+def test_answered_batch_names_the_requested_model_when_the_body_omits_it(monkeypatch):
+    body = json.loads(_reply(_events_body()).text)
+    del body["model"]
+    batch = _gemini(
+        monkeypatch, lambda payload: httpx.Response(200, json=body)
+    ).extract_batch_counted(parse_chat_export(CHAT))
+
+    assert batch.model_name == DEFAULT_GEMMA_MODEL
+    assert batch.model_messages > 0
+
+
 def test_served_model_name_wins_over_the_requested_id(monkeypatch):
     body = json.loads(_reply(_events_body()).text)
     body["model"] = "gemma-4-31b-it"
