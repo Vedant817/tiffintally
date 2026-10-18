@@ -28,7 +28,7 @@ def test_index_view():
 def test_prep_sheet_view():
     resp = client.get("/prep")
     assert resp.status_code == 200
-    assert "Kitchen Prep Sheet" in resp.text
+    assert "Prep sheet" in resp.text
     assert "Packing Labels" in resp.text
 
 
@@ -53,7 +53,7 @@ def test_prep_sheet_shows_only_confirmed_orders():
     """No model buffer is offered. The cook cooks what the chat confirmed."""
     raw = "15/10/26, 8:14 pm - Neha: aaj raat 1 dinner"
     resp = client.post("/process", data={"raw_text": raw, "target_date": "2026-10-15"})
-    assert "Kitchen Prep Sheet: 2026-10-15" in resp.text
+    assert "Prep sheet 2026-10-15" in resp.text
     assert "Kitchen Cook Forecast" not in resp.text
     assert "Grocery Requisition" not in resp.text
 
@@ -65,7 +65,7 @@ def test_phonepe_via_credits_the_ledger_and_an_undated_thali_does_not():
     )
     cook = TestClient(app)
     page = cook.post("/process", data={"raw_text": raw, "target_date": "tomorrow"})
-    assert "TOTAL THALIS" in page.text
+    assert "Total thalis" in page.text
     assert "Cook Forecast" not in page.text
     ledger = cook.get("/ledger")
     assert "₹1500" in ledger.text
@@ -80,7 +80,7 @@ def test_phonepe_via_credits_the_ledger_and_an_undated_thali_does_not():
 def test_unresolved_message_is_not_a_bill():
     raw = "Ravi: kal lunch 2"
     resp = client.post("/process", data={"raw_text": raw, "target_date": "tomorrow"})
-    assert "TOTAL THALIS" in resp.text
+    assert "Total thalis" in resp.text
     ledger = client.get("/ledger")
     assert "₹160" not in ledger.text
     assert "Guest" not in ledger.text
@@ -94,7 +94,7 @@ def test_process_chat_post():
     demo_raw = f"{stamp} - Ravi: kal lunch 2, dinner skip\n{stamp} - Priya: kal lunch cancel"
     resp = client.post("/process", data={"raw_text": demo_raw, "target_date": "tomorrow"})
     assert resp.status_code == 200
-    assert "Kitchen Prep Sheet" in resp.text
+    assert "Prep sheet" in resp.text
     assert "Ravi" in resp.text
 
 
@@ -142,7 +142,7 @@ def test_saved_correction_lands_on_the_sheet(tmp_path, monkeypatch):
     after_cancel = cook.get("/prep")
     # The name can still appear in the spoken brief's cancellation list; what must
     # go is her packing label and her plate on the total.
-    assert "TOTAL THALIS" in after_cancel.text
+    assert "Total thalis" in after_cancel.text
     assert "Packing Labels (0)" in after_cancel.text
 
 
