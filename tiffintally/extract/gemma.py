@@ -58,7 +58,9 @@ if EXTRACTOR_BACKEND not in {"gemini", "modal", "openai", "off"}:
         EXTRACTOR_BACKEND = "off"
 
 BATCH_SIZE = int(os.getenv("EXTRACT_BATCH_SIZE", "40"))
-REQUEST_TIMEOUT = float(os.getenv("EXTRACT_TIMEOUT", "30"))
+# A five-message Gemma 4 reply measured about 90 seconds on 18 Oct 2026.
+# The old 30 second cap always expired, so production kept the rules answer.
+REQUEST_TIMEOUT = float(os.getenv("EXTRACT_TIMEOUT", "100"))
 MAX_ATTEMPTS = 2
 TERMINAL_STATUSES = {400, 401, 403, 404, 422}
 
@@ -383,8 +385,10 @@ class GemmaExtractor:
                 result.fallback_messages += len(rest)
                 break
 
-        if self.served_model and result.model_messages:
-            result.model_name = self.served_model
+        if result.model_messages:
+            # Gemini puts the id in modelVersion. A 200 that omits both fields
+            # still answered, so name the model we called instead of the rules.
+            result.model_name = self.served_model or self.model_name
         else:
             result.model_name = "rules (regex)"
         result.served_model = self.served_model
@@ -431,6 +435,7 @@ class GemmaExtractor:
                     headers_dict = getattr(resp, "headers", {})
                     self.served_model = (
                         body.get("model")
+                        or body.get("modelVersion")
                         or body.get("model_version")
                         or (
                             headers_dict.get("x-served-model")
