@@ -227,6 +227,12 @@ class GemmaExtractor:
         generation_config = {"temperature": 0}
         if response_mime:
             generation_config["responseMimeType"] = "application/json"
+        # Gemma 4 thinks by default. On 18 Oct 2026 a five-message reply spent
+        # about 90 seconds in thoughts and Render closed the request, so the
+        # sheet fell back to the rules. thinkingLevel MINIMAL returns the JSON
+        # with no thought part (same prompt: 15 seconds, five rows, finish STOP).
+        # thinkingBudget is rejected by this model.
+        generation_config["thinkingConfig"] = {"thinkingLevel": "MINIMAL"}
         return {
             "contents": [
                 {
