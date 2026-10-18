@@ -259,7 +259,7 @@ def test_bold_11_secret_scan():
                 ".git" in p.parts
                 or ".venv" in p.parts
                 or p.name == "test_bold.py"
-                or p.suffix in [".pyc", ".db", ".png", ".jpg", ".mp3"]
+                or p.suffix in [".pyc", ".db", ".png", ".jpg", ".mp3", ".mp4", ".webm"]
             ):
                 continue
             text = p.read_text(encoding="utf-8", errors="ignore")
