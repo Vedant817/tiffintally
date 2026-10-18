@@ -105,6 +105,7 @@ def test_thought_part_before_json_still_produces_model_events(monkeypatch):
     batch = _gemini(monkeypatch, responder).extract_batch_counted(parse_chat_export(CHAT))
 
     assert seen["payload"]["generationConfig"]["responseMimeType"] == "application/json"
+    assert seen["payload"]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "MINIMAL"}
     assert batch.model_messages == 2
     assert batch.fallback_messages == 0
     assert batch.model_name == DEFAULT_GEMMA_MODEL
@@ -140,6 +141,8 @@ def test_response_mime_type_rejection_retries_once_without_it(monkeypatch):
     assert len(payloads) == 2
     assert "responseMimeType" in payloads[0]["generationConfig"]
     assert "responseMimeType" not in payloads[1]["generationConfig"]
+    assert payloads[0]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "MINIMAL"}
+    assert payloads[1]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "MINIMAL"}
     assert batch.model_messages == 2
     assert batch.response_mime_mode == "none"
 
