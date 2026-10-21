@@ -86,10 +86,38 @@ def export_sft(
     output_path: Optional[Path] = typer.Option(None, "--output", "-o", help="Output JSONL path"),
 ):
     """Export recorded cook corrections into an SFT JSONL training batch."""
-    from tiffintally.feedback import ActiveLearningManager
+    from tiffintally.db import load_corrections
+    from tiffintally.feedback import (
+        ACTIVE_SFT_EXPORT,
+        ActiveLearningManager,
+        CorrectionEntry,
+        write_sft_dataset,
+    )
 
-    mgr = ActiveLearningManager()
-    count = mgr.export_sft_dataset(output_path=output_path)
+    # The durable store first: with persistence on, corrections recorded from
+    # the web app live in the SQLite corrections table, so the export reads
+    # them explicitly instead of a JSONL nothing writes anymore.
+    entries = [
+        CorrectionEntry(
+            customer=row["customer"],
+            raw_text=row["raw_text"],
+            corrected_meal=row["corrected_meal"],
+            corrected_qty=row["corrected_qty"],
+            corrected_action=row["corrected_action"],
+            timestamp=row.get("created_at"),
+        )
+        for row in load_corrections()
+    ]
+    # Older builds also kept one shared corrections.jsonl; keep reading it so
+    # corrections recorded before that file retired still export.
+    entries.extend(ActiveLearningManager().load_corrections())
+
+    count = write_sft_dataset(entries, output_path or ACTIVE_SFT_EXPORT)
+    if not entries:
+        console.print(
+            "[yellow]No recorded corrections found: set TIFFINTALLY_PERSIST=1 to record them."
+            "[/yellow]"
+        )
     console.print(
         f"[bold green]Exported {count} active learning examples to SFT dataset![/bold green]"
     )

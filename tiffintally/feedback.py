@@ -4,7 +4,10 @@ Records kitchen operator manual corrections and formats them into
 supervised fine-tuning (SFT) training pairs for the next LoRA iteration.
 """
 
+import contextlib
 import json
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -72,18 +75,36 @@ class ActiveLearningManager:
         """
         Convert recorded corrections into SFT ChatML training examples.
         Returns count of exported examples.
+
+        The batch is written to a temp file in the output directory and renamed
+        once complete, so a half-written export never replaces a good one.
         """
-        out_file = output_path or ACTIVE_SFT_EXPORT
-        out_file.parent.mkdir(parents=True, exist_ok=True)
+        return write_sft_dataset(self.load_corrections(), output_path or ACTIVE_SFT_EXPORT)
 
-        corrections = self.load_corrections()
-        if not corrections:
-            return 0
 
-        seen_inputs = set()
-        count = 0
+def write_sft_dataset(corrections: List[CorrectionEntry], out_file: Path) -> int:
+    """
+    Write SFT ChatML training examples for these corrections.
+    Returns the number of exported examples.
 
-        with open(out_file, "w", encoding="utf-8") as out:
+    Duplicate (customer, raw_text) pairs within and across batches export once:
+    a correction reorder or re-collection must not duplicate training rows.
+    The batch is written to a temp file in the output directory and renamed
+    once complete, so a half-written export never replaces a good one.
+    """
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if not corrections:
+        return 0
+
+    seen_inputs = set()
+    count = 0
+
+    tmp_path: Optional[Path] = None
+    try:
+        fd, tmp_name = tempfile.mkstemp(dir=out_file.parent, prefix=out_file.name, suffix=".tmp")
+        tmp_path = Path(tmp_name)
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
             for c in corrections:
                 key = (c.customer.lower(), c.raw_text.strip().lower())
                 if key in seen_inputs:
@@ -111,5 +132,12 @@ class ActiveLearningManager:
                 }
                 out.write(json.dumps(sft_example, ensure_ascii=False) + "\n")
                 count += 1
+        os.replace(tmp_path, out_file)
+        # the file is now out_file; the cleanup below must not touch it
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink()
 
-        return count
+    return count

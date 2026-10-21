@@ -1,8 +1,17 @@
 """Integration tests for FastAPI kitchen routes and endpoints."""
 
+import json
+from pathlib import Path
+
 from starlette.testclient import TestClient
 
-from tiffintally.app import app
+from tiffintally.app import (
+    KitchenSession,
+    app,
+    corrections_file_for,
+    sft_export_file_for,
+)
+from tiffintally.feedback import ActiveLearningManager
 
 client = TestClient(app)
 
@@ -177,10 +186,9 @@ def test_save_correction_api(tmp_path, monkeypatch):
 
 def test_one_cook_cannot_export_another_cooks_corrections(tmp_path, monkeypatch):
     import tiffintally.app as app_module
-    import tiffintally.feedback as feedback_module
 
     monkeypatch.setattr(app_module, "CORRECTIONS_FILE", tmp_path / "corrections.jsonl")
-    monkeypatch.setattr(feedback_module, "ACTIVE_SFT_EXPORT", tmp_path / "batch.jsonl")
+    monkeypatch.setattr(app_module, "ACTIVE_SFT_EXPORT", tmp_path / "batch.jsonl")
 
     cook_a = TestClient(app)
     cook_a.post(
@@ -198,6 +206,65 @@ def test_one_cook_cannot_export_another_cooks_corrections(tmp_path, monkeypatch)
     exported = cook_b.post("/api/active-learning/export")
     assert exported.status_code == 200
     assert exported.json()["examples_count"] == 0, "cook B exported cook A's corrections"
+    # the reported path points at cook B's own batch, never one shared file
+    assert "active_learning_batch_" in exported.json()["export_path"]
+
+
+def test_two_kitchens_export_separate_sft_files(tmp_path, monkeypatch):
+    """Two kitchens recording and exporting must not overwrite one another.
+
+    The SFT export used to write every kitchen into one
+    `data/sft/active_learning_batch.jsonl`, so cook B's export silently erased
+    cook A's batch.
+    """
+    import tiffintally.app as app_module
+
+    monkeypatch.setattr(app_module, "CORRECTIONS_FILE", tmp_path / "corrections.jsonl")
+    monkeypatch.setattr(app_module, "ACTIVE_SFT_EXPORT", tmp_path / "sft" / "batch.jsonl")
+
+    cook_a = TestClient(app)
+    cook_a.post(
+        "/api/corrections",
+        json={
+            "customer": "Asha",
+            "raw_text": "kal lunch 5",
+            "corrected_meal": "lunch",
+            "corrected_qty": 5,
+            "corrected_action": "new",
+        },
+    )
+
+    cook_b = TestClient(app)
+    cook_b.post(
+        "/api/corrections",
+        json={
+            "customer": "Bhavesh",
+            "raw_text": "kal dinner 2",
+            "corrected_meal": "dinner",
+            "corrected_qty": 2,
+            "corrected_action": "new",
+        },
+    )
+
+    first = cook_a.post("/api/active-learning/export")
+    second = cook_b.post("/api/active-learning/export")
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["examples_count"] == 1
+    assert second.json()["examples_count"] == 1
+
+    file_a = Path(first.json()["export_path"])
+    file_b = Path(second.json()["export_path"])
+    assert file_a != file_b, "both kitchens exported to one shared file"
+
+    content_a = file_a.read_text(encoding="utf-8")
+    content_b = file_b.read_text(encoding="utf-8")
+    # the export stores masked tokens, so the raw order text is the identity check
+    assert "kal lunch 5" in content_a and "kal dinner 2" not in content_a
+    assert "kal dinner 2" in content_b and "kal lunch 5" not in content_b
+
+    # cook B's export must not have touched cook A's file
+    assert file_a.read_text(encoding="utf-8") == content_a
+    assert content_a != content_b
 
 
 def test_active_learning_export_is_disabled_in_demo_mode(monkeypatch):
@@ -209,12 +276,10 @@ def test_active_learning_export_is_disabled_in_demo_mode(monkeypatch):
 
 def test_active_learning_export_api(tmp_path, monkeypatch):
     test_corr_path = tmp_path / "test_corrections.jsonl"
-    test_sft_export = tmp_path / "active_learning_batch.jsonl"
     import tiffintally.app as app_module
-    import tiffintally.feedback as feedback_module
 
     monkeypatch.setattr(app_module, "CORRECTIONS_FILE", test_corr_path)
-    monkeypatch.setattr(feedback_module, "ACTIVE_SFT_EXPORT", test_sft_export)
+    monkeypatch.setattr(app_module, "ACTIVE_SFT_EXPORT", tmp_path / "sft" / "batch.jsonl")
 
     # First save a correction
     client.post(
@@ -233,6 +298,72 @@ def test_active_learning_export_api(tmp_path, monkeypatch):
     data = resp.json()
     assert data["status"] == "exported"
     assert data["examples_count"] >= 1
+    # the reported path is the file that was actually written, not a constant
+    exported = Path(data["export_path"])
+    assert "active_learning_batch_" in exported.name
+    assert exported.exists()
+    assert exported.parent == (tmp_path / "sft")
+
+
+def test_per_kitchen_filenames_do_not_collide_on_a_shared_sid_prefix():
+    """Per-kitchen file names carry the whole session ID, not its first eight characters.
+
+    Two long-lived deployments mint UUIDs that can share their first eight hex
+    characters; if the files were named by that prefix, both kitchens would read
+    and overwrite the same corrections log and SFT batch.
+    """
+    cook_a = KitchenSession(sid="aabbccdd000000000000000000000000", touched=0.0)
+    cook_b = KitchenSession(sid="aabbccddffffffffffffffffffffffff", touched=0.0)
+
+    assert sft_export_file_for(cook_a) != sft_export_file_for(cook_b)
+    assert corrections_file_for(cook_a) != corrections_file_for(cook_b)
+    # and the full ID is in the name, so a shared prefix can never truncate into it
+    assert sft_export_file_for(cook_a).name == f"active_learning_batch_{cook_a.sid}.jsonl"
+    assert corrections_file_for(cook_a).name == f"corrections_{cook_a.sid}.jsonl"
+
+
+def test_pre_upgrade_correction_file_is_migrated_to_the_full_sid(tmp_path, monkeypatch):
+    """A kitchen keeping its session across the upgrade keeps its corrections.
+
+    Before the full-ID rename, per-kitchen corrections lived under an
+    eight-character prefix name. The next save or export after the upgrade
+    must carry that file over, not silently report an empty store.
+    """
+    import tiffintally.app as app_module
+
+    monkeypatch.setattr(app_module, "CORRECTIONS_FILE", tmp_path / "corrections.jsonl")
+
+    original = json.dumps(
+        {
+            "customer": "C_ab12cd34",
+            "raw_text": "kal ek thali",
+            "corrected_meal": "lunch",
+            "corrected_qty": 1,
+            "corrected_action": "new",
+            "timestamp": "2026-10-20T21:00:00",
+        },
+        ensure_ascii=False,
+    )
+    legacy = tmp_path / "corrections_aabbccdd.jsonl"
+    legacy.write_text(original + "\n", encoding="utf-8")
+
+    session = KitchenSession(sid="aabbccdd000000000000000000000000", touched=0.0)
+    migrated = corrections_file_for(session)
+
+    # the file answers at the full-ID name, bytes intact, under the truncated name gone
+    assert migrated == tmp_path / f"corrections_{session.sid}.jsonl"
+    assert migrated.read_text(encoding="utf-8") == original + "\n"
+    assert not legacy.exists()
+
+    # and the migrated store flows into the next export: the pre-upgrade
+    # correction rides into the training batch instead of vanishing
+    count = ActiveLearningManager(storage_path=migrated).export_sft_dataset(
+        sft_export_file_for(session)
+    )
+    assert count == 1
+
+    # a second access is a no-op after migration
+    assert corrections_file_for(session) == migrated
 
 
 def test_voice_note_route_is_gone():

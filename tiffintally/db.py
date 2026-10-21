@@ -15,7 +15,6 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Generator, List, Optional
@@ -258,7 +257,13 @@ def persist_correction(
     applied_count: int = 1,
     db_path: Optional[Path] = None,
 ) -> int:
-    """Durably record active learning correction into SQLite and append to corrections.jsonl."""
+    """Durably record an active learning correction into SQLite.
+
+    The corrections table (keyed by `kitchen_id`) is the single durable store.
+    Nothing is appended to a shared canonical JSONL here: connecting every
+    kitchen's corrections into one file is exactly the pooling the per-session
+    corrections files exist to prevent.
+    """
     if not is_persistence_enabled():
         return 0
 
@@ -284,25 +289,6 @@ def persist_correction(
             ),
         )
         correction_id = cursor.lastrowid
-
-    # Canonical active learning file: ensure data/private/corrections.jsonl is updated
-    canonical_file = Path("data/private/corrections.jsonl")
-    try:
-        canonical_file.parent.mkdir(parents=True, exist_ok=True)
-        record = {
-            "id": correction_id,
-            "kitchen_id": kitchen_id,
-            "customer": customer_clean,
-            "raw_text": masked_raw,
-            "corrected_meal": corrected_meal,
-            "corrected_qty": corrected_qty,
-            "corrected_action": corrected_action,
-            "timestamp": datetime.now().isoformat(),
-        }
-        with open(canonical_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
-    except Exception as exc:
-        logger.warning(f"Could not append to canonical corrections.jsonl: {exc}")
 
     return correction_id or 0
 
@@ -347,3 +333,36 @@ def load_kitchen_events(kitchen_id: str, db_path: Optional[Path] = None) -> List
             )
         )
     return events
+
+
+def load_corrections(db_path: Optional[Path] = None) -> List[dict]:
+    """Load every recorded correction from the durable store, all kitchens together.
+
+    The corrections table (keyed by `kitchen_id`) is the single durable store
+    for corrections; this is the explicit read-side combiner a training run
+    needs if it wants them in one batch again. Returns one dict per row
+    (`kitchen_id`, `customer`, `raw_text`, `corrected_meal`, `corrected_qty`,
+    `corrected_action`, `created_at`), empty when the database file is absent
+    or the table does not exist yet. Reads are deliberately independent of
+    TIFFINTALLY_PERSIST: that flag gates new writes, not access to data
+    already recorded — otherwise an export invoked without the flag would
+    silently print a successful batch containing none of the durable rows.
+    """
+    path = db_path or get_db_path()
+    if not path.exists():
+        return []
+
+    with get_connection(path) as conn:
+        try:
+            rows = conn.execute(
+                "SELECT kitchen_id, customer, raw_text, corrected_meal, corrected_qty,"
+                " corrected_action, created_at FROM corrections ORDER BY id ASC"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            # only a missing table is a clean "nothing recorded yet"; a broken
+            # or foreign schema must fail loudly rather than export an empty batch
+            if "no such table" in str(exc).lower():
+                return []
+            raise
+
+    return [dict(r) for r in rows]

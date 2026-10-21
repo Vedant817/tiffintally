@@ -36,7 +36,7 @@ from tiffintally.db import (
     persist_upload_and_events,
 )
 from tiffintally.extract.gemma import GemmaExtractor
-from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
+from tiffintally.feedback import ACTIVE_SFT_EXPORT, ActiveLearningManager, CorrectionEntry
 from tiffintally.logging_config import get_logger, log_failure, setup_logging
 from tiffintally.parser import parse_chat_export
 from tiffintally.reconcile import (
@@ -767,9 +767,36 @@ def corrections_file_for(session: KitchenSession) -> Path:
     """Where this cook's corrections live.
 
     They used to share one `data/private/corrections.jsonl`, so every visitor's
-    customers pooled together in one file and one SFT export.
+    customers pooled together in one file and one SFT export. The complete
+    session ID names the file: two UUIDs can share their first eight hex
+    characters, and a shared prefix must not mean shared data files.
+
+    A kitchen whose session outlives a deployment may still hold corrections
+    under the old eight-character-prefix name; the first access after the
+    upgrade moves that file to the full-ID name so no pre-upgrade correction
+    is silently dropped.
     """
-    return CORRECTIONS_FILE.parent / f"corrections_{session.sid[:8]}.jsonl"
+    path = CORRECTIONS_FILE.parent / f"corrections_{session.sid}.jsonl"
+    legacy = CORRECTIONS_FILE.parent / f"corrections_{session.sid[:8]}.jsonl"
+    if legacy != path and not path.exists() and legacy.exists():
+        try:
+            # a rename, not a rewrite — the bytes the kitchen recorded stay intact
+            legacy.replace(path)
+        except FileNotFoundError:
+            # a concurrent request migrated it first; the modern file now exists
+            pass
+    return path
+
+
+def sft_export_file_for(session: KitchenSession) -> Path:
+    """Where this cook's SFT export goes.
+
+    The route used to dump every kitchen into `data/sft/active_learning_batch.jsonl`,
+    so cook B's export silently overwrote cook A's batch. Each kitchen now exports
+    to its own file next to that shared path, named by the complete session ID —
+    a shared eight-hex-character prefix must not collide into one file.
+    """
+    return ACTIVE_SFT_EXPORT.parent / f"active_learning_batch_{session.sid}.jsonl"
 
 
 @app.post("/api/corrections")
@@ -777,7 +804,8 @@ def save_correction(request: Request, payload: CorrectionPayload):
     session, is_new = open_session(request)
     applied = apply_correction(session, payload)
 
-    # Durably record correction into SQLite and append to canonical corrections.jsonl
+    # Durably record correction into SQLite: the corrections table is the single
+    # durable store (keyed by kitchen_id); no shared JSONL is appended to here.
     try:
         persist_correction(
             kitchen_id=session.sid,
@@ -837,12 +865,13 @@ def export_active_learning(request: Request):
         )
     session, is_new = open_session(request)
     mgr = ActiveLearningManager(storage_path=corrections_file_for(session))
-    count = mgr.export_sft_dataset()
+    export_path = sft_export_file_for(session)
+    count = mgr.export_sft_dataset(export_path)
     response = JSONResponse(
         {
             "status": "exported",
             "examples_count": count,
-            "export_path": "data/sft/active_learning_batch.jsonl",
+            "export_path": str(export_path),
         }
     )
     return remember_cookie(response, session, is_new, request)

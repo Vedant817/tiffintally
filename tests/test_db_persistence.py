@@ -1,9 +1,11 @@
 """Tests for durable SQLite persistence in tiffintally.db."""
 
+import sqlite3
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tiffintally.app import SESSIONS, app
@@ -11,6 +13,7 @@ from tiffintally.db import (
     get_connection,
     init_db,
     is_persistence_enabled,
+    load_corrections,
     load_kitchen_events,
     mask_chat_text_for_storage,
     persist_correction,
@@ -211,31 +214,92 @@ def test_sqlite_persistence_roundtrip(monkeypatch):
         assert loaded[1].action == "cancel"
 
 
-def test_persist_correction(monkeypatch):
+def test_persist_correction(monkeypatch, tmp_path):
     monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
     monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
 
-    with TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test_tiffin.db"
-        cid = persist_correction(
-            kitchen_id="kitchen_corr_test",
-            customer="Vikram",
-            raw_text="kal ek thali",
-            corrected_meal="lunch",
-            corrected_qty=1,
-            corrected_action="new",
-            applied_count=1,
-            db_path=db_path,
-        )
-        assert cid > 0
+    # With the cwd pinned here, any write into the old shared
+    # data/private/corrections.jsonl would land inside this sandbox and be seen.
+    monkeypatch.chdir(tmp_path)
+    db_path = tmp_path / "test_tiffin.db"
+    cid = persist_correction(
+        kitchen_id="kitchen_corr_test",
+        customer="Vikram",
+        raw_text="kal ek thali",
+        corrected_meal="lunch",
+        corrected_qty=1,
+        corrected_action="new",
+        applied_count=1,
+        db_path=db_path,
+    )
+    assert cid > 0
 
-        with get_connection(db_path) as conn:
-            row = conn.execute("SELECT * FROM corrections WHERE id = ?", (cid,)).fetchone()
-            assert row is not None
-            # Stored as a token, like every other customer field on disk.
-            assert row["customer"].startswith("C")
-            assert row["corrected_meal"] == "lunch"
-            assert row["corrected_qty"] == 1
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT * FROM corrections WHERE id = ?", (cid,)).fetchone()
+        assert row is not None
+        # Stored as a token, like every other customer field on disk.
+        assert row["customer"].startswith("C")
+        assert row["corrected_meal"] == "lunch"
+        assert row["corrected_qty"] == 1
+
+    # SQLite is the single durable store: persisting must not append two
+    # kitchens' corrections into one shared JSONL under data/private/.
+    assert not (tmp_path / "data" / "private" / "corrections.jsonl").exists()
+
+
+def test_load_corrections_reads_the_store_even_when_persistence_writes_are_off(
+    tmp_path, monkeypatch
+):
+    """Corrections recorded while persistence was on stay exportable after writes are off.
+
+    TIFFINTALLY_PERSIST gates new writes only. An operator who runs export-sft
+    without the variable must still get the durable rows — otherwise the CLI
+    prints a successful export containing none of the corrections recorded.
+    """
+    db_path = tmp_path / "durable.db"
+
+    monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+    persist_correction(
+        kitchen_id="kitchen_recorded_with_persist_on",
+        customer="Vikram",
+        raw_text="kal ek thali",
+        corrected_meal="lunch",
+        corrected_qty=1,
+        corrected_action="new",
+        applied_count=1,
+        db_path=db_path,
+    )
+
+    # the later export runs without the persistence flag set at all
+    monkeypatch.delenv("TIFFINTALLY_PERSIST", raising=False)
+    rows = load_corrections(db_path)
+    assert [r["corrected_meal"] for r in rows] == ["lunch"]
+    assert [r["corrected_action"] for r in rows] == ["new"]
+    assert [r["kitchen_id"] for r in rows] == ["kitchen_recorded_with_persist_on"]
+
+
+def test_load_corrections_tolerates_only_a_missing_table(tmp_path, monkeypatch):
+    # reads run with the persistence write-flag unset: reading the durable
+    # store must not depend on TIFFINTALLY_PERSIST
+    monkeypatch.delenv("TIFFINTALLY_PERSIST", raising=False)
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+
+    # an existing database that predates the corrections table reads as empty
+    fresh = tmp_path / "fresh.db"
+    with get_connection(fresh) as conn:
+        conn.execute("CREATE TABLE placeholder (id INTEGER PRIMARY KEY)")
+    assert load_corrections(fresh) == []
+
+    # a database whose corrections table has a foreign schema (older layout
+    # missing the columns a correction carries) must fail loudly: exporting an
+    # empty batch while the durable corrections rust inside would look like a
+    # successful export with nothing in it
+    foreign = tmp_path / "foreign.db"
+    with get_connection(foreign) as conn:
+        conn.execute("CREATE TABLE corrections (id INTEGER PRIMARY KEY, kitchen_id TEXT)")
+    with pytest.raises(sqlite3.OperationalError):
+        load_corrections(foreign)
 
 
 # --- the leak this file exists for ---------------------------------------------
