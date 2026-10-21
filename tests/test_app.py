@@ -4,7 +4,12 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from tiffintally.app import app
+from tiffintally.app import (
+    KitchenSession,
+    app,
+    corrections_file_for,
+    sft_export_file_for,
+)
 
 client = TestClient(app)
 
@@ -296,6 +301,23 @@ def test_active_learning_export_api(tmp_path, monkeypatch):
     assert "active_learning_batch_" in exported.name
     assert exported.exists()
     assert exported.parent == (tmp_path / "sft")
+
+
+def test_per_kitchen_filenames_do_not_collide_on_a_shared_sid_prefix():
+    """Per-kitchen file names carry the whole session ID, not its first eight characters.
+
+    Two long-lived deployments mint UUIDs that can share their first eight hex
+    characters; if the files were named by that prefix, both kitchens would read
+    and overwrite the same corrections log and SFT batch.
+    """
+    cook_a = KitchenSession(sid="aabbccdd000000000000000000000000", touched=0.0)
+    cook_b = KitchenSession(sid="aabbccddffffffffffffffffffffffff", touched=0.0)
+
+    assert sft_export_file_for(cook_a) != sft_export_file_for(cook_b)
+    assert corrections_file_for(cook_a) != corrections_file_for(cook_b)
+    # and the full ID is in the name, so a shared prefix can never truncate into it
+    assert sft_export_file_for(cook_a).name == f"active_learning_batch_{cook_a.sid}.jsonl"
+    assert corrections_file_for(cook_a).name == f"corrections_{cook_a.sid}.jsonl"
 
 
 def test_voice_note_route_is_gone():

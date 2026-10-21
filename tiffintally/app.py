@@ -767,9 +767,11 @@ def corrections_file_for(session: KitchenSession) -> Path:
     """Where this cook's corrections live.
 
     They used to share one `data/private/corrections.jsonl`, so every visitor's
-    customers pooled together in one file and one SFT export.
+    customers pooled together in one file and one SFT export. The complete
+    session ID names the file: two UUIDs can share their first eight hex
+    characters, and a shared prefix must not mean shared data files.
     """
-    return CORRECTIONS_FILE.parent / f"corrections_{session.sid[:8]}.jsonl"
+    return CORRECTIONS_FILE.parent / f"corrections_{session.sid}.jsonl"
 
 
 def sft_export_file_for(session: KitchenSession) -> Path:
@@ -777,9 +779,10 @@ def sft_export_file_for(session: KitchenSession) -> Path:
 
     The route used to dump every kitchen into `data/sft/active_learning_batch.jsonl`,
     so cook B's export silently overwrote cook A's batch. Each kitchen now exports
-    to its own file next to that shared path.
+    to its own file next to that shared path, named by the complete session ID —
+    a shared eight-hex-character prefix must not collide into one file.
     """
-    return ACTIVE_SFT_EXPORT.parent / f"active_learning_batch_{session.sid[:8]}.jsonl"
+    return ACTIVE_SFT_EXPORT.parent / f"active_learning_batch_{session.sid}.jsonl"
 
 
 @app.post("/api/corrections")
