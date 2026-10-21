@@ -247,8 +247,42 @@ def test_persist_correction(monkeypatch, tmp_path):
     assert not (tmp_path / "data" / "private" / "corrections.jsonl").exists()
 
 
-def test_load_corrections_tolerates_only_a_missing_table(tmp_path, monkeypatch):
+def test_load_corrections_reads_the_store_even_when_persistence_writes_are_off(
+    tmp_path, monkeypatch
+):
+    """Corrections recorded while persistence was on stay exportable after writes are off.
+
+    TIFFINTALLY_PERSIST gates new writes only. An operator who runs export-sft
+    without the variable must still get the durable rows — otherwise the CLI
+    prints a successful export containing none of the corrections recorded.
+    """
+    db_path = tmp_path / "durable.db"
+
     monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+    persist_correction(
+        kitchen_id="kitchen_recorded_with_persist_on",
+        customer="Vikram",
+        raw_text="kal ek thali",
+        corrected_meal="lunch",
+        corrected_qty=1,
+        corrected_action="new",
+        applied_count=1,
+        db_path=db_path,
+    )
+
+    # the later export runs without the persistence flag set at all
+    monkeypatch.delenv("TIFFINTALLY_PERSIST", raising=False)
+    rows = load_corrections(db_path)
+    assert [r["corrected_meal"] for r in rows] == ["lunch"]
+    assert [r["corrected_action"] for r in rows] == ["new"]
+    assert [r["kitchen_id"] for r in rows] == ["kitchen_recorded_with_persist_on"]
+
+
+def test_load_corrections_tolerates_only_a_missing_table(tmp_path, monkeypatch):
+    # reads run with the persistence write-flag unset: reading the durable
+    # store must not depend on TIFFINTALLY_PERSIST
+    monkeypatch.delenv("TIFFINTALLY_PERSIST", raising=False)
     monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
 
     # an existing database that predates the corrections table reads as empty

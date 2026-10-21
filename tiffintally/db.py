@@ -342,12 +342,12 @@ def load_corrections(db_path: Optional[Path] = None) -> List[dict]:
     for corrections; this is the explicit read-side combiner a training run
     needs if it wants them in one batch again. Returns one dict per row
     (`kitchen_id`, `customer`, `raw_text`, `corrected_meal`, `corrected_qty`,
-    `corrected_action`, `created_at`), empty when persistence is off, the file
-    is absent or the table does not exist yet.
+    `corrected_action`, `created_at`), empty when the database file is absent
+    or the table does not exist yet. Reads are deliberately independent of
+    TIFFINTALLY_PERSIST: that flag gates new writes, not access to data
+    already recorded — otherwise an export invoked without the flag would
+    silently print a successful batch containing none of the durable rows.
     """
-    if not is_persistence_enabled():
-        return []
-
     path = db_path or get_db_path()
     if not path.exists():
         return []
