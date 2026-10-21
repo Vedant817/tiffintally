@@ -1,9 +1,11 @@
 """Tests for durable SQLite persistence in tiffintally.db."""
 
+import sqlite3
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tiffintally.app import SESSIONS, app
@@ -11,6 +13,7 @@ from tiffintally.db import (
     get_connection,
     init_db,
     is_persistence_enabled,
+    load_corrections,
     load_kitchen_events,
     mask_chat_text_for_storage,
     persist_correction,
@@ -242,6 +245,27 @@ def test_persist_correction(monkeypatch, tmp_path):
     # SQLite is the single durable store: persisting must not append two
     # kitchens' corrections into one shared JSONL under data/private/.
     assert not (tmp_path / "data" / "private" / "corrections.jsonl").exists()
+
+
+def test_load_corrections_tolerates_only_a_missing_table(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
+    monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
+
+    # an existing database that predates the corrections table reads as empty
+    fresh = tmp_path / "fresh.db"
+    with get_connection(fresh) as conn:
+        conn.execute("CREATE TABLE placeholder (id INTEGER PRIMARY KEY)")
+    assert load_corrections(fresh) == []
+
+    # a database whose corrections table has a foreign schema (older layout
+    # missing the columns a correction carries) must fail loudly: exporting an
+    # empty batch while the durable corrections rust inside would look like a
+    # successful export with nothing in it
+    foreign = tmp_path / "foreign.db"
+    with get_connection(foreign) as conn:
+        conn.execute("CREATE TABLE corrections (id INTEGER PRIMARY KEY, kitchen_id TEXT)")
+    with pytest.raises(sqlite3.OperationalError):
+        load_corrections(foreign)
 
 
 # --- the leak this file exists for ---------------------------------------------

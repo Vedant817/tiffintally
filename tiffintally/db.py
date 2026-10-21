@@ -358,7 +358,11 @@ def load_corrections(db_path: Optional[Path] = None) -> List[dict]:
                 "SELECT kitchen_id, customer, raw_text, corrected_meal, corrected_qty,"
                 " corrected_action, created_at FROM corrections ORDER BY id ASC"
             ).fetchall()
-        except sqlite3.OperationalError:
-            return []
+        except sqlite3.OperationalError as exc:
+            # only a missing table is a clean "nothing recorded yet"; a broken
+            # or foreign schema must fail loudly rather than export an empty batch
+            if "no such table" in str(exc).lower():
+                return []
+            raise
 
     return [dict(r) for r in rows]
