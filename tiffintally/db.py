@@ -333,3 +333,32 @@ def load_kitchen_events(kitchen_id: str, db_path: Optional[Path] = None) -> List
             )
         )
     return events
+
+
+def load_corrections(db_path: Optional[Path] = None) -> List[dict]:
+    """Load every recorded correction from the durable store, all kitchens together.
+
+    The corrections table (keyed by `kitchen_id`) is the single durable store
+    for corrections; this is the explicit read-side combiner a training run
+    needs if it wants them in one batch again. Returns one dict per row
+    (`kitchen_id`, `customer`, `raw_text`, `corrected_meal`, `corrected_qty`,
+    `corrected_action`, `created_at`), empty when persistence is off, the file
+    is absent or the table does not exist yet.
+    """
+    if not is_persistence_enabled():
+        return []
+
+    path = db_path or get_db_path()
+    if not path.exists():
+        return []
+
+    with get_connection(path) as conn:
+        try:
+            rows = conn.execute(
+                "SELECT kitchen_id, customer, raw_text, corrected_meal, corrected_qty,"
+                " corrected_action, created_at FROM corrections ORDER BY id ASC"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+    return [dict(r) for r in rows]
