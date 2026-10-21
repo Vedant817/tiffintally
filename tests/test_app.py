@@ -1,5 +1,6 @@
 """Integration tests for FastAPI kitchen routes and endpoints."""
 
+import json
 from pathlib import Path
 
 from starlette.testclient import TestClient
@@ -10,6 +11,7 @@ from tiffintally.app import (
     corrections_file_for,
     sft_export_file_for,
 )
+from tiffintally.feedback import ActiveLearningManager
 
 client = TestClient(app)
 
@@ -318,6 +320,50 @@ def test_per_kitchen_filenames_do_not_collide_on_a_shared_sid_prefix():
     # and the full ID is in the name, so a shared prefix can never truncate into it
     assert sft_export_file_for(cook_a).name == f"active_learning_batch_{cook_a.sid}.jsonl"
     assert corrections_file_for(cook_a).name == f"corrections_{cook_a.sid}.jsonl"
+
+
+def test_pre_upgrade_correction_file_is_migrated_to_the_full_sid(tmp_path, monkeypatch):
+    """A kitchen keeping its session across the upgrade keeps its corrections.
+
+    Before the full-ID rename, per-kitchen corrections lived under an
+    eight-character prefix name. The next save or export after the upgrade
+    must carry that file over, not silently report an empty store.
+    """
+    import tiffintally.app as app_module
+
+    monkeypatch.setattr(app_module, "CORRECTIONS_FILE", tmp_path / "corrections.jsonl")
+
+    original = json.dumps(
+        {
+            "customer": "C_ab12cd34",
+            "raw_text": "kal ek thali",
+            "corrected_meal": "lunch",
+            "corrected_qty": 1,
+            "corrected_action": "new",
+            "timestamp": "2026-10-20T21:00:00",
+        },
+        ensure_ascii=False,
+    )
+    legacy = tmp_path / "corrections_aabbccdd.jsonl"
+    legacy.write_text(original + "\n", encoding="utf-8")
+
+    session = KitchenSession(sid="aabbccdd000000000000000000000000", touched=0.0)
+    migrated = corrections_file_for(session)
+
+    # the file answers at the full-ID name, bytes intact, under the truncated name gone
+    assert migrated == tmp_path / f"corrections_{session.sid}.jsonl"
+    assert migrated.read_text(encoding="utf-8") == original + "\n"
+    assert not legacy.exists()
+
+    # and the migrated store flows into the next export: the pre-upgrade
+    # correction rides into the training batch instead of vanishing
+    count = ActiveLearningManager(storage_path=migrated).export_sft_dataset(
+        sft_export_file_for(session)
+    )
+    assert count == 1
+
+    # a second access is a no-op after migration
+    assert corrections_file_for(session) == migrated
 
 
 def test_voice_note_route_is_gone():

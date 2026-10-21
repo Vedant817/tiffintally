@@ -770,8 +770,22 @@ def corrections_file_for(session: KitchenSession) -> Path:
     customers pooled together in one file and one SFT export. The complete
     session ID names the file: two UUIDs can share their first eight hex
     characters, and a shared prefix must not mean shared data files.
+
+    A kitchen whose session outlives a deployment may still hold corrections
+    under the old eight-character-prefix name; the first access after the
+    upgrade moves that file to the full-ID name so no pre-upgrade correction
+    is silently dropped.
     """
-    return CORRECTIONS_FILE.parent / f"corrections_{session.sid}.jsonl"
+    path = CORRECTIONS_FILE.parent / f"corrections_{session.sid}.jsonl"
+    legacy = CORRECTIONS_FILE.parent / f"corrections_{session.sid[:8]}.jsonl"
+    if legacy != path and not path.exists() and legacy.exists():
+        try:
+            # a rename, not a rewrite — the bytes the kitchen recorded stay intact
+            legacy.replace(path)
+        except FileNotFoundError:
+            # a concurrent request migrated it first; the modern file now exists
+            pass
+    return path
 
 
 def sft_export_file_for(session: KitchenSession) -> Path:
