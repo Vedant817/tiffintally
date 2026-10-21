@@ -1,5 +1,7 @@
 """Integration tests for FastAPI kitchen routes and endpoints."""
 
+from pathlib import Path
+
 from starlette.testclient import TestClient
 
 from tiffintally.app import app
@@ -177,10 +179,9 @@ def test_save_correction_api(tmp_path, monkeypatch):
 
 def test_one_cook_cannot_export_another_cooks_corrections(tmp_path, monkeypatch):
     import tiffintally.app as app_module
-    import tiffintally.feedback as feedback_module
 
     monkeypatch.setattr(app_module, "CORRECTIONS_FILE", tmp_path / "corrections.jsonl")
-    monkeypatch.setattr(feedback_module, "ACTIVE_SFT_EXPORT", tmp_path / "batch.jsonl")
+    monkeypatch.setattr(app_module, "ACTIVE_SFT_EXPORT", tmp_path / "batch.jsonl")
 
     cook_a = TestClient(app)
     cook_a.post(
@@ -198,6 +199,65 @@ def test_one_cook_cannot_export_another_cooks_corrections(tmp_path, monkeypatch)
     exported = cook_b.post("/api/active-learning/export")
     assert exported.status_code == 200
     assert exported.json()["examples_count"] == 0, "cook B exported cook A's corrections"
+    # the reported path points at cook B's own batch, never one shared file
+    assert "active_learning_batch_" in exported.json()["export_path"]
+
+
+def test_two_kitchens_export_separate_sft_files(tmp_path, monkeypatch):
+    """Two kitchens recording and exporting must not overwrite one another.
+
+    The SFT export used to write every kitchen into one
+    `data/sft/active_learning_batch.jsonl`, so cook B's export silently erased
+    cook A's batch.
+    """
+    import tiffintally.app as app_module
+
+    monkeypatch.setattr(app_module, "CORRECTIONS_FILE", tmp_path / "corrections.jsonl")
+    monkeypatch.setattr(app_module, "ACTIVE_SFT_EXPORT", tmp_path / "sft" / "batch.jsonl")
+
+    cook_a = TestClient(app)
+    cook_a.post(
+        "/api/corrections",
+        json={
+            "customer": "Asha",
+            "raw_text": "kal lunch 5",
+            "corrected_meal": "lunch",
+            "corrected_qty": 5,
+            "corrected_action": "new",
+        },
+    )
+
+    cook_b = TestClient(app)
+    cook_b.post(
+        "/api/corrections",
+        json={
+            "customer": "Bhavesh",
+            "raw_text": "kal dinner 2",
+            "corrected_meal": "dinner",
+            "corrected_qty": 2,
+            "corrected_action": "new",
+        },
+    )
+
+    first = cook_a.post("/api/active-learning/export")
+    second = cook_b.post("/api/active-learning/export")
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["examples_count"] == 1
+    assert second.json()["examples_count"] == 1
+
+    file_a = Path(first.json()["export_path"])
+    file_b = Path(second.json()["export_path"])
+    assert file_a != file_b, "both kitchens exported to one shared file"
+
+    content_a = file_a.read_text(encoding="utf-8")
+    content_b = file_b.read_text(encoding="utf-8")
+    # the export stores masked tokens, so the raw order text is the identity check
+    assert "kal lunch 5" in content_a and "kal dinner 2" not in content_a
+    assert "kal dinner 2" in content_b and "kal lunch 5" not in content_b
+
+    # cook B's export must not have touched cook A's file
+    assert file_a.read_text(encoding="utf-8") == content_a
+    assert content_a != content_b
 
 
 def test_active_learning_export_is_disabled_in_demo_mode(monkeypatch):
@@ -209,12 +269,10 @@ def test_active_learning_export_is_disabled_in_demo_mode(monkeypatch):
 
 def test_active_learning_export_api(tmp_path, monkeypatch):
     test_corr_path = tmp_path / "test_corrections.jsonl"
-    test_sft_export = tmp_path / "active_learning_batch.jsonl"
     import tiffintally.app as app_module
-    import tiffintally.feedback as feedback_module
 
     monkeypatch.setattr(app_module, "CORRECTIONS_FILE", test_corr_path)
-    monkeypatch.setattr(feedback_module, "ACTIVE_SFT_EXPORT", test_sft_export)
+    monkeypatch.setattr(app_module, "ACTIVE_SFT_EXPORT", tmp_path / "sft" / "batch.jsonl")
 
     # First save a correction
     client.post(
@@ -233,6 +291,11 @@ def test_active_learning_export_api(tmp_path, monkeypatch):
     data = resp.json()
     assert data["status"] == "exported"
     assert data["examples_count"] >= 1
+    # the reported path is the file that was actually written, not a constant
+    exported = Path(data["export_path"])
+    assert "active_learning_batch_" in exported.name
+    assert exported.exists()
+    assert exported.parent == (tmp_path / "sft")
 
 
 def test_voice_note_route_is_gone():

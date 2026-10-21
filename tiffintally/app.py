@@ -36,7 +36,7 @@ from tiffintally.db import (
     persist_upload_and_events,
 )
 from tiffintally.extract.gemma import GemmaExtractor
-from tiffintally.feedback import ActiveLearningManager, CorrectionEntry
+from tiffintally.feedback import ACTIVE_SFT_EXPORT, ActiveLearningManager, CorrectionEntry
 from tiffintally.logging_config import get_logger, log_failure, setup_logging
 from tiffintally.parser import parse_chat_export
 from tiffintally.reconcile import (
@@ -772,12 +772,23 @@ def corrections_file_for(session: KitchenSession) -> Path:
     return CORRECTIONS_FILE.parent / f"corrections_{session.sid[:8]}.jsonl"
 
 
+def sft_export_file_for(session: KitchenSession) -> Path:
+    """Where this cook's SFT export goes.
+
+    The route used to dump every kitchen into `data/sft/active_learning_batch.jsonl`,
+    so cook B's export silently overwrote cook A's batch. Each kitchen now exports
+    to its own file next to that shared path.
+    """
+    return ACTIVE_SFT_EXPORT.parent / f"active_learning_batch_{session.sid[:8]}.jsonl"
+
+
 @app.post("/api/corrections")
 def save_correction(request: Request, payload: CorrectionPayload):
     session, is_new = open_session(request)
     applied = apply_correction(session, payload)
 
-    # Durably record correction into SQLite and append to canonical corrections.jsonl
+    # Durably record correction into SQLite: the corrections table is the single
+    # durable store (keyed by kitchen_id); no shared JSONL is appended to here.
     try:
         persist_correction(
             kitchen_id=session.sid,
@@ -837,12 +848,13 @@ def export_active_learning(request: Request):
         )
     session, is_new = open_session(request)
     mgr = ActiveLearningManager(storage_path=corrections_file_for(session))
-    count = mgr.export_sft_dataset()
+    export_path = sft_export_file_for(session)
+    count = mgr.export_sft_dataset(export_path)
     response = JSONResponse(
         {
             "status": "exported",
             "examples_count": count,
-            "export_path": "data/sft/active_learning_batch.jsonl",
+            "export_path": str(export_path),
         }
     )
     return remember_cookie(response, session, is_new, request)

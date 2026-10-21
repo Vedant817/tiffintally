@@ -15,7 +15,6 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Generator, List, Optional
@@ -258,7 +257,13 @@ def persist_correction(
     applied_count: int = 1,
     db_path: Optional[Path] = None,
 ) -> int:
-    """Durably record active learning correction into SQLite and append to corrections.jsonl."""
+    """Durably record an active learning correction into SQLite.
+
+    The corrections table (keyed by `kitchen_id`) is the single durable store.
+    Nothing is appended to a shared canonical JSONL here: connecting every
+    kitchen's corrections into one file is exactly the pooling the per-session
+    corrections files exist to prevent.
+    """
     if not is_persistence_enabled():
         return 0
 
@@ -284,25 +289,6 @@ def persist_correction(
             ),
         )
         correction_id = cursor.lastrowid
-
-    # Canonical active learning file: ensure data/private/corrections.jsonl is updated
-    canonical_file = Path("data/private/corrections.jsonl")
-    try:
-        canonical_file.parent.mkdir(parents=True, exist_ok=True)
-        record = {
-            "id": correction_id,
-            "kitchen_id": kitchen_id,
-            "customer": customer_clean,
-            "raw_text": masked_raw,
-            "corrected_meal": corrected_meal,
-            "corrected_qty": corrected_qty,
-            "corrected_action": corrected_action,
-            "timestamp": datetime.now().isoformat(),
-        }
-        with open(canonical_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
-    except Exception as exc:
-        logger.warning(f"Could not append to canonical corrections.jsonl: {exc}")
 
     return correction_id or 0
 

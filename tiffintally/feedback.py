@@ -4,7 +4,10 @@ Records kitchen operator manual corrections and formats them into
 supervised fine-tuning (SFT) training pairs for the next LoRA iteration.
 """
 
+import contextlib
 import json
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -72,6 +75,9 @@ class ActiveLearningManager:
         """
         Convert recorded corrections into SFT ChatML training examples.
         Returns count of exported examples.
+
+        The batch is written to a temp file in the output directory and renamed
+        once complete, so a half-written export never replaces a good one.
         """
         out_file = output_path or ACTIVE_SFT_EXPORT
         out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -83,33 +89,46 @@ class ActiveLearningManager:
         seen_inputs = set()
         count = 0
 
-        with open(out_file, "w", encoding="utf-8") as out:
-            for c in corrections:
-                key = (c.customer.lower(), c.raw_text.strip().lower())
-                if key in seen_inputs:
-                    continue
-                seen_inputs.add(key)
+        tmp_path: Optional[Path] = None
+        try:
+            fd, tmp_name = tempfile.mkstemp(
+                dir=out_file.parent, prefix=out_file.name, suffix=".tmp"
+            )
+            tmp_path = Path(tmp_name)
+            with os.fdopen(fd, "w", encoding="utf-8") as out:
+                for c in corrections:
+                    key = (c.customer.lower(), c.raw_text.strip().lower())
+                    if key in seen_inputs:
+                        continue
+                    seen_inputs.add(key)
 
-                assistant_output = {
-                    "customer": c.customer,
-                    "meal": c.corrected_meal,
-                    "qty": c.corrected_qty,
-                    "action": c.corrected_action,
-                    "date": "tomorrow",
-                    "special_instructions": c.special_instructions,
-                }
+                    assistant_output = {
+                        "customer": c.customer,
+                        "meal": c.corrected_meal,
+                        "qty": c.corrected_qty,
+                        "action": c.corrected_action,
+                        "date": "tomorrow",
+                        "special_instructions": c.special_instructions,
+                    }
 
-                sft_example = {
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": c.raw_text},
-                        {
-                            "role": "assistant",
-                            "content": json.dumps(assistant_output, ensure_ascii=False),
-                        },
-                    ]
-                }
-                out.write(json.dumps(sft_example, ensure_ascii=False) + "\n")
-                count += 1
+                    sft_example = {
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": c.raw_text},
+                            {
+                                "role": "assistant",
+                                "content": json.dumps(assistant_output, ensure_ascii=False),
+                            },
+                        ]
+                    }
+                    out.write(json.dumps(sft_example, ensure_ascii=False) + "\n")
+                    count += 1
+            os.replace(tmp_path, out_file)
+            # the file is now out_file; the cleanup below must not touch it
+            tmp_path = None
+        finally:
+            if tmp_path is not None:
+                with contextlib.suppress(OSError):
+                    tmp_path.unlink()
 
         return count

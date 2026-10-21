@@ -211,31 +211,37 @@ def test_sqlite_persistence_roundtrip(monkeypatch):
         assert loaded[1].action == "cancel"
 
 
-def test_persist_correction(monkeypatch):
+def test_persist_correction(monkeypatch, tmp_path):
     monkeypatch.setenv("TIFFINTALLY_PERSIST", "1")
     monkeypatch.delenv("TIFFINTALLY_DEMO_MODE", raising=False)
 
-    with TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test_tiffin.db"
-        cid = persist_correction(
-            kitchen_id="kitchen_corr_test",
-            customer="Vikram",
-            raw_text="kal ek thali",
-            corrected_meal="lunch",
-            corrected_qty=1,
-            corrected_action="new",
-            applied_count=1,
-            db_path=db_path,
-        )
-        assert cid > 0
+    # With the cwd pinned here, any write into the old shared
+    # data/private/corrections.jsonl would land inside this sandbox and be seen.
+    monkeypatch.chdir(tmp_path)
+    db_path = tmp_path / "test_tiffin.db"
+    cid = persist_correction(
+        kitchen_id="kitchen_corr_test",
+        customer="Vikram",
+        raw_text="kal ek thali",
+        corrected_meal="lunch",
+        corrected_qty=1,
+        corrected_action="new",
+        applied_count=1,
+        db_path=db_path,
+    )
+    assert cid > 0
 
-        with get_connection(db_path) as conn:
-            row = conn.execute("SELECT * FROM corrections WHERE id = ?", (cid,)).fetchone()
-            assert row is not None
-            # Stored as a token, like every other customer field on disk.
-            assert row["customer"].startswith("C")
-            assert row["corrected_meal"] == "lunch"
-            assert row["corrected_qty"] == 1
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT * FROM corrections WHERE id = ?", (cid,)).fetchone()
+        assert row is not None
+        # Stored as a token, like every other customer field on disk.
+        assert row["customer"].startswith("C")
+        assert row["corrected_meal"] == "lunch"
+        assert row["corrected_qty"] == 1
+
+    # SQLite is the single durable store: persisting must not append two
+    # kitchens' corrections into one shared JSONL under data/private/.
+    assert not (tmp_path / "data" / "private" / "corrections.jsonl").exists()
 
 
 # --- the leak this file exists for ---------------------------------------------
